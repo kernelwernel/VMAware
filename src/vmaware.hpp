@@ -523,6 +523,8 @@ namespace brands {
     static constexpr const char* CONNECTIX = "Connectix Virtual PC";
 }
 
+
+
 #if (VMA_CPP >= 17)
     #define VMAWARE_CONSTEXPR constexpr
 #else
@@ -562,7 +564,7 @@ public:
         DISPLAY,
         DLL,
         VMWARE_BACKDOOR,
-        WINE,
+        WINE_FUNC,
         VIRTUAL_REGISTRY,
         MUTEX,
         DEVICE_STRING,
@@ -575,7 +577,7 @@ public:
         TRAP,
         UD,
         BLOCKSTEP,
-        DBVM,
+        DBVM_HYPERCALL,
         KERNEL_OBJECTS,
         NVRAM,
         EDID,
@@ -618,7 +620,7 @@ public:
         MAC,
         NSJAIL_PID,
         BLUESTACKS_FOLDERS,
-        AMD_SEV,
+        AMD_SEV_MSR,
         TEMPERATURE,
         PROCESSES,
 
@@ -656,6 +658,82 @@ public:
         MULTIPLE
     };
 
+    enum class brand_enum : u8 {
+        UNKNOWN,
+        VBOX,
+        VMWARE,
+        VMWARE_EXPRESS,
+        VMWARE_ESX,
+        VMWARE_GSX,
+        VMWARE_WORKSTATION,
+        VMWARE_FUSION,
+        VMWARE_HARD,
+        BHYVE,
+        KVM,
+        QEMU,
+        QEMU_KVM,
+        KVM_HYPERV,
+        QEMU_KVM_HYPERV,
+        HYPERV,
+        HYPERV_VPC,
+        PARALLELS,
+        XEN,
+        ACRN,
+        QNX,
+        HYBRID,
+        SANDBOXIE,
+        DOCKER,
+        WINE,
+        VPC,
+        ANUBIS,
+        JOEBOX,
+        THREATEXPERT,
+        CWSANDBOX,
+        COMODO,
+        BOCHS,
+        NVMM,
+        BSD_VMM,
+        INTEL_HAXM,
+        UNISYS,
+        LMHS,
+        CUCKOO,
+        BLUESTACKS,
+        JAILHOUSE,
+        APPLE_VZ,
+        INTEL_KGT,
+        AZURE_HYPERV,
+        SIMPLEVISOR,
+        HYPERV_ARTIFACT,
+        UML,
+        POWERVM,
+        GCE,
+        OPENSTACK,
+        KUBEVIRT,
+        AWS_NITRO,
+        PODMAN,
+        WSL,
+        OPENVZ,
+        BAREVISOR,
+        HYPERPLATFORM,
+        MINIVISOR,
+        INTEL_TDX,
+        LKVM,
+        AMD_SEV,
+        AMD_SEV_ES,
+        AMD_SEV_SNP,
+        NEKO_PROJECT,
+        NOIRVISOR,
+        QIHOO,
+        NSJAIL,
+        DBVM,
+        UTM,
+        COMPAQ,
+        INSIGNIA,
+        CONNECTIX,
+        NULL_BRAND // do not modify the placement for this, as it's used to count the number of brands here
+    };
+
+
 private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
     static constexpr u8 settings_count = MULTIPLE - HIGH_THRESHOLD + 1; // get number of settings technique flags
@@ -664,7 +742,9 @@ private:
     static constexpr u16 threshold_score = 150; // standard threshold score
     static constexpr u16 high_threshold_score = 300; // new threshold score from 150 to 300 if VM::HIGH_THRESHOLD flag is enabled
     static constexpr bool SHORTCUT = true; // macro for whether VM::core::run_all() should take a shortcut by skipping the rest of the techniques if the threshold score is already met
-       
+    static constexpr size_t MAX_CUSTOM_TECHNIQUES = 256; // specific to VM::add_custom(), where custom techniques will be stored here
+    static constexpr size_t MAX_BRANDS = static_cast<size_t>(brand_enum::NULL_BRAND) + 1; // VM scoreboard table specifically for VM::brand()
+
     // intended for loop indexes
     static constexpr u8 enum_begin = 0;
     static constexpr u8 enum_end = enum_size + 1;
@@ -699,6 +779,11 @@ private:
 
     // for the flag bitset structure
     using flagset = std::bitset<enum_size + 1>;
+
+    // specific to brands
+    using brand_element_t = std::pair<brand_enum, brand_score_t>;
+    using brand_list_t = std::vector<brand_element_t>;
+    using brand_array_t = std::array<brand_element_t, MAX_BRANDS>;
 
 public:
     // constructor stuff
@@ -1057,41 +1142,41 @@ private:
                 if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
                     return false;
                 }
-                return core::add(brands::HYPERV, brands::VPC);
+                return core::add(brand_enum::HYPERV, brand_enum::VPC);
             }
 
             if (util::find(brand_str, "KVM")) {
-                return core::add(brands::KVM);
+                return core::add(brand_enum::KVM);
             }
 
-            static const std::unordered_map<std::string, const char*> brand_map = {
-                {"VMwareVMware", brands::VMWARE},
-                {"VBoxVBoxVBox", brands::VBOX},
-                {"TCGTCGTCGTCG", brands::QEMU},
-                {"XenVMMXenVMM", brands::XEN},
-                {"Linux KVM Hv", brands::KVM_HYPERV},
-                {" prl hyperv ", brands::PARALLELS},
-                {" lrpepyh  vr", brands::PARALLELS},
-                {"bhyve bhyve ", brands::BHYVE},
-                {"BHyVE BHyVE ", brands::BHYVE},
-                {"ACRNACRNACRN", brands::ACRN},
-                {" QNXQVMBSQG ", brands::QNX},
-                {"___ NVMM ___", brands::NVMM},
-                {"OpenBSDVMM58", brands::BSD_VMM},
-                {"HAXMHAXMHAXM", brands::INTEL_HAXM},
-                {"UnisysSpar64", brands::UNISYS},
-                {"SRESRESRESRE", brands::LMHS},
-                {"Jailhouse\0\0\0", brands::JAILHOUSE},
-                {"EVMMEVMMEVMM", brands::INTEL_KGT},
-                {"Barevisor!\0\0", brands::BAREVISOR},
-                {"MiniVisor\0\0\0", brands::MINIVISOR},
-                {"IntelTDX    ", brands::INTEL_TDX},
-                {"LKVMLKVMLKVM", brands::LKVM},
-                {"Neko Project", brands::NEKO_PROJECT},
-                {"NoirVisor ZT", brands::NOIRVISOR},
-                {"Compaq FX!32", brands::COMPAQ},
-                {"Insignia 586", brands::INSIGNIA},
-                {"ConnectixCPU", brands::CONNECTIX}
+            static const std::unordered_map<std::string, enum brand_enum> brand_map = {
+                {"VMwareVMware", brand_enum::VMWARE},
+                {"VBoxVBoxVBox", brand_enum::VBOX},
+                {"TCGTCGTCGTCG", brand_enum::QEMU},
+                {"XenVMMXenVMM", brand_enum::XEN},
+                {"Linux KVM Hv", brand_enum::KVM_HYPERV},
+                {" prl hyperv ", brand_enum::PARALLELS},
+                {" lrpepyh  vr", brand_enum::PARALLELS},
+                {"bhyve bhyve ", brand_enum::BHYVE},
+                {"BHyVE BHyVE ", brand_enum::BHYVE},
+                {"ACRNACRNACRN", brand_enum::ACRN},
+                {" QNXQVMBSQG ", brand_enum::QNX},
+                {"___ NVMM ___", brand_enum::NVMM},
+                {"OpenBSDVMM58", brand_enum::BSD_VMM},
+                {"HAXMHAXMHAXM", brand_enum::INTEL_HAXM},
+                {"UnisysSpar64", brand_enum::UNISYS},
+                {"SRESRESRESRE", brand_enum::LMHS},
+                {"Jailhouse\0\0\0", brand_enum::JAILHOUSE},
+                {"EVMMEVMMEVMM", brand_enum::INTEL_KGT},
+                {"Barevisor!\0\0", brand_enum::BAREVISOR},
+                {"MiniVisor\0\0\0", brand_enum::MINIVISOR},
+                {"IntelTDX    ", brand_enum::INTEL_TDX},
+                {"LKVMLKVMLKVM", brand_enum::LKVM},
+                {"Neko Project", brand_enum::NEKO_PROJECT},
+                {"NoirVisor ZT", brand_enum::NOIRVISOR},
+                {"Compaq FX!32", brand_enum::COMPAQ},
+                {"Insignia 586", brand_enum::INSIGNIA},
+                {"ConnectixCPU", brand_enum::CONNECTIX}
             };
 
             const auto it = brand_map.find(brand_str);
@@ -1100,15 +1185,15 @@ private:
             }
 
             if (util::find(brand_str, "QXNQSBMV")) {
-                return core::add(brands::QNX);
+                return core::add(brand_enum::QNX);
             }
 
             if (util::find(brand_str, "Apple VZ")) {
-                return core::add(brands::APPLE_VZ);
+                return core::add(brand_enum::APPLE_VZ);
             }
 
             if (util::find(brand_str, "PpyH")) {
-                return core::add(brands::HYPERPLATFORM);
+                return core::add(brand_enum::HYPERPLATFORM);
             }
 
             return false;
@@ -3051,18 +3136,18 @@ private:
             bool result;
             u8 points;
             bool cached;
-            const char* brand_name; 
+            brand_enum brand_name;
         };
         struct cache_entry {
             bool result;
             u8 points;
             bool has_value;
-            const char* brand_name; 
+            brand_enum brand_name;
         };
 
         static std::array<cache_entry, enum_size + 1> cache_table;
 
-        static void cache_store(u16 flag, bool result, u8 points, const char* brand = nullptr) {
+        static void cache_store(u16 flag, bool result, u8 points, const brand_enum brand = brand_enum::NULL_BRAND) {
             if (flag <= enum_size) {
                 cache_table[flag] = { result, points, true, brand };
             }
@@ -3079,28 +3164,31 @@ private:
             if (flag <= enum_size && cache_table[flag].has_value) {
                 return { cache_table[flag].result, cache_table[flag].points, true, cache_table[flag].brand_name };
             }
-            return { false, 0, false, nullptr };
+            return { false, 0, false, brand_enum::NULL_BRAND };
         }
 
         static void uncache(u16 flag) {
             if (flag <= enum_size) {
                 cache_table[flag].has_value = false;
-                cache_table[flag].brand_name = nullptr;
+                cache_table[flag].brand_name = brand_enum::NULL_BRAND;
             }
         }
 
         struct brand {
-            static std::string brand_cache;
+            static brand_enum brand_cache;
             static bool cached;
 
-            static void store(const std::string& s) {
+            static void store(const brand_enum s) {
                 brand_cache = s;
                 cached = true;
                 debug("VM::brand(): cached brand string");
             }
 
             static bool is_cached() { return cached; }
-            static std::string fetch() { return brand_cache; }
+            static brand_enum fetch() { 
+                debug("VM::brand(): returned brand from cache");
+                return brand_cache; 
+            }
         };
 
         struct multi_brand {
@@ -3110,10 +3198,31 @@ private:
             static void store(const std::string& s) {
                 brand_cache = s;
                 cached = true;
+                debug("VM::brand(): cached multiple brand string");
             }
 
             static bool is_cached() { return cached; }
-            static std::string fetch() { return brand_cache; }
+            static std::string fetch() { 
+                debug("VM::brand(): returned multi brand from cache");
+                return brand_cache; 
+            }
+        };
+
+        struct brand_list {
+            static brand_list_t cache;
+            static bool cached;
+
+            static void store(const brand_list_t& list) {
+                cache = list;
+                cached = true;
+                debug("VM::brand(): cached internal brand list");
+            }
+
+            static bool is_cached() { return cached; }
+            static brand_list_t fetch() { 
+                debug("VM::brand(): returned internal brand list from cache");
+                return cache;
+            }
         };
 
         // helper specifically for conclusion strings
@@ -3709,7 +3818,7 @@ private:
                 if (eax() == 11 && is_hyperv_present()) {
                     // Windows machine running under Hyper-V type 2
                     debug("HYPER_X: Detected Hyper-V guest VM");
-                    core::add(brands::HYPERV);
+                    core::add(brand_enum::HYPERV);
                     state = HYPERV_REAL_VM;
                 }
                 else {
@@ -3722,13 +3831,13 @@ private:
                 
                 if (util::find(brand_str, "KVM")) {
                     debug("HYPER_X: Detected Hyper-V enlightenments");
-                    core::add(brands::QEMU_KVM_HYPERV);
+                    core::add(brand_enum::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
                     debug("HYPER_X: Detected Hyper-V host machine");
-                    core::add(brands::HYPERV_ARTIFACT);
+                    core::add(brand_enum::HYPERV_ARTIFACT);
                     state = HYPERV_ARTIFACT_VM;
                 } 
             }
@@ -4284,6 +4393,313 @@ private:
     #endif
     };
 
+
+    struct brand {
+        static brand_list_t brand_list(const flagset& flags) {
+            if (memo::brand_list::is_cached()) {
+                return memo::brand_list::fetch();
+            }
+
+            // run all the techniques
+            const u16 score = core::run_all(flags);
+
+            brand_array_t active_brands = {};
+
+            brand_list_t brand_return = {};
+            brand_return.reserve(MAX_BRANDS);
+
+            size_t active_count = 0;
+
+            for (size_t i = 0; i < MAX_BRANDS; ++i) {
+                if (core::brand_scoreboard.at(i).score > 0) {
+                    active_brands.at(i) = std::make_pair(core::brand_scoreboard.at(i).name, core::brand_scoreboard.at(i).score);
+                    active_count++;
+                }
+            }
+            
+            #ifdef __VMAWARE_DEBUG__
+                for (const auto brand : active_brands) {
+                    debug("pre-processed scoreboard: ", int(brand.second), " : ", brand::brand_enum_to_string(brand.first));
+                }
+            #endif
+
+            auto remove = [&](const enum brand_enum brand) noexcept {
+                for (const auto b : active_brands) {
+                    if (b.first == brand) {
+                        active_brands.at(static_cast<u8>(brand)) = std::make_pair(brand_enum::NULL_BRAND, 0);
+                        active_count--;
+                        return;
+                    }
+                }
+            };
+
+            // if all brands have a point of 0, return "Unknown"
+            if (active_count == 0) {                        
+                brand_return.push_back({brand_enum::NULL_BRAND, 1});
+                memo::brand_list::store(brand_return);
+                return brand_return;
+            }
+
+            // if there's only a single brand, return it immediately
+            // We skip this early return if the single brand is HYPERV_ARTIFACT,
+            // but we must also nullify the result if the score is above 0, 
+            // which would most likely indicate a hardened VM instead and return "Unknown".
+            if (active_count == 1) {
+                enum brand_enum initial_brand = brand_enum::UNKNOWN;
+
+                for (const auto brand : active_brands) {
+                    if (brand.second == 0) {
+                        continue;
+                    }
+
+                    if (brand.first == brand_enum::HYPERV_ARTIFACT && score > 0) {
+                        brand_return.push_back({brand_enum::NULL_BRAND, 1});
+                        memo::brand_list::store(brand_return);
+                        return brand_return;
+                    }
+    
+                    initial_brand = brand.first;
+                    break;
+                }
+
+                brand_return.push_back({initial_brand, 1});
+                memo::brand_list::store(brand_return);
+                return brand_return;
+            }
+
+            // remove Hyper-V artifacts if found with other brands
+            if (active_count > 1) {
+                remove(brand_enum::HYPERV_ARTIFACT);
+            }
+
+            // this bitset acts as an abstraction layer for the merging stage of this function.
+            // the amount of hits above 0 for a brand isn't relevant, the core idea here is to
+            // just check the presence of the brand itself so we can merge them. 
+            std::bitset<MAX_BRANDS> brand_hits = {};
+
+            for (const auto brand : active_brands) {
+                brand_hits.set(static_cast<u8>(brand.first));
+            }
+
+            // merge 2 brands into one
+            auto merge = [&](const enum brand_enum a, const enum brand_enum b, const enum brand_enum result) noexcept -> void {
+                const bool a_hit = brand_hits.test(static_cast<u8>(a));
+                const bool b_hit = brand_hits.test(static_cast<u8>(b));
+
+                if (a_hit && b_hit) {
+                    remove(a);
+                    remove(b);
+                    active_brands.at(static_cast<u8>(result)) = std::make_pair(result, 2);
+                    active_count++;
+                }
+            };
+
+            // same as above, but for 3
+            auto triple_merge = [&](const enum brand_enum a, const enum brand_enum b, const enum brand_enum c, const enum brand_enum result) noexcept -> void {
+                const bool a_hit = brand_hits.test(static_cast<u8>(a));
+                const bool b_hit = brand_hits.test(static_cast<u8>(b));
+                const bool c_hit = brand_hits.test(static_cast<u8>(c));
+
+                if (a_hit && b_hit && c_hit) {
+                    remove(a);
+                    remove(b);
+                    remove(c);
+                    active_brands.at(static_cast<u8>(result)) = std::make_pair(result, 2);
+                    active_count++;
+                }
+            };
+
+            // Brand post-processing / merging
+            merge(brand_enum::VPC, brand_enum::HYPERV, brand_enum::HYPERV_VPC);
+
+            merge(brand_enum::AZURE_HYPERV, brand_enum::HYPERV, brand_enum::AZURE_HYPERV);
+            merge(brand_enum::AZURE_HYPERV, brand_enum::VPC, brand_enum::AZURE_HYPERV);
+            merge(brand_enum::AZURE_HYPERV, brand_enum::HYPERV_VPC, brand_enum::AZURE_HYPERV);
+
+            merge(brand_enum::QEMU, brand_enum::KVM, brand_enum::QEMU_KVM);
+            merge(brand_enum::KVM, brand_enum::HYPERV, brand_enum::KVM_HYPERV);
+            merge(brand_enum::QEMU, brand_enum::HYPERV, brand_enum::QEMU_KVM_HYPERV);
+            merge(brand_enum::QEMU_KVM, brand_enum::HYPERV, brand_enum::QEMU_KVM_HYPERV);
+
+            merge(brand_enum::KVM, brand_enum::HYPERV_VPC, brand_enum::KVM_HYPERV);
+            merge(brand_enum::QEMU, brand_enum::HYPERV_VPC, brand_enum::QEMU_KVM_HYPERV);
+            merge(brand_enum::QEMU_KVM, brand_enum::HYPERV_VPC, brand_enum::QEMU_KVM_HYPERV);
+
+            merge(brand_enum::KVM, brand_enum::KVM_HYPERV, brand_enum::KVM_HYPERV);
+            merge(brand_enum::QEMU, brand_enum::KVM_HYPERV, brand_enum::QEMU_KVM_HYPERV);
+            merge(brand_enum::QEMU_KVM, brand_enum::KVM_HYPERV, brand_enum::QEMU_KVM_HYPERV);
+
+            triple_merge(brand_enum::QEMU, brand_enum::KVM, brand_enum::KVM_HYPERV, brand_enum::QEMU_KVM_HYPERV);
+
+            merge(brand_enum::VMWARE, brand_enum::VMWARE_FUSION, brand_enum::VMWARE_FUSION);
+            merge(brand_enum::VMWARE, brand_enum::VMWARE_EXPRESS, brand_enum::VMWARE_EXPRESS);
+            merge(brand_enum::VMWARE, brand_enum::VMWARE_ESX, brand_enum::VMWARE_ESX);
+            merge(brand_enum::VMWARE, brand_enum::VMWARE_GSX, brand_enum::VMWARE_GSX);
+            merge(brand_enum::VMWARE, brand_enum::VMWARE_WORKSTATION, brand_enum::VMWARE_WORKSTATION);
+
+            merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE, brand_enum::VMWARE_HARD);
+            merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE_FUSION, brand_enum::VMWARE_HARD);
+            merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE_EXPRESS, brand_enum::VMWARE_HARD);
+            merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE_ESX, brand_enum::VMWARE_HARD);
+            merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE_GSX, brand_enum::VMWARE_HARD);
+            merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE_WORKSTATION, brand_enum::VMWARE_HARD);
+
+            
+            if (active_count > 1) {
+                std::sort(active_brands.begin(), active_brands.begin() + static_cast<std::ptrdiff_t>(active_count), [](
+                    const brand_element_t& a,
+                    const brand_element_t& b
+                ) {
+                    return a.second > b.second; // .second = brand score (usually u8)
+                });
+            }
+
+            for (const auto brand : active_brands) {
+                if (brand.second > 0) {
+                    brand_return.push_back({brand.first, brand.second});
+                }
+            }
+
+        #ifdef __VMAWARE_DEBUG__
+            for (const auto brand : brand_return) {
+                debug("post-processed scoreboard: ", brand.second, " : ", brand::brand_enum_to_string(brand.first));
+            }
+        #endif
+
+            memo::brand_list::store(brand_return);
+            return brand_return;
+        }
+
+        static std::string brand_enum_to_string(const brand_enum brand) {
+            switch (brand) {
+                case brand_enum::UNKNOWN: return "Invalid";
+                case brand_enum::VBOX: return brands::VBOX;
+                case brand_enum::VMWARE: return brands::VMWARE;
+                case brand_enum::VMWARE_EXPRESS: return brands::VMWARE_EXPRESS;
+                case brand_enum::VMWARE_ESX: return brands::VMWARE_ESX;
+                case brand_enum::VMWARE_GSX: return brands::VMWARE_GSX;
+                case brand_enum::VMWARE_WORKSTATION: return brands::VMWARE_WORKSTATION;
+                case brand_enum::VMWARE_FUSION: return brands::VMWARE_FUSION;
+                case brand_enum::VMWARE_HARD: return brands::VMWARE_HARD;
+                case brand_enum::BHYVE: return brands::BHYVE;
+                case brand_enum::KVM: return brands::KVM;
+                case brand_enum::QEMU: return brands::QEMU;
+                case brand_enum::QEMU_KVM: return brands::QEMU_KVM;
+                case brand_enum::KVM_HYPERV: return brands::KVM_HYPERV;
+                case brand_enum::QEMU_KVM_HYPERV: return brands::QEMU_KVM_HYPERV;
+                case brand_enum::HYPERV: return brands::HYPERV;
+                case brand_enum::HYPERV_VPC: return brands::HYPERV_VPC;
+                case brand_enum::PARALLELS: return brands::PARALLELS;
+                case brand_enum::XEN: return brands::XEN;
+                case brand_enum::ACRN: return brands::ACRN;
+                case brand_enum::QNX: return brands::QNX;
+                case brand_enum::HYBRID: return brands::HYBRID;
+                case brand_enum::SANDBOXIE: return brands::SANDBOXIE;
+                case brand_enum::DOCKER: return brands::DOCKER;
+                case brand_enum::WINE: return brands::WINE;
+                case brand_enum::VPC: return brands::VPC;
+                case brand_enum::ANUBIS: return brands::ANUBIS;
+                case brand_enum::JOEBOX: return brands::JOEBOX;
+                case brand_enum::THREATEXPERT: return brands::THREATEXPERT;
+                case brand_enum::CWSANDBOX: return brands::CWSANDBOX;
+                case brand_enum::COMODO: return brands::COMODO;
+                case brand_enum::BOCHS: return brands::BOCHS;
+                case brand_enum::NVMM: return brands::NVMM;
+                case brand_enum::BSD_VMM: return brands::BSD_VMM;
+                case brand_enum::INTEL_HAXM: return brands::INTEL_HAXM;
+                case brand_enum::UNISYS: return brands::UNISYS;
+                case brand_enum::LMHS: return brands::LMHS;
+                case brand_enum::CUCKOO: return brands::CUCKOO;
+                case brand_enum::BLUESTACKS: return brands::BLUESTACKS;
+                case brand_enum::JAILHOUSE: return brands::JAILHOUSE;
+                case brand_enum::APPLE_VZ: return brands::APPLE_VZ;
+                case brand_enum::INTEL_KGT: return brands::INTEL_KGT;
+                case brand_enum::AZURE_HYPERV: return brands::AZURE_HYPERV;
+                case brand_enum::SIMPLEVISOR: return brands::SIMPLEVISOR;
+                case brand_enum::HYPERV_ARTIFACT: return brands::HYPERV_ARTIFACT;
+                case brand_enum::UML: return brands::UML;
+                case brand_enum::POWERVM: return brands::POWERVM;
+                case brand_enum::GCE: return brands::GCE;
+                case brand_enum::OPENSTACK: return brands::OPENSTACK;
+                case brand_enum::KUBEVIRT: return brands::KUBEVIRT;
+                case brand_enum::AWS_NITRO: return brands::AWS_NITRO;
+                case brand_enum::PODMAN: return brands::PODMAN;
+                case brand_enum::WSL: return brands::WSL;
+                case brand_enum::OPENVZ: return brands::OPENVZ;
+                case brand_enum::BAREVISOR: return brands::BAREVISOR;
+                case brand_enum::HYPERPLATFORM: return brands::HYPERPLATFORM;
+                case brand_enum::MINIVISOR: return brands::MINIVISOR;
+                case brand_enum::INTEL_TDX: return brands::INTEL_TDX;
+                case brand_enum::LKVM: return brands::LKVM;
+                case brand_enum::AMD_SEV: return brands::AMD_SEV;
+                case brand_enum::AMD_SEV_ES: return brands::AMD_SEV_ES;
+                case brand_enum::AMD_SEV_SNP: return brands::AMD_SEV_SNP;
+                case brand_enum::NEKO_PROJECT: return brands::NEKO_PROJECT;
+                case brand_enum::NOIRVISOR: return brands::NOIRVISOR;
+                case brand_enum::QIHOO: return brands::QIHOO;
+                case brand_enum::NSJAIL: return brands::NSJAIL;
+                case brand_enum::DBVM: return brands::DBVM;
+                case brand_enum::UTM: return brands::UTM;
+                case brand_enum::COMPAQ: return brands::COMPAQ;
+                case brand_enum::INSIGNIA: return brands::INSIGNIA;
+                case brand_enum::CONNECTIX: return brands::CONNECTIX;
+                case brand_enum::NULL_BRAND: return brands::NULL_BRAND; // do not modify placement of this, it's used as an anchor point to count the number of brands
+            }
+        }
+        
+        static std::string fetch_brand_name(const brand_list_t& list, const size_t index) {
+            return brand_enum_to_string(list[index].first);
+        };
+    
+        static std::string brand_multiple(const flagset& flags = core::generate_default()) {
+            if (memo::multi_brand::is_cached()) {
+                return memo::multi_brand::fetch();
+            if (memo::multi_brand::is_cached()) {
+                return memo::multi_brand::fetch();
+            }
+            if (memo::multi_brand::is_cached()) {
+                return memo::multi_brand::fetch();
+            }
+            }
+
+            const brand_list_t& list = brand::brand_list(flags);
+            const std::string& buffer = brand_multiple(list);
+    
+            memo::multi_brand::store(buffer);
+            return buffer;
+        }
+            
+        static std::string brand_multiple(const brand_list_t& list) {
+            std::string buffer = {};
+            buffer += brand::fetch_brand_name(list, 0);
+
+            for (size_t i = 1; i < list.size(); i++) {
+                buffer += " or "; 
+                buffer += brand::fetch_brand_name(list, i);
+            }
+
+            return buffer;
+        }
+
+        static brand_enum brand_enum(const flagset& flags = core::generate_default()) {
+            if (memo::brand::is_cached()) {
+                return memo::brand::fetch();
+            }
+
+            const brand_list_t& list = brand::brand_list(flags);
+            const enum brand_enum brand = brand_enum(list);
+    
+            memo::brand::store(brand);
+
+            return brand;
+        }
+
+        static enum brand_enum brand_enum(const brand_list_t& list) {
+            const brand_element_t brand = list.front();
+            return brand.first;
+        }
+    };
+
 private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100
@@ -4316,7 +4732,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // easy shortcut for QEMU
         if (brand.rfind("QEMU Virtual CPU version", 0) == 0) {
-            return core::add(brands::QEMU);
+            return core::add(brand_enum::QEMU);
         }
 
         struct cstrview {
@@ -4359,18 +4775,18 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 switch (v.size) {
                 case 4:  // "qemu" or "vbox"
                     return core::add(v.data[0] == 'q'
-                        ? brands::QEMU
-                        : brands::VBOX);
+                        ? brand_enum::QEMU
+                        : brand_enum::VBOX);
                 case 3:  // "kvm"
-                    return core::add(brands::KVM);
+                    return core::add(brand_enum::KVM);
                 case 5:  // "bhyve"
-                    return core::add(brands::BHYVE);
+                    return core::add(brand_enum::BHYVE);
                 case 9:  // "parallels"
-                    return core::add(brands::PARALLELS);
+                    return core::add(brand_enum::PARALLELS);
                 case 10: // "virtualbox"
-                    return core::add(brands::VBOX);
+                    return core::add(brand_enum::VBOX);
                 case 6:  // "vmware"
-                    return core::add(brands::VMWARE);
+                    return core::add(brand_enum::VMWARE);
                 default:
                     return false;
                 }
@@ -4460,13 +4876,13 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             // technique 1: not a valid brand 
             if (brand == "              Intel(R) Pentium(R) 4 CPU        ") {
                 debug("BOCHS_CPU: technique 1 found");
-                return core::add(brands::BOCHS);
+                return core::add(brand_enum::BOCHS);
             }
         } else if (amd) {
             // technique 2: "processor" should have a capital P
             if (brand == "AMD Athlon(tm) processor") {
                 debug("BOCHS_CPU: technique 2 found");
-                return core::add(brands::BOCHS);
+                return core::add(brand_enum::BOCHS);
             }
 
             // technique 3: Check for absence of AMD easter egg for K7 and K8 CPUs
@@ -4562,7 +4978,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("CPUID_SIGNATURE: eax = ", eax);
 
         if (eax == simplevisor)
-            return core::add(brands::SIMPLEVISOR);
+            return core::add(brand_enum::SIMPLEVISOR);
 
         return false;
     #endif
@@ -4586,7 +5002,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u32 EDX_SIG = 0x43544E49u; // 'INTC' -> 0x43544E49
 
         if (ecx == ECX_SIG && edx == EDX_SIG) {
-            return core::add(brands::INTEL_KGT);
+            return core::add(brand_enum::INTEL_KGT);
         }
 
         return false;
@@ -4596,7 +5012,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
     /**
      * @brief Check for timing anomalies in the system
-     * @category x86
+     * @category x86x86
      * @implements VM::TIMER
      */
     [[nodiscard]] static bool timer() {
@@ -5001,7 +5417,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (cpuid_latency >= cycle_threshold) {
             debug("TIMER: Detected a vmexit on CPUID");
-            return core::add(brands::NULL_BRAND, 100); // to prevent false positives due to kernel noise, doesn't trigger the default score
+            return core::add(brand_enum::NULL_BRAND, 100); // to prevent false positives due to kernel noise, doesn't trigger the default score
         }
         else if (cpuid_latency <= 25) {
             debug("TIMER: Detected a hypervisor downscaling CPUID latency");
@@ -5123,8 +5539,8 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string vendor = util::read_file(vendor_file);
 
         // TODO: More can definitely be added, only QEMU and VBox were tested so far
-        if (util::find(vendor, "QEMU")) { return core::add(brands::QEMU); }
-        if (util::find(vendor, "Oracle Corporation")) { return core::add(brands::VBOX); }
+        if (util::find(vendor, "QEMU")) { return core::add(brand_enum::QEMU); }
+        if (util::find(vendor, "Oracle Corporation")) { return core::add(brand_enum::VBOX); }
 
         debug("CVENDOR: vendor = ", vendor);
 
@@ -5157,7 +5573,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool dockerenv() {
         if (util::exists("/.dockerenv") || util::exists("/.dockerinit")) {
-            return core::add(brands::DOCKER);
+            return core::add(brand_enum::DOCKER);
         }
 
         return false;
@@ -5187,11 +5603,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             debug("DMIDECODE: ", "invalid output");
             return false;
         } else if (*result == "QEMU") {
-            return core::add(brands::QEMU);
+            return core::add(brand_enum::QEMU);
         } else if (*result == "VirtualBox") {
-            return core::add(brands::VBOX);
+            return core::add(brand_enum::VBOX);
         } else if (*result == "KVM") {
-            return core::add(brands::KVM);
+            return core::add(brand_enum::KVM);
         } else if (std::atoi(result->c_str()) >= 1) {
             return true;
         } else {
@@ -5290,17 +5706,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         constexpr u32 PAR = 0x421C00;   // 00:1C:42
 
         if (prefix == VBOX) {
-            return core::add(brands::VBOX);
+            return core::add(brand_enum::VBOX);
         }
         else if (prefix == VMW1 || prefix == VMW2
             || prefix == VMW3 || prefix == VMW4) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
         else if (prefix == XEN) {
-            return core::add(brands::XEN);
+            return core::add(brand_enum::XEN);
         }
         else if (prefix == PAR) {
-            return core::add(brands::PARALLELS);
+            return core::add(brand_enum::PARALLELS);
         }
 
         return false;
@@ -5332,10 +5748,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
         else if (*result == "KVM") {
-            return core::add(brands::KVM);
+            return core::add(brand_enum::KVM);
         }
         else if (*result == "QEMU") {
-            return core::add(brands::QEMU);
+            return core::add(brand_enum::QEMU);
         }
         else if (std::atoi(result->c_str())) {
             return true;
@@ -5397,7 +5813,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string iomem_file = util::read_file("/proc/iomem");
 
         if (util::find(iomem_file, "VMware")) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
 
         return false;
@@ -5417,7 +5833,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             util::exists("/mnt/windows/BstSharedFolder") ||
             util::exists("/sdcard/windows/BstSharedFolder")
             ) {
-            return core::add(brands::BLUESTACKS);
+            return core::add(brand_enum::BLUESTACKS);
         }
 
         return false;
@@ -5430,9 +5846,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 	 * @category x86, Linux, MacOS
 	 * @author idea from virt-what
      * @warning Permissions required
-     * @implements VM::AMD_SEV
+     * @implements VM::AMD_SEV_MSR
 	 */
-	[[nodiscard]] static bool amd_sev() {
+	[[nodiscard]] static bool amd_sev_msr() {
     #if (x86 && (LINUX || APPLE))
         if (!cpu::is_amd()) {
             return false;
@@ -5474,9 +5890,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             return false;
         }
 
-        if (result & (static_cast<u64>(1) << 2)) { return core::add(brands::AMD_SEV_SNP); }
-        else if (result & (static_cast<u64>(1) << 1)) { return core::add(brands::AMD_SEV_ES); }
-        else if (result & 1) { return core::add(brands::AMD_SEV); }
+        if (result & (static_cast<u64>(1) << 2)) { return core::add(brand_enum::AMD_SEV_SNP); }
+        else if (result & (static_cast<u64>(1) << 1)) { return core::add(brand_enum::AMD_SEV_ES); }
+        else if (result & 1) { return core::add(brand_enum::AMD_SEV); }
 
         return false;
     #else
@@ -5505,7 +5921,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 util::find(sys_vendor_str, "QEMU") &&
                 util::find(modalias_str, "QEMU")
             ) {
-                return core::add(brands::QEMU);
+                return core::add(brand_enum::QEMU);
             }
         }
 
@@ -5580,7 +5996,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (type) {
             const std::string content = util::read_file("/sys/hypervisor/type");
             if (util::find(content, "xen")) {
-                return core::add(brands::XEN);
+                return core::add(brand_enum::XEN);
             }
         }
 
@@ -5600,7 +6016,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string brand = cpu::get_brand();
 
         if (brand == "UML") {
-            return core::add(brands::UML);
+            return core::add(brand_enum::UML);
         }
 
         // method 2, match for the "User Mode Linux" string in /proc/cpuinfo
@@ -5610,7 +6026,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string file_content = util::read_file(file);
 
             if (util::find(file_content, "User Mode Linux")) {
-                return core::add(brands::UML);
+                return core::add(brand_enum::UML);
             }
         }
 
@@ -5689,7 +6105,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string content = util::read_file(file);
 
         if (util::find(content, "vboxguest")) {
-            return core::add(brands::VBOX);
+            return core::add(brand_enum::VBOX);
         }
 
         return false;
@@ -5706,7 +6122,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string scsi_file = util::read_file("/proc/scsi/scsi");
 
         if (util::find(scsi_file, "VMware")) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
 
         return false;
@@ -5738,11 +6154,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (util::find(dmesg_o, "BusLogic BT-958")) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
 
         if (util::find(dmesg_o, "pcnet32")) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
 
         return false;
@@ -5795,23 +6211,22 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             "/sys/class/dmi/id/sys_vendor"
         };
 
-        constexpr std::array<std::pair<const char*, const char*>, 15> vm_table{ {
-            { "kvm", brands::KVM },
-            { "openstack", brands::OPENSTACK },
-            { "kubevirt", brands::KUBEVIRT },
-            { "amazon ec2", brands::AWS_NITRO },
-            { "qemu", brands::QEMU },
-            { "vmware", brands::VMWARE },
-            { "innotek gmbh", brands::VBOX },
-            { "virtualbox", brands::VBOX },
-            { "oracle corporation", brands::VBOX },
-            //{ "xen", XEN },
-            { "bochs", brands::BOCHS },
-            { "parallels", brands::PARALLELS },
-            { "bhyve", brands::BHYVE },
-            { "hyper-v", brands::HYPERV },
-            { "apple virtualization", brands::APPLE_VZ },
-            { "google compute engine", brands::GCE }
+        constexpr std::array<std::pair<const char*, enum brand_enum>, 15> vm_table{ {
+            { "kvm", brand_enum::KVM },
+            { "openstack", brand_enum::OPENSTACK },
+            { "kubevirt", brand_enum::KUBEVIRT },
+            { "amazon ec2", brand_enum::AWS_NITRO },
+            { "qemu", brand_enum::QEMU },
+            { "vmware", brand_enum::VMWARE },
+            { "innotek gmbh", brand_enum::VBOX },
+            { "virtualbox", brand_enum::VBOX },
+            { "oracle corporation", brand_enum::VBOX },
+            { "bochs", brand_enum::BOCHS },
+            { "parallels", brand_enum::PARALLELS },
+            { "bhyve", brand_enum::BHYVE },
+            { "hyper-v", brand_enum::HYPERV },
+            { "apple virtualization", brand_enum::APPLE_VZ },
+            { "google compute engine", brand_enum::GCE }
         } };
 
 
@@ -5837,9 +6252,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
                     debug("DMI_SCAN: content = ", content);
 
-                    if (strcmp(vm_string.second, brands::AWS_NITRO) == 0) {
+                    if (vm_string.second == brand_enum::AWS_NITRO) {
                         if (smbios_vm_bit()) {
-                            return core::add(brands::AWS_NITRO);
+                            return core::add(brand_enum::AWS_NITRO);
                         }
                     }
                     else {
@@ -5892,7 +6307,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
      */
     [[nodiscard]] static bool podman_file() {
         if (util::exists("/run/.containerenv")) {
-            return core::add(brands::PODMAN);
+            return core::add(brand_enum::PODMAN);
         }
 
         return false;
@@ -5909,7 +6324,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const std::string ioports_file = util::read_file("/proc/ioports");
     
         if (util::find(ioports_file, "VMware")) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
     
         return false;
@@ -5937,7 +6352,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 (util::find(osrelease_content, "WSL") || util::find(osrelease_content, "Microsoft")) &&
                 (util::find(version_content, "WSL") || util::find(version_content, "Microsoft"))
             ) {
-                return core::add(brands::WSL);
+                return core::add(brand_enum::WSL);
             }
         }
 
@@ -5956,10 +6371,10 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         // 1) Device Tree-based detection
         if (util::exists("/proc/device-tree/fw-cfg")) {
-            return core::add(brands::QEMU);
+            return core::add(brand_enum::QEMU);
         }
         if (util::exists("/proc/device-tree/hypervisor/compatible")) {
-            return core::add(brands::QEMU);
+            return core::add(brand_enum::QEMU);
         }
 
         // 2) sysfs-based detection
@@ -5967,7 +6382,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const char* firmware_path = "/sys/firmware/qemu_fw_cfg/";
         if (util::is_directory(module_path) && util::exists(module_path) &&
             util::is_directory(firmware_path) && util::exists(firmware_path)) {
-            return core::add(brands::QEMU);
+            return core::add(brand_enum::QEMU);
         }
 
         return false;
@@ -6046,7 +6461,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (pid_match && ppid_match) {
-                return core::add(brands::NSJAIL);
+                return core::add(brand_enum::NSJAIL);
             }
         }
 
@@ -6073,15 +6488,15 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     [[nodiscard]] static bool processes() {
         if (util::is_proc_running("qemu_ga")) {
             debug("PROCESSES: Detected QEMU guest agent process.");
-            return core::add(brands::QEMU);
+            return core::add(brand_enum::QEMU);
         }
 
         if (util::exists("/proc/xen")) {
-            return core::add(brands::XEN);
+            return core::add(brand_enum::XEN);
         }
 
         if (util::exists("/proc/vz")) {
-            return core::add(brands::OPENVZ);
+            return core::add(brand_enum::OPENVZ);
         }
 
         return false;
@@ -6350,7 +6765,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
         }
 
-        return core::add(brands::AZURE_HYPERV);
+        return core::add(brand_enum::AZURE_HYPERV);
     }
     template <typename T, size_t N>
     constexpr bool check_no_nulls(const std::array<T, N>& arr, size_t i = 0) {
@@ -6487,7 +6902,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         constexpr size_t pxen_len = sizeof(pxen) - 1;
                         const bool has_pxen = find_pattern(pxen, pxen_len);
                         if (!has_pxen)
-                            return core::add(brands::XEN);
+                            return core::add(brand_enum::XEN);
                         else
                             continue;
                     }
@@ -6498,7 +6913,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                         constexpr size_t bochs_len = sizeof(bochs) - 1;
                         const bool has_bochs = find_pattern(bochs, bochs_len);
                         if (!has_bochs)
-                            return core::add(brands::BOCHS);
+                            return core::add(brand_enum::BOCHS);
                         else
                             continue;
                     }
@@ -6524,11 +6939,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     // Creator / ASL Compiler ID (4) won't contain 6-char marker because its length is 4
                     if (strstr(oem_id, marker) != nullptr) {
                         debug("FIRMWARE: VMWareHardenedLoader found in OEMID -> '", oem_id, "'");
-                        return core::add(brands::VMWARE_HARD);
+                        return core::add(brand_enum::VMWARE_HARD);
                     }
                     if (strstr(oem_table_id, marker) != nullptr) {
                         debug("FIRMWARE: VMWareHardenedLoader found in OEM Table ID -> '", oem_table_id, "'");
-                        return core::add(brands::VMWARE_HARD);
+                        return core::add(brand_enum::VMWARE_HARD);
                     }
                 }
             }
@@ -6739,35 +7154,37 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     continue;
                 for (size_t j = 0; j <= file_size_u - target_length; ++j) {
                     if (memcmp(buffer.data() + j, target, target_length) == 0) {
-                        const char* brand = nullptr;
+                        enum brand_enum brand = brand_enum::NULL_BRAND;
+    
                         if (strcmp(target, "Parallels Software International") == 0 ||
                             strcmp(target, "Parallels(R)") == 0) {
-                            brand = brands::PARALLELS;
+                            brand = brand_enum::PARALLELS;
                         }
                         else if (strcmp(target, "innotek") == 0 ||
                             strcmp(target, "Oracle") == 0 ||
                             strcmp(target, "VirtualBox") == 0 ||
                             strcmp(target, "vbox") == 0 ||
                             strcmp(target, "VBOX") == 0) {
-                            brand = brands::VBOX;
+                            brand = brand_enum::VBOX;
                         }
                         else if (strcmp(target, "VMware, Inc.") == 0 ||
                             strcmp(target, "VMware") == 0 ||
                             strcmp(target, "VMWARE") == 0) {
-                            brand = brands::VMWARE;
+                            brand = brand_enum::VMWARE;
                         }
                         else if (strcmp(target, "QEMU") == 0) {
-                            brand = brands::QEMU;
+                            brand = brand_enum::QEMU;
                         }
                         else if (strcmp(target, "BOCHS") == 0 ||
                             strcmp(target, "BXPC") == 0) {
-                            brand = brands::BOCHS;
+                            brand = brand_enum::BOCHS;
                         }
 
-                        if (brand)
+                        if (brand != brand_enum::NULL_BRAND) {
                             return core::add(brand);
-                        else
+                        } else {
                             return true;
+                        }
                     }
                 }
             }
@@ -7067,7 +7484,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x0e0f0005: case 0x0e0f0006: case 0x0e0f000a: case 0x0e0f8001: 
                 case 0x0e0f8002: case 0x0e0f8003: case 0x0e0ff80a:
                     debug("DEVICES: Detected VMWARE device -> 0x", std::hex, id32);
-                    return core::add(brands::VMWARE);
+                    return core::add(brand_enum::VMWARE);
 
                 // Red Hat + QEMU
                 case 0x1b360001: case 0x1b360002: case 0x1b360003: case 0x1b360004:
@@ -7075,12 +7492,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x1b36000c: case 0x1b36000d: case 0x1b360010: case 0x1b360011:
                 case 0x1b360013: case 0x1b360100:
                     debug("DEVICES: Detected Red Hat + QEMU device -> 0x", std::hex, id32);
-                    return core::add(brands::QEMU);
+                    return core::add(brand_enum::QEMU);
 
                 // QEMU
                 case 0x06270001: case 0x1d1d1f1f: case 0x80865845: case 0x1d6b0200:
                     debug("DEVICES: Detected QEMU device -> 0x", std::hex, id32);
-                    return core::add(brands::QEMU);
+                    return core::add(brand_enum::QEMU);
 
                 // vGPUs (NVIDIA + others)
                 case 0x10de0fe7: case 0x10de0ff7: case 0x10de118d: case 0x10de11b0:
@@ -7091,23 +7508,23 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 // VirtualBox
                 case 0x80ee0021: case 0x80ee0022: case 0x80eebeef: case 0x80eecafe:
                     debug("DEVICES: Detected VirtualBox device -> 0x", std::hex, id32);
-                    return core::add(brands::VBOX);
+                    return core::add(brand_enum::VBOX);
 
                 // Parallels
                 case 0x1ab84000: case 0x1ab84005: case 0x1ab84006:
                     debug("DEVICES: Detected Parallels device -> 0x", std::hex, id32);
-                    return core::add(brands::PARALLELS);
+                    return core::add(brand_enum::PARALLELS);
 
                 // Xen
                 case 0x5853c000: case 0xfffd0101: case 0x5853c147:
                 case 0x5853c110: case 0x5853c200: case 0x58530001:
                     debug("DEVICES: Detected Xen device -> 0x", std::hex, id32);
-                    return core::add(brands::XEN);
+                    return core::add(brand_enum::XEN);
 
                 // Connectix (VirtualPC)
                 case 0x29556e61:
                     debug("DEVICES: Detected VirtualPC device -> 0x", std::hex, id32);
-                    return core::add(brands::VPC);
+                    return core::add(brand_enum::VPC);
             }
 
             // Devices with 32 bit device ids
@@ -7122,11 +7539,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 case 0x00000000106b1100ULL:
                 case 0x0000000010221100ULL:
                     debug("DEVICES: Detected QEMU device -> 0x", std::hex, id64);
-                    return core::add(brands::QEMU);
+                    return core::add(brand_enum::QEMU);
     
                 case 0x0000000015ad0800ULL:  // Hypervisor ROM Interface
                     debug("DEVICES: Detected Hypervisor ROM interface -> 0x", std::hex, id64);
-                    return core::add(brands::VMWARE);
+                    return core::add(brand_enum::VMWARE);
             }
         }
         
@@ -7186,7 +7603,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         }
 
         if (strstr(buffer, "VMware") != nullptr) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
 
         // assumed true since it doesn't contain "Mac" string
@@ -7273,11 +7690,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (util::find(board, "VirtualBox")) {
-                return core::add(brands::VBOX);
+                return core::add(brand_enum::VBOX);
             }
 
             if (util::find(board, "VMware")) {
-                return core::add(brands::VMWARE);
+                return core::add(brand_enum::VMWARE);
             }
 
             return false;
@@ -7295,7 +7712,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (util::find(manufacturer, "innotek")) {
-                return core::add(brands::VBOX);
+                return core::add(brand_enum::VBOX);
             }
 
             return false;
@@ -7340,7 +7757,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
 
             if (util::find(usb, "VirtualBox")) {
-                return core::add(brands::VBOX);
+                return core::add(brand_enum::VBOX);
             }
 
             return false;
@@ -7351,7 +7768,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             const std::string rom = *sys_rom;
 
             if (util::find(rom, "VirtualBox")) {
-                return core::add(brands::VBOX);
+                return core::add(brand_enum::VBOX);
             }
 
             return false;
@@ -7469,9 +7886,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if the function "wine_get_unix_file_name" is present and if the OS booted from a VHD container
      * @category Windows
-     * @implements VM::WINE
+     * @implements VM::WINE_FUNC
      */
-    [[nodiscard]] static bool wine() {
+    [[nodiscard]] static bool wine_function() {
         #if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
             return false;
         #else
@@ -7725,7 +8142,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             mov tr, ax
         }
         if ((tr & 0xFF) == 0x00 && ((tr >> 8) & 0xFF) == 0x40) {
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
 
         return false;
@@ -7784,11 +8201,11 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (is_vm) {
             switch (b) {
-                case 1:  return core::add(brands::VMWARE_EXPRESS);
-                case 2:  return core::add(brands::VMWARE_ESX);
-                case 3:  return core::add(brands::VMWARE_GSX);
-                case 4:  return core::add(brands::VMWARE_WORKSTATION);
-                default: return core::add(brands::VMWARE);
+                case 1:  return core::add(brand_enum::VMWARE_EXPRESS);
+                case 2:  return core::add(brand_enum::VMWARE_ESX);
+                case 3:  return core::add(brand_enum::VMWARE_GSX);
+                case 4:  return core::add(brand_enum::VMWARE_WORKSTATION);
+                default: return core::add(brand_enum::VMWARE);
             }
         }
     #endif
@@ -7870,12 +8287,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         if (try_mutex_name(L"Sandboxie_SingleInstanceMutex_Control") ||
             try_mutex_name(L"SBIE_BOXED_ServiceInitComplete_Mutex1")) {
             debug("MUTEX: Detected Sandboxie");
-            return core::add(brands::SANDBOXIE);
+            return core::add(brand_enum::SANDBOXIE);
         }
 
         if (try_mutex_name(L"MicrosoftVirtualPC7UserServiceMakeSureWe'reTheOnlyOneMutex")) {
             debug("MUTEX: Detected VPC");
-            return core::add(brands::VPC);
+            return core::add(brand_enum::VPC);
         }
 
         return false;
@@ -7931,7 +8348,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const NTSTATUS st = nt_open_file(&hFile, desired_access, &object_attributes, &iosb, share_access, open_options);
         if (NT_SUCCESS(st)) {
             if (hFile) nt_close(hFile);
-            return core::add(brands::CUCKOO);
+            return core::add(brand_enum::CUCKOO);
         }
 
         return false;
@@ -7987,7 +8404,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const NTSTATUS st = nt_open_file(&h_pipe, desired_access, &object_attributes, &iosb, share_access, open_options);
         if (NT_SUCCESS(st)) {
             if (h_pipe) nt_close(h_pipe);
-            return core::add(brands::CUCKOO);
+            return core::add(brand_enum::CUCKOO);
         }
 
         return false;
@@ -8112,7 +8529,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ) {
                 debug("DRIVERS: Detected VBox driver: ", driverPath);
                 nt_free_virtual_memory(current_process, &allocated_memory, &region_size, MEM_RELEASE);
-                return core::add(brands::VBOX);
+                return core::add(brand_enum::VBOX);
             }
 
             if (
@@ -8122,7 +8539,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             ) {
                 debug("DRIVERS: Detected VMware driver: ", driverPath);
                 nt_free_virtual_memory(current_process, &allocated_memory, &region_size, MEM_RELEASE);
-                return core::add(brands::VMWARE);
+                return core::add(brand_enum::VMWARE);
             }
         }
 
@@ -8599,17 +9016,17 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         if (vbox) {
             debug("HANDLES: Detected VBox related device handles");
-            return core::add(brands::VBOX);
+            return core::add(brand_enum::VBOX);
         }
 
         if (vmware) {
             debug("HANDLES: Detected VMware related device (HGFS)");
-            return core::add(brands::VMWARE);
+            return core::add(brand_enum::VMWARE);
         }
 
         if (cuckoo) {
             debug("HANDLES: Detected Cuckoo related device (pipe)");
-            return core::add(brands::CUCKOO);
+            return core::add(brand_enum::CUCKOO);
         }
 
         return false;
@@ -8804,7 +9221,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         const bool mismatch = (object_name->Name.Length != expected_name.Length) ||
             (memcmp(object_name->Name.Buffer, expected_name.Buffer, expected_name.Length) != 0);
 
-        return mismatch ? core::add(brands::SANDBOXIE) : false;
+        return mismatch ? core::add(brand_enum::SANDBOXIE) : false;
     }
     
     
@@ -9016,7 +9433,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                             const wchar_t after = hexpos[2]; // may be '_' or ')'
                             if (after == L'_' || after == L')') {
                                 SetupDiDestroyDeviceInfoList(handle_dev_info);
-                                return core::add(brands::QEMU);
+                                return core::add(brand_enum::QEMU);
                             }
                         }
                     }
@@ -9032,7 +9449,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                     if (start && start[0] && start[1] && start[2]) {
                         if (start[0] == L'S' && is_hex(start[1]) && is_hex(start[2])) {
                             SetupDiDestroyDeviceInfoList(handle_dev_info);
-                            return core::add(brands::QEMU);
+                            return core::add(brand_enum::QEMU);
                         }
                     }
                     search = found + 1;
@@ -9050,7 +9467,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
                 for (const wchar_t* sig : vm_signatures) {
                     if (wcsstr(p, sig) != nullptr) {
                         SetupDiDestroyDeviceInfoList(handle_dev_info);
-                        return core::add(brands::HYPERV);
+                        return core::add(brand_enum::HYPERV);
                     }
                 }
             }
@@ -9386,9 +9803,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check if Dark Byte's VM is present
      * @category Windows
-     * @implements VM::DBVM
+     * @implements VM::DBVM_HYPERCALL
      */
-    [[nodiscard]] static bool dbvm() {
+    [[nodiscard]] static bool dbvm_hypercall() {
     #if (!x86_64)
         return false;
     #else
@@ -9494,7 +9911,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         nt_free_virtual_memory(current_process, &stub, &region_size, MEM_RELEASE);
 
-        if (found) return core::add(brands::DBVM);
+        if (found) return core::add(brand_enum::DBVM);
 
         return false;
     #endif
@@ -9593,9 +10010,9 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
         debug("BOOT_LOGO: size=", needed, ", flags=", info->flags, ", offset=", info->bitmap_offset, ", crc=0x", std::hex, hash);
 
         switch (hash) {
-            case 0x110350C5: return core::add(brands::QEMU); // TianoCore EDK2
-            case 0x87c39681: return core::add(brands::HYPERV);
-            case 0x9502cb33: return core::add(brands::VBOX);
+            case 0x110350C5: return core::add(brand_enum::QEMU); // TianoCore EDK2
+            case 0x87c39681: return core::add(brand_enum::HYPERV);
+            case 0x9502cb33: return core::add(brand_enum::VBOX);
             default:         return false;
         }
     #else
@@ -9779,12 +10196,12 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             if (object_name == L"VmGenerationCounter") {
                 nt_close(dir);
                 debug("KERNEL_OBJECTS: Detected VmGenerationCounter");
-                return core::add(brands::HYPERV);
+                return core::add(brand_enum::HYPERV);
             }
             if (object_name == L"VmGid") {
                 nt_close(dir);
                 debug("KERNEL_OBJECTS: Detected VmGid");
-                return core::add(brands::HYPERV);
+                return core::add(brand_enum::HYPERV);
             }
         }
 
@@ -10193,7 +10610,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
             }
             if (found_redhat) {
                 debug("NVRAM: QEMU/OVMF detected");
-                detection_result = core::add(brands::QEMU);
+                detection_result = core::add(brand_enum::QEMU);
                 break;
             }
 
@@ -11201,7 +11618,7 @@ public:
 
         // entry for brand scoreboard
         struct brand_entry {
-            const char* name;
+            brand_enum name;
             brand_score_t score;
         };
 
@@ -11209,55 +11626,42 @@ public:
         // used for most functionalities related to technique interactions
         static std::array<technique, enum_size + 1> technique_table;
 
-        // specific to VM::add_custom(), where custom techniques will be stored here
-        static constexpr size_t MAX_CUSTOM_TECHNIQUES = 256;
         static std::vector<VM::core::custom_technique> custom_table; // users should not have a limit of how many functions they should add, this is the only exception of a heap-allocated object in our core
         static size_t custom_table_size;
 
-        // VM scoreboard table specifically for VM::brand()
-        static constexpr size_t MAX_BRANDS = 128;
         static std::array<brand_entry, MAX_BRANDS> brand_scoreboard;
-        static size_t brand_count;
 
         // Temporary storage to capture which brand was detected by the currently running technique
-        static const char* last_detected_brand;
+        static brand_enum last_detected_brand;
         static u8 last_detected_score;
 
         // 1. one brand, custom score
-        static inline bool add(const char* p_brand, u8 score) noexcept {
-            return add_score(p_brand, "", score);
+        static inline bool add(const brand_enum p_brand, u8 score) noexcept {
+            return add_score(p_brand, brand_enum::NULL_BRAND, score);
         }
 
         // 2. one brand, default score
-        static inline bool add(const char* p_brand) noexcept {
-            return add_score(p_brand, "", 0);
+        static inline bool add(const brand_enum p_brand) noexcept {
+            return add_score(p_brand, brand_enum::NULL_BRAND, 0);
         }
 
         // 3. two brands, default score
-        static inline bool add(const char* p_brand, const char* extra_brand) noexcept {
+        static inline bool add(const brand_enum p_brand, const brand_enum extra_brand) noexcept {
             return add_score(p_brand, extra_brand, 0);
         }
 
-        static inline bool add_score(const char* p_brand, const char* extra_brand, u8 score) noexcept {
+        static inline bool add_score(const brand_enum p_brand, const brand_enum extra_brand, u8 score) noexcept {
             last_detected_brand = p_brand;
             last_detected_score = score; // Store for the engine to read
 
-            for (size_t i = 0; i < brand_count; ++i) {
-                // pointer comparison is sufficient as we use the static constants from brands:: namespace
-                if (brand_scoreboard[i].name == p_brand) {
-                    brand_scoreboard[i].score++;
-                    break;
-                }
+            u8 brand_score = brand_scoreboard[static_cast<u8>(p_brand)].score;
+
+            brand_scoreboard[static_cast<u8>(p_brand)] = { p_brand, ++brand_score };
+
+            if (extra_brand != brand_enum::NULL_BRAND) {
+                brand_scoreboard[static_cast<u8>(extra_brand)] = { extra_brand, ++brand_score };
             }
 
-            if (extra_brand && extra_brand[0] != '\0') {
-                for (size_t i = 0; i < brand_count; ++i) {
-                    if (brand_scoreboard[i].name == extra_brand) {
-                        brand_scoreboard[i].score++;
-                        break;
-                    }
-                }
-            }
             return true;
         }
 
@@ -11328,7 +11732,7 @@ public:
                 }
 
                 // reset the last detected brand before running
-                last_detected_brand = nullptr;
+                last_detected_brand = brand_enum::NULL_BRAND;
                 last_detected_score = 0;
 
                 // run the technique
@@ -11344,12 +11748,11 @@ public:
                     detected_count_num++;
 
                     // retrieve the brand that was set during execution (if any)
-                    const char* detected_brand = (last_detected_brand) ? last_detected_brand : brands::NULL_BRAND;
+                    const enum brand_enum detected_brand = (last_detected_brand != brand_enum::NULL_BRAND) ? last_detected_brand : brand_enum::NULL_BRAND;
                     // store the current technique result to the cache
                     memo::cache_store(technique_macro, result, points_to_add, detected_brand);
-                }
-                else {
-                    memo::cache_store(technique_macro, false, 0, brands::NULL_BRAND);
+                } else {
+                    memo::cache_store(technique_macro, false, 0);
                 }
 
                 // for things like VM::detect() and VM::percentage(),
@@ -11571,7 +11974,7 @@ public: // START OF PUBLIC FUNCTIONS
     #endif
     ) {
         if (util::is_unsupported(flag_bit)) {
-            memo::cache_store(flag_bit, false, 0, brands::NULL_BRAND);
+            memo::cache_store(flag_bit, false, 0);
             return false;
         }
 
@@ -11611,19 +12014,18 @@ public: // START OF PUBLIC FUNCTIONS
             const core::technique& pair = core::technique_table[flag_bit];
 
             if (auto run_fn = pair.run) {
-                core::last_detected_brand = nullptr;
+                core::last_detected_brand = brand_enum::NULL_BRAND;
                 core::last_detected_score = 0;
 
                 const bool result = run_fn();
 
                 const u8 points_to_add = (core::last_detected_score > 0) ? core::last_detected_score : pair.points;
-                const char* detected_brand = (core::last_detected_brand) ? core::last_detected_brand : brands::NULL_BRAND;
 
                 if (result) {
                     detected_count_num++;
                 }
 
-                memo::cache_store(flag_bit, result, result ? points_to_add : 0, detected_brand);
+                memo::cache_store(flag_bit, result, result ? points_to_add : 0, core::last_detected_brand);
                 return result;
             }
             else {
@@ -11647,250 +12049,19 @@ public: // START OF PUBLIC FUNCTIONS
         return brand(flags);
     }
 
+
     static std::string brand(const flagset& flags = core::generate_default()) {
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
-        // check if the result is already cached and return that instead
         if (is_multiple) {
-            if (memo::multi_brand::is_cached()) {
-                debug("VM::brand(): returned multi brand from cache");
-                return memo::multi_brand::fetch();
-            }
+            return brand::brand_multiple(flags);
         } else {
-            if (memo::brand::is_cached()) {
-                debug("VM::brand(): returned brand from cache");
-                return memo::brand::fetch();
-            }
+            const enum brand_enum brand = brand::brand_enum(flags);
+            return brand::brand_enum_to_string(brand);
         }
-
-        // run all the techniques
-        const u16 score = core::run_all(flags);
-
-    #if (VMA_CPP <= 14)
-        constexpr const char* TMP_QEMU = "QEMU";
-        constexpr const char* TMP_KVM = "KVM";
-        constexpr const char* TMP_QEMU_KVM = "QEMU+KVM";
-        constexpr const char* TMP_KVM_HYPERV = "KVM Hyper-V Enlightenment";
-        constexpr const char* TMP_QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
-
-        constexpr const char* TMP_VMWARE = "VMware";
-        constexpr const char* TMP_VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
-        constexpr const char* TMP_EXPRESS = "VMware Express";
-        constexpr const char* TMP_ESX = "VMware ESX";
-        constexpr const char* TMP_GSX = "VMware GSX";
-        constexpr const char* TMP_WORKSTATION = "VMware Workstation";
-        constexpr const char* TMP_FUSION = "VMware Fusion";
-
-        constexpr const char* TMP_VPC = "Virtual PC";
-        constexpr const char* TMP_HYPERV = "Microsoft Hyper-V";
-        constexpr const char* TMP_HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
-        constexpr const char* TMP_AZURE = "Microsoft Azure Hyper-V";
-        constexpr const char* TMP_HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
-    #else
-        constexpr const char* TMP_QEMU = brands::QEMU;
-        constexpr const char* TMP_KVM = brands::KVM;
-        constexpr const char* TMP_QEMU_KVM = brands::QEMU_KVM;
-        constexpr const char* TMP_KVM_HYPERV = brands::KVM_HYPERV;
-        constexpr const char* TMP_QEMU_KVM_HYPERV = brands::QEMU_KVM_HYPERV;
-
-        constexpr const char* TMP_VMWARE = brands::VMWARE;
-        constexpr const char* TMP_VMWARE_HARD = brands::VMWARE_HARD;
-        constexpr const char* TMP_EXPRESS = brands::VMWARE_EXPRESS;
-        constexpr const char* TMP_ESX = brands::VMWARE_ESX;
-        constexpr const char* TMP_GSX = brands::VMWARE_GSX;
-        constexpr const char* TMP_WORKSTATION = brands::VMWARE_WORKSTATION;
-        constexpr const char* TMP_FUSION = brands::VMWARE_FUSION;
-
-        constexpr const char* TMP_VPC = brands::VPC;
-        constexpr const char* TMP_HYPERV = brands::HYPERV;
-        constexpr const char* TMP_HYPERV_VPC = brands::HYPERV_VPC;
-        constexpr const char* TMP_AZURE = brands::AZURE_HYPERV;
-        constexpr const char* TMP_HYPERV_ARTIFACT = brands::HYPERV_ARTIFACT;
-    #endif
-
-        using brand_element_t = std::pair<const char*, brand_score_t>;
-        std::array<brand_element_t, core::MAX_BRANDS> active_brands;
-        size_t active_count = 0;
-
-        // wrappers for simplicity, these will most likely be inlined by the compiler anyway
-        auto fetch_brand_name = [&](const size_t index) -> const char* {
-            return active_brands[index].first;
-        };
-
-    #ifdef __VMAWARE_DEBUG__
-        auto fetch_brand_score = [&](const size_t index) -> brand_score_t {
-            return active_brands[index].second;
-        };
-    #endif
-        for (size_t i = 0; i < core::brand_count; ++i) {
-            if (core::brand_scoreboard[i].score > 0) {
-                active_brands[active_count++] = std::make_pair(core::brand_scoreboard[i].name, core::brand_scoreboard[i].score);
-            }
-        }
-
-        // if all brands have a point of 0, return "Unknown"
-        if (active_count == 0) {
-            memo::brand::store(brands::NULL_BRAND);
-            return brands::NULL_BRAND;
-        }
-        
-        // helper lambdas for array manipulation
-        auto find_index = [&](const char* name) noexcept -> i8 {
-            for (size_t i = 0; i < active_count; ++i) {
-                // pointer comparison is sufficient for static brands
-                if (fetch_brand_name(i) == name) {
-                    return static_cast<i8>(i);
-                }
-            }
-            return -1;
-        };
-
-        auto remove_at = [&](const u8 index) noexcept {
-            if (index >= 0 && index < static_cast<int>(active_count)) {
-                if (index != static_cast<int>(active_count - 1)) {
-                    active_brands[static_cast<size_t>(index)] = active_brands[active_count - 1];
-                }
-                active_count--;
-            }
-        };
-    
-        // remove Hyper-V artifacts if found with other brands
-        if (active_count > 1) {
-            const i8 idx = find_index(TMP_HYPERV_ARTIFACT);
-            if (idx != -1) {
-                remove_at(idx);
-            }
-        }
-
-        // if there's only a single brand, return it immediately
-        // We skip this early return if the single brand is HYPERV_ARTIFACT,
-        // but we must also nullify the result if the score is above 0, 
-        // which would most likely indicate a hardened VM instead and return "Unknown".
-        if (active_count == 1) {
-            const std::string& initial_brand = fetch_brand_name(0);
-            if (initial_brand == TMP_HYPERV_ARTIFACT) {
-                if (score > 0) {
-                    memo::brand::store(brands::NULL_BRAND);
-                    return brands::NULL_BRAND;
-                }
-            }
-    
-            memo::brand::store(initial_brand);
-            return initial_brand;
-        }
-
-        // merge 2 brands
-        auto merge = [&](const char* a, const char* b, const char* result) noexcept -> void {
-            i8 idx_a = find_index(a);
-            if (idx_a == -1) return;
-
-            i8 idx_b = find_index(b);
-            if (idx_b == -1) return;
-
-            remove_at(idx_a);
-            idx_b = find_index(b); // re-find
-            remove_at(idx_b);
-
-            active_brands[active_count++] = std::make_pair(result, 2);
-        };
-
-        // same as above, but for 3
-        auto triple_merge = [&](const char* a, const char* b, const char* c, const char* result) noexcept -> void {
-            i8 idx_a = find_index(a);
-            if (idx_a == -1) return;
-            i8 idx_b = find_index(b);
-            if (idx_b == -1) return;
-            i8 idx_c = find_index(c);
-            if (idx_c == -1) return;
-
-            remove_at(idx_a);
-            remove_at(find_index(b));
-            remove_at(find_index(c));
-
-            active_brands[active_count++] = std::make_pair(result, 2);
-        };
-        
-        // Brand post-processing / merging
-        merge(TMP_VPC, TMP_HYPERV, TMP_HYPERV_VPC);
-
-        merge(TMP_AZURE, TMP_HYPERV, TMP_AZURE);
-        merge(TMP_AZURE, TMP_VPC, TMP_AZURE);
-        merge(TMP_AZURE, TMP_HYPERV_VPC, TMP_AZURE);
-
-        merge(TMP_QEMU, TMP_KVM, TMP_QEMU_KVM);
-        merge(TMP_KVM, TMP_HYPERV, TMP_KVM_HYPERV);
-        merge(TMP_QEMU, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merge(TMP_QEMU_KVM, TMP_HYPERV, TMP_QEMU_KVM_HYPERV);
-
-        merge(TMP_KVM, TMP_HYPERV_VPC, TMP_KVM_HYPERV);
-        merge(TMP_QEMU, TMP_HYPERV_VPC, TMP_QEMU_KVM_HYPERV);
-        merge(TMP_QEMU_KVM, TMP_HYPERV_VPC, TMP_QEMU_KVM_HYPERV);
-
-        merge(TMP_KVM, TMP_KVM_HYPERV, TMP_KVM_HYPERV);
-        merge(TMP_QEMU, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
-        merge(TMP_QEMU_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
-
-        triple_merge(TMP_QEMU, TMP_KVM, TMP_KVM_HYPERV, TMP_QEMU_KVM_HYPERV);
-
-        merge(TMP_VMWARE, TMP_FUSION, TMP_FUSION);
-        merge(TMP_VMWARE, TMP_EXPRESS, TMP_EXPRESS);
-        merge(TMP_VMWARE, TMP_ESX, TMP_ESX);
-        merge(TMP_VMWARE, TMP_GSX, TMP_GSX);
-        merge(TMP_VMWARE, TMP_WORKSTATION, TMP_WORKSTATION);
-
-        merge(TMP_VMWARE_HARD, TMP_VMWARE, TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_FUSION, TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_EXPRESS, TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_ESX, TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_GSX, TMP_VMWARE_HARD);
-        merge(TMP_VMWARE_HARD, TMP_WORKSTATION, TMP_VMWARE_HARD);
-        
-        if (active_count > 1) {
-            // remove "Unknown" if detected with other brands
-            const int idx = find_index(brands::NULL_BRAND);
-            if (idx != -1) {
-                remove_at(idx);
-            }
-
-            std::sort(active_brands.begin(), active_brands.begin() + static_cast<std::ptrdiff_t>(active_count), [](
-                const brand_element_t& a,
-                const brand_element_t& b
-            ) {
-                return a.second > b.second; // .second = brand score (usually u8)
-            });
-        }
-
-    #ifdef __VMAWARE_DEBUG__
-        for (size_t i = 0; i < active_count; ++i) {
-            debug("processed scoreboard: ", (brand_score_t)fetch_brand_score(i), " : ", fetch_brand_name(i));
-        }
-    #endif
-
-        if (active_count == 0) {
-            memo::brand::store(brands::NULL_BRAND);
-            return brands::NULL_BRAND;
-        }
-
-        if (is_multiple) {
-            std::string buffer = {};
-            buffer += fetch_brand_name(0);
-
-            for (size_t i = 1; i < active_count; i++) {
-                buffer += " or ";
-                buffer += fetch_brand_name(i);
-            }
-
-            memo::multi_brand::store(buffer);
-            debug("VM::brand(): cached multiple brand string");
-            return buffer;
-        }
-
-        const std::string& result_brand = fetch_brand_name(0);
-
-        memo::brand::store(result_brand);
-        return result_brand;
     }
+
 
 
     /**
@@ -12056,7 +12227,7 @@ public: // START OF PUBLIC FUNCTIONS
             case HWMON: return "HWMON";
             case DLL: return "DLL";
             case HWMODEL: return "HWMODEL";
-            case WINE: return "WINE";
+            case WINE_FUNC: return "WINE_FUNC";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case PROCESSES: return "PROCESSES";
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
@@ -12103,7 +12274,7 @@ public: // START OF PUBLIC FUNCTIONS
             case QEMU_FW_CFG: return "QEMU_FW_CFG";
             case VIRTUAL_PROCESSORS: return "VIRTUAL_PROCESSORS";
             case HYPERVISOR_QUERY: return "HYPERVISOR_QUERY";
-            case AMD_SEV: return "AMD_SEV";
+            case AMD_SEV_MSR: return "AMD_SEV_MSR";
             case VIRTUAL_REGISTRY: return "VIRTUAL_REGISTRY";
             case FIRMWARE: return "FIRMWARE";
             case FILE_ACCESS_HISTORY: return "FILE_ACCESS_HISTORY";
@@ -12114,7 +12285,7 @@ public: // START OF PUBLIC FUNCTIONS
             case TRAP: return "TRAP";
             case UD: return "UNDEFINED_INSTRUCTION";
             case BLOCKSTEP: return "BLOCKSTEP";
-            case DBVM: return "DBVM";
+            case DBVM_HYPERCALL: return "DBVM_HYPERCALL";
             case BOOT_LOGO: return "BOOT_LOGO";
             case MAC_SYS: return "MAC_SYS";
             case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
@@ -12238,114 +12409,90 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static std::string type(const flagset &flags = core::generate_default()) {
-        const std::string brand_str = brand(flags);
+        const brand_list_t& list = brand::brand_list(flags);
 
-        // if multiple brands were found, return unknown
-        if (util::find(brand_str, " or ")) {
-            return "Unknown";
-        }
-
-        struct map_entry {
-            const char* name;
-            const char* type;
-        };
-
-        // Static table for O(1) scanning
-        static constexpr map_entry type_table[] = {
-            // type 1
-            { brands::XEN, "Hypervisor (type 1)" },
-            { brands::VMWARE_ESX, "Hypervisor (type 1)" },
-            { brands::ACRN, "Hypervisor (type 1)" },
-            { brands::QNX, "Hypervisor (type 1)" },
-            { brands::HYPERV, "Hypervisor (type 2)" }, // to clarify you're running under a Hyper-V guest VM
-            { brands::AZURE_HYPERV, "Hypervisor (type 1)" },
-            { brands::KVM, "Hypervisor (type 1)" },
-            { brands::KVM_HYPERV, "Hypervisor (type 1)" },
-            { brands::QEMU_KVM_HYPERV, "Hypervisor (type 1)" },
-            { brands::QEMU_KVM, "Hypervisor (type 1)" },
-            { brands::INTEL_KGT, "Hypervisor (type 1)" },
-            { brands::SIMPLEVISOR, "Hypervisor (type 1)" },
-            { brands::OPENSTACK, "Hypervisor (type 1)" },
-            { brands::KUBEVIRT, "Hypervisor (type 1)" },
-            { brands::POWERVM, "Hypervisor (type 1)" },
-            { brands::AWS_NITRO, "Hypervisor (type 1)" },
-            { brands::LKVM, "Hypervisor (type 1)" },
-            { brands::NOIRVISOR, "Hypervisor (type 1)" },
-            { brands::WSL, "Hypervisor (Type 1)" }, // Type 1-derived lightweight VM system
-            { brands::DBVM, "Hypervisor (Type 1)" }, 
-
-            // type 2
-            { brands::BHYVE, "Hypervisor (type 2)" },
-            { brands::VBOX, "Hypervisor (type 2)" },
-            { brands::VMWARE, "Hypervisor (type 2)" },
-            { brands::VMWARE_EXPRESS, "Hypervisor (type 2)" },
-            { brands::VMWARE_GSX, "Hypervisor (type 2)" },
-            { brands::VMWARE_WORKSTATION, "Hypervisor (type 2)" },
-            { brands::VMWARE_FUSION, "Hypervisor (type 2)" },
-            { brands::PARALLELS, "Hypervisor (type 2)" },
-            { brands::VPC, "Hypervisor (type 2)" },
-            { brands::NVMM, "Hypervisor (type 2)" },
-            { brands::BSD_VMM, "Hypervisor (type 2)" },
-            { brands::HYPERV_VPC, "Hypervisor (type 2)" },
-            { brands::VMWARE_HARD, "Hypervisor (type 2)" },
-            { brands::UTM, "Hypervisor (type 2)" },
-            { brands::INTEL_HAXM, "Hosted hypervisor / accelerator (type 2)" },
-
-            // sandbox
-            { brands::CUCKOO, "Sandbox" },
-            { brands::SANDBOXIE, "Sandbox" },
-            { brands::HYBRID, "Sandbox" },
-            { brands::CWSANDBOX, "Sandbox" },
-            { brands::JOEBOX, "Sandbox" },
-            { brands::ANUBIS, "Sandbox" },
-            { brands::COMODO, "Sandbox" },
-            { brands::THREATEXPERT, "Sandbox" },
-            { brands::QIHOO, "Sandbox" },
-
-            // misc
-            { brands::BOCHS, "Emulator" },
-            { brands::BLUESTACKS, "Emulator" },
-            { brands::NEKO_PROJECT, "Emulator" },
-            { brands::COMPAQ, "Emulator" },
-            { brands::INSIGNIA, "Emulator" },
-            { brands::CONNECTIX, "Emulator" },
-            { brands::QEMU, "Emulator/Hypervisor (type 2)" },
-            { brands::JAILHOUSE, "Partitioning Hypervisor" },
-            { brands::UNISYS, "Partitioning Hypervisor" },
-            { brands::DOCKER, "Container" },
-            { brands::PODMAN, "Container" },
-            { brands::OPENVZ, "Container" },
-            { brands::LMHS, "Hypervisor (unknown type)" },
-            { brands::WINE, "Compatibility layer" },
-            { brands::INTEL_TDX, "Trusted Domain" },
-            { brands::APPLE_VZ, "Unknown" },
-            { brands::UML, "Paravirtualised/Hypervisor (type 2)" },
-            { brands::AMD_SEV, "VM encryptor" },
-            { brands::AMD_SEV_ES, "VM encryptor" },
-            { brands::AMD_SEV_SNP, "VM encryptor" },
-            { brands::GCE, "Cloud VM service" },
-            { brands::NSJAIL, "Process isolator" },
-            { brands::HYPERV_ARTIFACT, "Unknown" }, // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
-            { brands::NULL_BRAND, "Unknown" }
-        };
-
-        for (const auto& entry : type_table) {
-            // pointer comparison first , because is the fastest/O(1) relative to string length
-            if (brand_str == entry.name) {
-                return entry.type;
+        if (core::is_enabled(flags, MULTIPLE)) {
+            if (list.size() > 1) {
+                return "Unknown";
             }
         }
+    
+        const enum brand_enum brand = brand::brand_enum(list);
 
-        // theres a chance of brand() returning a cache pointer but same content
-        for (const auto& entry : type_table) {
-            if (brand_str == entry.name) {
-                return entry.type;
-            }
+        switch (brand) {
+            case brand_enum::XEN: return "Hypervisor (type 1)";
+            case brand_enum::VMWARE_ESX: return "Hypervisor (type 1)";
+            case brand_enum::ACRN: return "Hypervisor (type 1)";
+            case brand_enum::QNX: return "Hypervisor (type 1)";
+            case brand_enum::HYPERV: return "Hypervisor (type 2)"; // to clarify you're running under a Hyper-V guest VM
+            case brand_enum::AZURE_HYPERV: return "Hypervisor (type 1)";
+            case brand_enum::KVM: return "Hypervisor (type 1)";
+            case brand_enum::KVM_HYPERV: return "Hypervisor (type 1)";
+            case brand_enum::QEMU_KVM_HYPERV: return "Hypervisor (type 1)";
+            case brand_enum::QEMU_KVM: return "Hypervisor (type 1)";
+            case brand_enum::INTEL_KGT: return "Hypervisor (type 1)";
+            case brand_enum::SIMPLEVISOR: return "Hypervisor (type 1)";
+            case brand_enum::OPENSTACK: return "Hypervisor (type 1)";
+            case brand_enum::KUBEVIRT: return "Hypervisor (type 1)";
+            case brand_enum::POWERVM: return "Hypervisor (type 1)";
+            case brand_enum::AWS_NITRO: return "Hypervisor (type 1)";
+            case brand_enum::LKVM: return "Hypervisor (type 1)";
+            case brand_enum::NOIRVISOR: return "Hypervisor (type 1)";
+            case brand_enum::WSL: return "Hypervisor (Type 1)";  // Type 1-derived lightweight VM system
+            case brand_enum::DBVM: return "Hypervisor (Type 1)" ;
+            case brand_enum::BHYVE: return "Hypervisor (type 2)";
+            case brand_enum::VBOX: return "Hypervisor (type 2)";
+            case brand_enum::VMWARE: return "Hypervisor (type 2)";
+            case brand_enum::VMWARE_EXPRESS: return "Hypervisor (type 2)";
+            case brand_enum::VMWARE_GSX: return "Hypervisor (type 2)";
+            case brand_enum::VMWARE_WORKSTATION: return "Hypervisor (type 2)";
+            case brand_enum::VMWARE_FUSION: return "Hypervisor (type 2)";
+            case brand_enum::PARALLELS: return "Hypervisor (type 2)";
+            case brand_enum::VPC: return "Hypervisor (type 2)";
+            case brand_enum::NVMM: return "Hypervisor (type 2)";
+            case brand_enum::BSD_VMM: return "Hypervisor (type 2)";
+            case brand_enum::HYPERV_VPC: return "Hypervisor (type 2)";
+            case brand_enum::VMWARE_HARD: return "Hypervisor (type 2)";
+            case brand_enum::UTM: return "Hypervisor (type 2)";
+            case brand_enum::INTEL_HAXM: return "Hosted hypervisor / accelerator (type 2)";
+            case brand_enum::CUCKOO: return "Sandbox";
+            case brand_enum::SANDBOXIE: return "Sandbox";
+            case brand_enum::HYBRID: return "Sandbox";
+            case brand_enum::CWSANDBOX: return "Sandbox";
+            case brand_enum::JOEBOX: return "Sandbox";
+            case brand_enum::ANUBIS: return "Sandbox";
+            case brand_enum::COMODO: return "Sandbox";
+            case brand_enum::THREATEXPERT: return "Sandbox";
+            case brand_enum::QIHOO: return "Sandbox";
+            case brand_enum::BOCHS: return "Emulator";
+            case brand_enum::BLUESTACKS: return "Emulator";
+            case brand_enum::NEKO_PROJECT: return "Emulator";
+            case brand_enum::COMPAQ: return "Emulator";
+            case brand_enum::INSIGNIA: return "Emulator";
+            case brand_enum::CONNECTIX: return "Emulator";
+            case brand_enum::QEMU: return "Emulator/Hypervisor (type 2)";
+            case brand_enum::JAILHOUSE: return "Partitioning Hypervisor";
+            case brand_enum::UNISYS: return "Partitioning Hypervisor";
+            case brand_enum::DOCKER: return "Container";
+            case brand_enum::PODMAN: return "Container";
+            case brand_enum::OPENVZ: return "Container";
+            case brand_enum::LMHS: return "Hypervisor (unknown type)";
+            case brand_enum::WINE: return "Compatibility layer";
+            case brand_enum::INTEL_TDX: return "Trusted Domain";
+            case brand_enum::APPLE_VZ: return "Unknown";
+            case brand_enum::UML: return "Paravirtualised/Hypervisor (type 2)";
+            case brand_enum::AMD_SEV: return "VM encryptor";
+            case brand_enum::AMD_SEV_ES: return "VM encryptor";
+            case brand_enum::AMD_SEV_SNP: return "VM encryptor";
+            case brand_enum::GCE: return "Cloud VM service";
+            case brand_enum::NSJAIL: return "Process isolator";
+            case brand_enum::BAREVISOR: return "Hypervisor (type 1)";
+            case brand_enum::HYPERPLATFORM: return "Hypervisor (type 1)";
+            case brand_enum::MINIVISOR: return "Hypervisor (type 1)";
+            case brand_enum::HYPERV_ARTIFACT: return "Unknown"; // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
+            case brand_enum::NULL_BRAND: return "Unknown";
+            case brand_enum::UNKNOWN: return "Invalid";
         }
-
-        debug("VM::type(): No known brand found, something went terribly wrong here...");
-
-        return "Unknown";
     }
 
 
@@ -12467,29 +12614,28 @@ public: // START OF PUBLIC FUNCTIONS
 
         auto hardened_logic = []() -> bool {
             // Helper to get the specific brand associated with a technique using the cache
-            auto detected_brand = [](const enum_flags flag) -> const char* {
+            auto detected_brand = [](const enum_flags flag) -> enum brand_enum {
                 if (!check(flag)) {
-                    return brands::NULL_BRAND;
+                    return brand_enum::NULL_BRAND;
                 }
                 if (memo::cache_table[flag].has_value) {
-                    const char* b = memo::cache_table[flag].brand_name;
-                    return (b != nullptr) ? b : brands::NULL_BRAND;
+                    return memo::cache_table[flag].brand_name;
                 }
-                return brands::NULL_BRAND;
+                return brand_enum::NULL_BRAND;
             };
 
             const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
 
             // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-            const char* firmware_brand = detected_brand(VM::FIRMWARE);
-            if (firmware_brand != brands::NULL_BRAND && !hv_present) {
+            const enum brand_enum firmware_brand = detected_brand(VM::FIRMWARE);
+            if (firmware_brand != brand_enum::NULL_BRAND && !hv_present) {
                 return true;
             }
 
         #if (LINUX)
             // rule 2: if VM::FIRMWARE is detected, so should VM::CVENDOR (QEMU or VBOX)
-            if (firmware_brand == brands::QEMU || firmware_brand == brands::VBOX) {
-                const char* cvendor_brand = detected_brand(VM::CVENDOR);
+            if (firmware_brand == brand_enum::QEMU || firmware_brand == brand_enum::VBOX) {
+                const enum brand_enum cvendor_brand = detected_brand(VM::CVENDOR);
                 if (firmware_brand != cvendor_brand) {
                     return true;
                 }
@@ -12498,8 +12644,8 @@ public: // START OF PUBLIC FUNCTIONS
 
         #if (WINDOWS)        
             // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
-            const char* acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
-            if (acpi_brand == brands::QEMU && firmware_brand != brands::QEMU) {
+            const enum brand_enum acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
+            if (acpi_brand == brand_enum::QEMU && firmware_brand != brand_enum::QEMU) {
                 return true;
             }
 
@@ -12577,104 +12723,19 @@ char VM::memo::conclusion::cache[512] = { 0 };
 bool VM::memo::conclusion::cached = false;
 
 // scoreboard list of brands, if a VM detection technique detects a brand, that will be incremented here as a single point
-std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> VM::core::brand_scoreboard = []() {
-    std::array<VM::core::brand_entry, VM::core::MAX_BRANDS> arr{};
-    size_t i = 0;
+std::array<VM::core::brand_entry, VM::MAX_BRANDS> VM::core::brand_scoreboard = []() {
+    std::array<VM::core::brand_entry, VM::MAX_BRANDS> arr{};
 
-    auto insert = [&](const char* n) noexcept {
-        if (i < VM::core::MAX_BRANDS) {
-            arr[i] = { n, 0 };
-            i++;
-        }
-    };
-
-    insert(brands::VBOX);
-    insert(brands::VMWARE);
-    insert(brands::VMWARE_EXPRESS);
-    insert(brands::VMWARE_ESX);
-    insert(brands::VMWARE_GSX);
-    insert(brands::VMWARE_WORKSTATION);
-    insert(brands::VMWARE_FUSION);
-    insert(brands::VMWARE_HARD);
-    insert(brands::BHYVE);
-    insert(brands::KVM);
-    insert(brands::QEMU);
-    insert(brands::QEMU_KVM);
-    insert(brands::KVM_HYPERV);
-    insert(brands::QEMU_KVM_HYPERV);
-    insert(brands::HYPERV);
-    insert(brands::HYPERV_VPC);
-    insert(brands::PARALLELS);
-    insert(brands::XEN);
-    insert(brands::ACRN);
-    insert(brands::QNX);
-    insert(brands::HYBRID);
-    insert(brands::SANDBOXIE);
-    insert(brands::DOCKER);
-    insert(brands::WINE);
-    insert(brands::VPC);
-    insert(brands::ANUBIS);
-    insert(brands::JOEBOX);
-    insert(brands::THREATEXPERT);
-    insert(brands::CWSANDBOX);
-    insert(brands::COMODO);
-    insert(brands::BOCHS);
-    insert(brands::NVMM);
-    insert(brands::BSD_VMM);
-    insert(brands::INTEL_HAXM);
-    insert(brands::UNISYS);
-    insert(brands::LMHS);
-    insert(brands::CUCKOO);
-    insert(brands::BLUESTACKS);
-    insert(brands::JAILHOUSE);
-    insert(brands::APPLE_VZ);
-    insert(brands::INTEL_KGT);
-    insert(brands::AZURE_HYPERV);
-    insert(brands::SIMPLEVISOR);
-    insert(brands::HYPERV_ARTIFACT);
-    insert(brands::UML);
-    insert(brands::POWERVM);
-    insert(brands::GCE);
-    insert(brands::OPENSTACK);
-    insert(brands::KUBEVIRT);
-    insert(brands::AWS_NITRO);
-    insert(brands::PODMAN);
-    insert(brands::WSL);
-    insert(brands::OPENVZ);
-    insert(brands::BAREVISOR);
-    insert(brands::HYPERPLATFORM);
-    insert(brands::MINIVISOR);
-    insert(brands::INTEL_TDX);
-    insert(brands::LKVM);
-    insert(brands::AMD_SEV);
-    insert(brands::AMD_SEV_ES);
-    insert(brands::AMD_SEV_SNP);
-    insert(brands::NEKO_PROJECT);
-    insert(brands::QIHOO);
-    insert(brands::NOIRVISOR);
-    insert(brands::NSJAIL);
-    insert(brands::DBVM);
-    insert(brands::UTM);
-    insert(brands::COMPAQ);
-    insert(brands::INSIGNIA);
-    insert(brands::CONNECTIX);
-    insert(brands::NULL_BRAND);
+    for (u8 i = 0; i < MAX_BRANDS; i++) {
+        arr[i] = { static_cast<brand_enum>(i), 0 };
+    }
 
     return arr;
 }();
 
-// Dynamically count the brands initialized above
-size_t VM::core::brand_count = []() -> size_t {
-    size_t c = 0;
-    for (const auto& b : VM::core::brand_scoreboard) {
-        if (b.name != nullptr) c++;
-    }
-    return c;
-}();
-
 // initial definitions for cache items because C++ forbids in-class initializations
 std::array<VM::memo::cache_entry, VM::enum_size + 1> VM::memo::cache_table{};
-std::string VM::memo::brand::brand_cache = "";
+enum VM::brand_enum VM::memo::brand::brand_cache = brand_enum::NULL_BRAND;
 std::string VM::memo::multi_brand::brand_cache = "";
 char VM::memo::cpu_brand::brand_cache[128] = { 0 };
 char VM::memo::bios_info::manufacturer[256] = { 0 };
@@ -12691,7 +12752,10 @@ VM::hyperx_state VM::memo::hyperx::state = VM::HYPERV_UNKNOWN;
 std::array<VM::memo::leaf_entry, VM::memo::leaf_cache::CAPACITY> VM::memo::leaf_cache::table{};
 std::size_t VM::memo::leaf_cache::count = 0;
 std::size_t VM::memo::leaf_cache::next_index = 0;
-const char* VM::core::last_detected_brand = nullptr;
+VM::brand_list_t VM::memo::brand_list::cache = {};
+bool VM::memo::brand_list::cached = false;
+
+enum VM::brand_enum VM::core::last_detected_brand = VM::brand_enum::NULL_BRAND;
 VM::u8 VM::core::last_detected_score = 0;
 
 // these are basically the base values for the core::arg_handler function.
@@ -12798,7 +12862,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::MAC, {20, VM::mac_address_check}},
             {VM::NSJAIL_PID, {75, VM::nsjail_proc_id}},
             {VM::BLUESTACKS_FOLDERS, {5, VM::bluestacks}},
-            {VM::AMD_SEV, {50, VM::amd_sev}},
+            {VM::AMD_SEV_MSR, {50, VM::amd_sev_msr}},
             {VM::TEMPERATURE, {80, VM::temperature}},
             {VM::PROCESSES, {40, VM::processes}},
         #endif    

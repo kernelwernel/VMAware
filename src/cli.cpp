@@ -514,7 +514,8 @@ static bool are_perms_required(const VM::enum_flags flag) {
     case VM::DMESG:
     case VM::QEMU_USB:
     case VM::KMSG:
-    case VM::SMBIOS_VM_BIT: return true;
+    case VM::SMBIOS_VM_BIT: 
+    case VM::NVRAM: return true;
     default: return false;
     }
 }
@@ -930,7 +931,7 @@ static void general(
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
-    checker(VM::WINE, "Wine");
+    checker(VM::WINE_FUNC, "Wine");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
@@ -981,7 +982,7 @@ static void general(
     checker(VM::QEMU_FW_CFG, "QEMU fw_cfg device");
     checker(VM::VIRTUAL_PROCESSORS, "virtual processors");
     checker(VM::HYPERVISOR_QUERY, "hypervisor query");
-    checker(VM::AMD_SEV, "AMD-SEV MSR");
+    checker(VM::AMD_SEV_MSR, "AMD-SEV MSR");
     checker(VM::VIRTUAL_REGISTRY, "registry emulation");
     checker(VM::FIRMWARE, "firmware");
     checker(VM::FILE_ACCESS_HISTORY, "low file access count");
@@ -991,7 +992,7 @@ static void general(
     checker(VM::TRAP, "hypervisor interception");
     checker(VM::UD, "undefined exceptions");
     checker(VM::BLOCKSTEP, "single step with trap flag");
-    checker(VM::DBVM, "Dark Byte's hypervisor");
+    checker(VM::DBVM_HYPERCALL, "Dark Byte's hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::KERNEL_OBJECTS, "kernel objects");
