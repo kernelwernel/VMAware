@@ -98,7 +98,7 @@ def update_sections(filename):
     cpu  = "struct cpu {"
     memo = "struct memo {"
     util = "struct util {"
-    techniques = "private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS"
+    techniques = "// START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS"
     core = "struct core {"
     public = "public: // START OF PUBLIC FUNCTIONS"
     external = "// ============= EXTERNAL DEFINITIONS ============="

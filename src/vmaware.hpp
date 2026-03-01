@@ -449,78 +449,82 @@
  * Hopefully this makes sense.
  *
  */
-namespace brands {
-    static constexpr const char* NULL_BRAND = "Unknown";
-    static constexpr const char* VBOX = "VirtualBox";
-    static constexpr const char* VMWARE = "VMware";
-    static constexpr const char* VMWARE_EXPRESS = "VMware Express";
-    static constexpr const char* VMWARE_ESX = "VMware ESX";
-    static constexpr const char* VMWARE_GSX = "VMware GSX";
-    static constexpr const char* VMWARE_WORKSTATION = "VMware Workstation";
-    static constexpr const char* VMWARE_FUSION = "VMware Fusion";
-    static constexpr const char* VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
-    static constexpr const char* BHYVE = "bhyve";
-    static constexpr const char* KVM = "KVM";
-    static constexpr const char* QEMU = "QEMU";
-    static constexpr const char* QEMU_KVM = "QEMU+KVM";
-    static constexpr const char* KVM_HYPERV = "KVM Hyper-V Enlightenment";
-    static constexpr const char* QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
-    static constexpr const char* HYPERV = "Microsoft Hyper-V";
-    static constexpr const char* HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
-    static constexpr const char* PARALLELS = "Parallels";
-    static constexpr const char* XEN = "Xen HVM";
-    static constexpr const char* ACRN = "ACRN";
-    static constexpr const char* QNX = "QNX hypervisor";
-    static constexpr const char* HYBRID = "Hybrid Analysis";
-    static constexpr const char* SANDBOXIE = "Sandboxie";
-    static constexpr const char* DOCKER = "Docker";
-    static constexpr const char* WINE = "Wine";
-    static constexpr const char* VPC = "Virtual PC";
-    static constexpr const char* ANUBIS = "Anubis";
-    static constexpr const char* JOEBOX = "JoeBox";
-    static constexpr const char* THREATEXPERT = "ThreatExpert";
-    static constexpr const char* CWSANDBOX = "CWSandbox";
-    static constexpr const char* COMODO = "Comodo";
-    static constexpr const char* BOCHS = "Bochs";
-    static constexpr const char* NVMM = "NetBSD NVMM";
-    static constexpr const char* BSD_VMM = "OpenBSD VMM";
-    static constexpr const char* INTEL_HAXM = "Intel HAXM";
-    static constexpr const char* UNISYS = "Unisys s-Par";
-    static constexpr const char* LMHS = "Lockheed Martin LMHS"; // lol
-    static constexpr const char* CUCKOO = "Cuckoo";
-    static constexpr const char* BLUESTACKS = "BlueStacks";
-    static constexpr const char* JAILHOUSE = "Jailhouse";
-    static constexpr const char* APPLE_VZ = "Apple VZ";
-    static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
-    static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
-    static constexpr const char* SIMPLEVISOR = "SimpleVisor";
-    static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
-    static constexpr const char* UML = "User-mode Linux";
-    static constexpr const char* POWERVM = "IBM PowerVM";
-    static constexpr const char* GCE = "Google Compute Engine (KVM)";
-    static constexpr const char* OPENSTACK = "OpenStack (KVM)";
-    static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
-    static constexpr const char* AWS_NITRO = "AWS Nitro System EC2 (KVM-based)";
-    static constexpr const char* PODMAN = "Podman";
-    static constexpr const char* WSL = "WSL";
-    static constexpr const char* OPENVZ = "OpenVZ";
-    static constexpr const char* BAREVISOR = "Barevisor";
-    static constexpr const char* HYPERPLATFORM = "HyperPlatform";
-    static constexpr const char* MINIVISOR = "MiniVisor";
-    static constexpr const char* INTEL_TDX = "Intel TDX";
-    static constexpr const char* LKVM = "LKVM";
-    static constexpr const char* AMD_SEV = "AMD SEV";
-    static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
-    static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
-    static constexpr const char* NEKO_PROJECT = "Neko Project II";
-    static constexpr const char* NOIRVISOR = "NoirVisor";
-    static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
-    static constexpr const char* NSJAIL = "nsjail";
-    static constexpr const char* DBVM = "DBVM";
-    static constexpr const char* UTM = "UTM";
-    static constexpr const char* COMPAQ = "Compaq FX!32";
-    static constexpr const char* INSIGNIA = "Insignia RealPC";
-    static constexpr const char* CONNECTIX = "Connectix Virtual PC";
+namespace brands { // TODO, remove this in the 2.8.0 or any release after the 2.7.0
+    #define LEGACY(name, full_name) \
+        [[deprecated("Use VM::brands::" #name " instead")]] \
+        static constexpr const char* name = full_name
+
+    LEGACY(NULL_BRAND, "Unknown");
+    LEGACY(VBOX, "VirtualBox");
+    LEGACY(VMWARE, "VMware");
+    LEGACY(VMWARE_EXPRESS, "VMware Express");
+    LEGACY(VMWARE_ESX, "VMware ESX");
+    LEGACY(VMWARE_GSX, "VMware GSX");
+    LEGACY(VMWARE_WORKSTATION, "VMware Workstation");
+    LEGACY(VMWARE_FUSION, "VMware Fusion");
+    LEGACY(VMWARE_HARD, "VMware (with VmwareHardenedLoader)");
+    LEGACY(BHYVE, "bhyve");
+    LEGACY(KVM, "KVM");
+    LEGACY(QEMU, "QEMU");
+    LEGACY(QEMU_KVM, "QEMU+KVM");
+    LEGACY(KVM_HYPERV, "KVM Hyper-V Enlightenment");
+    LEGACY(QEMU_KVM_HYPERV, "QEMU+KVM Hyper-V Enlightenment");
+    LEGACY(HYPERV, "Microsoft Hyper-V");
+    LEGACY(HYPERV_VPC, "Microsoft Virtual PC/Hyper-V");
+    LEGACY(PARALLELS, "Parallels");
+    LEGACY(XEN, "Xen HVM");
+    LEGACY(ACRN, "ACRN");
+    LEGACY(QNX, "QNX hypervisor");
+    LEGACY(HYBRID, "Hybrid Analysis");
+    LEGACY(SANDBOXIE, "Sandboxie");
+    LEGACY(DOCKER, "Docker");
+    LEGACY(WINE, "Wine");
+    LEGACY(VPC, "Virtual PC");
+    LEGACY(ANUBIS, "Anubis");
+    LEGACY(JOEBOX, "JoeBox");
+    LEGACY(THREATEXPERT, "ThreatExpert");
+    LEGACY(CWSANDBOX, "CWSandbox");
+    LEGACY(COMODO, "Comodo");
+    LEGACY(BOCHS, "Bochs");
+    LEGACY(NVMM, "NetBSD NVMM");
+    LEGACY(BSD_VMM, "OpenBSD VMM");
+    LEGACY(INTEL_HAXM, "Intel HAXM");
+    LEGACY(UNISYS, "Unisys s-Par");
+    LEGACY(LMHS, "Lockheed Martin LMHS");
+    LEGACY(CUCKOO, "Cuckoo");
+    LEGACY(BLUESTACKS, "BlueStacks");
+    LEGACY(JAILHOUSE, "Jailhouse");
+    LEGACY(APPLE_VZ, "Apple VZ");
+    LEGACY(INTEL_KGT, "Intel KGT (Trusty)");
+    LEGACY(AZURE_HYPERV, "Microsoft Azure Hyper-V");
+    LEGACY(SIMPLEVISOR, "SimpleVisor");
+    LEGACY(HYPERV_ARTIFACT, "Hyper-V artifact (host running Hyper-V)");
+    LEGACY(UML, "User-mode Linux");
+    LEGACY(POWERVM, "IBM PowerVM");
+    LEGACY(GCE, "Google Compute Engine (KVM)");
+    LEGACY(OPENSTACK, "OpenStack (KVM)");
+    LEGACY(KUBEVIRT, "KubeVirt (KVM)");
+    LEGACY(AWS_NITRO, "AWS Nitro System EC2 (KVM-based)");
+    LEGACY(PODMAN, "Podman");
+    LEGACY(WSL, "WSL");
+    LEGACY(OPENVZ, "OpenVZ");
+    LEGACY(BAREVISOR, "Barevisor");
+    LEGACY(HYPERPLATFORM, "HyperPlatform");
+    LEGACY(MINIVISOR, "MiniVisor");
+    LEGACY(INTEL_TDX, "Intel TDX");
+    LEGACY(LKVM, "LKVM");
+    LEGACY(AMD_SEV, "AMD SEV");
+    LEGACY(AMD_SEV_ES, "AMD SEV-ES");
+    LEGACY(AMD_SEV_SNP, "AMD SEV-SNP");
+    LEGACY(NEKO_PROJECT, "Neko Project II");
+    LEGACY(NOIRVISOR, "NoirVisor");
+    LEGACY(QIHOO, "Qihoo 360 Sandbox");
+    LEGACY(NSJAIL, "nsjail");
+    LEGACY(DBVM, "DBVM");
+    LEGACY(UTM, "UTM");
+    LEGACY(COMPAQ, "Compaq FX!32");
+    LEGACY(INSIGNIA, "Insignia RealPC");
+    LEGACY(CONNECTIX, "Connectix Virtual PC");
 }
 
 
@@ -733,8 +737,6 @@ public:
         NULL_BRAND // do not modify the placement for this, as it's used to count the number of brands here
     };
 
-
-private:
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
     static constexpr u8 settings_count = MULTIPLE - HIGH_THRESHOLD + 1; // get number of settings technique flags
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
@@ -752,8 +754,7 @@ private:
     static constexpr u8 technique_end = DEFAULT;
     static constexpr u8 settings_begin = DEFAULT;
     static constexpr u8 settings_end = enum_end;
-    
-public:
+
     // for platform compatibility ranges
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
     static constexpr u8 WINDOWS_END = VM::AZURE;
@@ -769,8 +770,6 @@ public:
 
     static std::vector<enum_flags> disabled_techniques;
 
-private:
-
 #if (WINDOWS)
     using brand_score_t = i32;
 #else
@@ -785,13 +784,11 @@ private:
     using brand_list_t = std::vector<brand_element_t>;
     using brand_array_t = std::array<brand_element_t, MAX_BRANDS>;
 
-public:
     // constructor stuff
     VM() = delete;
     VM(const VM&) = delete;
     VM(VM&&) = delete;
 
-private:
     // macro for bypassing unused parameter/variable warnings
     #define VMAWARE_UNUSED(x) ((void)(x))
 
@@ -3174,7 +3171,7 @@ private:
             }
         }
 
-        struct brand {
+        struct single_brand {
             static brand_enum brand_cache;
             static bool cached;
 
@@ -4394,7 +4391,79 @@ private:
     };
 
 
-    struct brand {
+    struct brands {
+        static constexpr const char* NULL_BRAND = "Unknown";
+        static constexpr const char* VBOX = "VirtualBox";
+        static constexpr const char* VMWARE = "VMware";
+        static constexpr const char* VMWARE_EXPRESS = "VMware Express";
+        static constexpr const char* VMWARE_ESX = "VMware ESX";
+        static constexpr const char* VMWARE_GSX = "VMware GSX";
+        static constexpr const char* VMWARE_WORKSTATION = "VMware Workstation";
+        static constexpr const char* VMWARE_FUSION = "VMware Fusion";
+        static constexpr const char* VMWARE_HARD = "VMware (with VmwareHardenedLoader)";
+        static constexpr const char* BHYVE = "bhyve";
+        static constexpr const char* KVM = "KVM";
+        static constexpr const char* QEMU = "QEMU";
+        static constexpr const char* QEMU_KVM = "QEMU+KVM";
+        static constexpr const char* KVM_HYPERV = "KVM Hyper-V Enlightenment";
+        static constexpr const char* QEMU_KVM_HYPERV = "QEMU+KVM Hyper-V Enlightenment";
+        static constexpr const char* HYPERV = "Microsoft Hyper-V";
+        static constexpr const char* HYPERV_VPC = "Microsoft Virtual PC/Hyper-V";
+        static constexpr const char* PARALLELS = "Parallels";
+        static constexpr const char* XEN = "Xen HVM";
+        static constexpr const char* ACRN = "ACRN";
+        static constexpr const char* QNX = "QNX hypervisor";
+        static constexpr const char* HYBRID = "Hybrid Analysis";
+        static constexpr const char* SANDBOXIE = "Sandboxie";
+        static constexpr const char* DOCKER = "Docker";
+        static constexpr const char* WINE = "Wine";
+        static constexpr const char* VPC = "Virtual PC";
+        static constexpr const char* ANUBIS = "Anubis";
+        static constexpr const char* JOEBOX = "JoeBox";
+        static constexpr const char* THREATEXPERT = "ThreatExpert";
+        static constexpr const char* CWSANDBOX = "CWSandbox";
+        static constexpr const char* COMODO = "Comodo";
+        static constexpr const char* BOCHS = "Bochs";
+        static constexpr const char* NVMM = "NetBSD NVMM";
+        static constexpr const char* BSD_VMM = "OpenBSD VMM";
+        static constexpr const char* INTEL_HAXM = "Intel HAXM";
+        static constexpr const char* UNISYS = "Unisys s-Par";
+        static constexpr const char* LMHS = "Lockheed Martin LMHS";
+        static constexpr const char* CUCKOO = "Cuckoo";
+        static constexpr const char* BLUESTACKS = "BlueStacks";
+        static constexpr const char* JAILHOUSE = "Jailhouse";
+        static constexpr const char* APPLE_VZ = "Apple VZ";
+        static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
+        static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
+        static constexpr const char* SIMPLEVISOR = "SimpleVisor";
+        static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
+        static constexpr const char* UML = "User-mode Linux";
+        static constexpr const char* POWERVM = "IBM PowerVM";
+        static constexpr const char* GCE = "Google Compute Engine (KVM)";
+        static constexpr const char* OPENSTACK = "OpenStack (KVM)";
+        static constexpr const char* KUBEVIRT = "KubeVirt (KVM)";
+        static constexpr const char* AWS_NITRO = "AWS Nitro System EC2 (KVM-based)";
+        static constexpr const char* PODMAN = "Podman";
+        static constexpr const char* WSL = "WSL";
+        static constexpr const char* OPENVZ = "OpenVZ";
+        static constexpr const char* BAREVISOR = "Barevisor";
+        static constexpr const char* HYPERPLATFORM = "HyperPlatform";
+        static constexpr const char* MINIVISOR = "MiniVisor";
+        static constexpr const char* INTEL_TDX = "Intel TDX";
+        static constexpr const char* LKVM = "LKVM";
+        static constexpr const char* AMD_SEV = "AMD SEV";
+        static constexpr const char* AMD_SEV_ES = "AMD SEV-ES";
+        static constexpr const char* AMD_SEV_SNP = "AMD SEV-SNP";
+        static constexpr const char* NEKO_PROJECT = "Neko Project II";
+        static constexpr const char* NOIRVISOR = "NoirVisor";
+        static constexpr const char* QIHOO = "Qihoo 360 Sandbox";
+        static constexpr const char* NSJAIL = "nsjail";
+        static constexpr const char* DBVM = "DBVM";
+        static constexpr const char* UTM = "UTM";
+        static constexpr const char* COMPAQ = "Compaq FX!32";
+        static constexpr const char* INSIGNIA = "Insignia RealPC";
+        static constexpr const char* CONNECTIX = "Connectix Virtual PC";
+
         static brand_list_t brand_list(const flagset& flags) {
             if (memo::brand_list::is_cached()) {
                 return memo::brand_list::fetch();
@@ -4419,7 +4488,7 @@ private:
             
             #ifdef __VMAWARE_DEBUG__
                 for (const auto brand : active_brands) {
-                    debug("pre-processed scoreboard: ", int(brand.second), " : ", brand::brand_enum_to_string(brand.first));
+                    debug("pre-processed scoreboard: ", int(brand.second), " : ", brands::brand_enum_to_string(brand.first));
                 }
             #endif
 
@@ -4562,7 +4631,7 @@ private:
 
         #ifdef __VMAWARE_DEBUG__
             for (const auto brand : brand_return) {
-                debug("post-processed scoreboard: ", brand.second, " : ", brand::brand_enum_to_string(brand.first));
+                debug("post-processed scoreboard: ", brand.second, " : ", brands::brand_enum_to_string(brand.first));
             }
         #endif
 
@@ -4573,80 +4642,80 @@ private:
         static std::string brand_enum_to_string(const brand_enum brand) {
             switch (brand) {
                 case brand_enum::UNKNOWN: return "Invalid";
-                case brand_enum::VBOX: return brands::VBOX;
-                case brand_enum::VMWARE: return brands::VMWARE;
-                case brand_enum::VMWARE_EXPRESS: return brands::VMWARE_EXPRESS;
-                case brand_enum::VMWARE_ESX: return brands::VMWARE_ESX;
-                case brand_enum::VMWARE_GSX: return brands::VMWARE_GSX;
-                case brand_enum::VMWARE_WORKSTATION: return brands::VMWARE_WORKSTATION;
-                case brand_enum::VMWARE_FUSION: return brands::VMWARE_FUSION;
-                case brand_enum::VMWARE_HARD: return brands::VMWARE_HARD;
-                case brand_enum::BHYVE: return brands::BHYVE;
-                case brand_enum::KVM: return brands::KVM;
-                case brand_enum::QEMU: return brands::QEMU;
-                case brand_enum::QEMU_KVM: return brands::QEMU_KVM;
-                case brand_enum::KVM_HYPERV: return brands::KVM_HYPERV;
-                case brand_enum::QEMU_KVM_HYPERV: return brands::QEMU_KVM_HYPERV;
-                case brand_enum::HYPERV: return brands::HYPERV;
-                case brand_enum::HYPERV_VPC: return brands::HYPERV_VPC;
-                case brand_enum::PARALLELS: return brands::PARALLELS;
-                case brand_enum::XEN: return brands::XEN;
-                case brand_enum::ACRN: return brands::ACRN;
-                case brand_enum::QNX: return brands::QNX;
-                case brand_enum::HYBRID: return brands::HYBRID;
-                case brand_enum::SANDBOXIE: return brands::SANDBOXIE;
-                case brand_enum::DOCKER: return brands::DOCKER;
-                case brand_enum::WINE: return brands::WINE;
-                case brand_enum::VPC: return brands::VPC;
-                case brand_enum::ANUBIS: return brands::ANUBIS;
-                case brand_enum::JOEBOX: return brands::JOEBOX;
-                case brand_enum::THREATEXPERT: return brands::THREATEXPERT;
-                case brand_enum::CWSANDBOX: return brands::CWSANDBOX;
-                case brand_enum::COMODO: return brands::COMODO;
-                case brand_enum::BOCHS: return brands::BOCHS;
-                case brand_enum::NVMM: return brands::NVMM;
-                case brand_enum::BSD_VMM: return brands::BSD_VMM;
-                case brand_enum::INTEL_HAXM: return brands::INTEL_HAXM;
-                case brand_enum::UNISYS: return brands::UNISYS;
-                case brand_enum::LMHS: return brands::LMHS;
-                case brand_enum::CUCKOO: return brands::CUCKOO;
-                case brand_enum::BLUESTACKS: return brands::BLUESTACKS;
-                case brand_enum::JAILHOUSE: return brands::JAILHOUSE;
-                case brand_enum::APPLE_VZ: return brands::APPLE_VZ;
-                case brand_enum::INTEL_KGT: return brands::INTEL_KGT;
-                case brand_enum::AZURE_HYPERV: return brands::AZURE_HYPERV;
-                case brand_enum::SIMPLEVISOR: return brands::SIMPLEVISOR;
-                case brand_enum::HYPERV_ARTIFACT: return brands::HYPERV_ARTIFACT;
-                case brand_enum::UML: return brands::UML;
-                case brand_enum::POWERVM: return brands::POWERVM;
-                case brand_enum::GCE: return brands::GCE;
-                case brand_enum::OPENSTACK: return brands::OPENSTACK;
-                case brand_enum::KUBEVIRT: return brands::KUBEVIRT;
-                case brand_enum::AWS_NITRO: return brands::AWS_NITRO;
-                case brand_enum::PODMAN: return brands::PODMAN;
-                case brand_enum::WSL: return brands::WSL;
-                case brand_enum::OPENVZ: return brands::OPENVZ;
-                case brand_enum::BAREVISOR: return brands::BAREVISOR;
-                case brand_enum::HYPERPLATFORM: return brands::HYPERPLATFORM;
-                case brand_enum::MINIVISOR: return brands::MINIVISOR;
-                case brand_enum::INTEL_TDX: return brands::INTEL_TDX;
-                case brand_enum::LKVM: return brands::LKVM;
-                case brand_enum::AMD_SEV: return brands::AMD_SEV;
-                case brand_enum::AMD_SEV_ES: return brands::AMD_SEV_ES;
-                case brand_enum::AMD_SEV_SNP: return brands::AMD_SEV_SNP;
-                case brand_enum::NEKO_PROJECT: return brands::NEKO_PROJECT;
-                case brand_enum::NOIRVISOR: return brands::NOIRVISOR;
-                case brand_enum::QIHOO: return brands::QIHOO;
-                case brand_enum::NSJAIL: return brands::NSJAIL;
-                case brand_enum::DBVM: return brands::DBVM;
-                case brand_enum::UTM: return brands::UTM;
-                case brand_enum::COMPAQ: return brands::COMPAQ;
-                case brand_enum::INSIGNIA: return brands::INSIGNIA;
-                case brand_enum::CONNECTIX: return brands::CONNECTIX;
-                case brand_enum::NULL_BRAND: return brands::NULL_BRAND; // do not modify placement of this, it's used as an anchor point to count the number of brands
+                case brand_enum::VBOX: return VM::brands::VBOX;
+                case brand_enum::VMWARE: return VM::brands::VMWARE;
+                case brand_enum::VMWARE_EXPRESS: return VM::brands::VMWARE_EXPRESS;
+                case brand_enum::VMWARE_ESX: return VM::brands::VMWARE_ESX;
+                case brand_enum::VMWARE_GSX: return VM::brands::VMWARE_GSX;
+                case brand_enum::VMWARE_WORKSTATION: return VM::brands::VMWARE_WORKSTATION;
+                case brand_enum::VMWARE_FUSION: return VM::brands::VMWARE_FUSION;
+                case brand_enum::VMWARE_HARD: return VM::brands::VMWARE_HARD;
+                case brand_enum::BHYVE: return VM::brands::BHYVE;
+                case brand_enum::KVM: return VM::brands::KVM;
+                case brand_enum::QEMU: return VM::brands::QEMU;
+                case brand_enum::QEMU_KVM: return VM::brands::QEMU_KVM;
+                case brand_enum::KVM_HYPERV: return VM::brands::KVM_HYPERV;
+                case brand_enum::QEMU_KVM_HYPERV: return VM::brands::QEMU_KVM_HYPERV;
+                case brand_enum::HYPERV: return VM::brands::HYPERV;
+                case brand_enum::HYPERV_VPC: return VM::brands::HYPERV_VPC;
+                case brand_enum::PARALLELS: return VM::brands::PARALLELS;
+                case brand_enum::XEN: return VM::brands::XEN;
+                case brand_enum::ACRN: return VM::brands::ACRN;
+                case brand_enum::QNX: return VM::brands::QNX;
+                case brand_enum::HYBRID: return VM::brands::HYBRID;
+                case brand_enum::SANDBOXIE: return VM::brands::SANDBOXIE;
+                case brand_enum::DOCKER: return VM::brands::DOCKER;
+                case brand_enum::WINE: return VM::brands::WINE;
+                case brand_enum::VPC: return VM::brands::VPC;
+                case brand_enum::ANUBIS: return VM::brands::ANUBIS;
+                case brand_enum::JOEBOX: return VM::brands::JOEBOX;
+                case brand_enum::THREATEXPERT: return VM::brands::THREATEXPERT;
+                case brand_enum::CWSANDBOX: return VM::brands::CWSANDBOX;
+                case brand_enum::COMODO: return VM::brands::COMODO;
+                case brand_enum::BOCHS: return VM::brands::BOCHS;
+                case brand_enum::NVMM: return VM::brands::NVMM;
+                case brand_enum::BSD_VMM: return VM::brands::BSD_VMM;
+                case brand_enum::INTEL_HAXM: return VM::brands::INTEL_HAXM;
+                case brand_enum::UNISYS: return VM::brands::UNISYS;
+                case brand_enum::LMHS: return VM::brands::LMHS;
+                case brand_enum::CUCKOO: return VM::brands::CUCKOO;
+                case brand_enum::BLUESTACKS: return VM::brands::BLUESTACKS;
+                case brand_enum::JAILHOUSE: return VM::brands::JAILHOUSE;
+                case brand_enum::APPLE_VZ: return VM::brands::APPLE_VZ;
+                case brand_enum::INTEL_KGT: return VM::brands::INTEL_KGT;
+                case brand_enum::AZURE_HYPERV: return VM::brands::AZURE_HYPERV;
+                case brand_enum::SIMPLEVISOR: return VM::brands::SIMPLEVISOR;
+                case brand_enum::HYPERV_ARTIFACT: return VM::brands::HYPERV_ARTIFACT;
+                case brand_enum::UML: return VM::brands::UML;
+                case brand_enum::POWERVM: return VM::brands::POWERVM;
+                case brand_enum::GCE: return VM::brands::GCE;
+                case brand_enum::OPENSTACK: return VM::brands::OPENSTACK;
+                case brand_enum::KUBEVIRT: return VM::brands::KUBEVIRT;
+                case brand_enum::AWS_NITRO: return VM::brands::AWS_NITRO;
+                case brand_enum::PODMAN: return VM::brands::PODMAN;
+                case brand_enum::WSL: return VM::brands::WSL;
+                case brand_enum::OPENVZ: return VM::brands::OPENVZ;
+                case brand_enum::BAREVISOR: return VM::brands::BAREVISOR;
+                case brand_enum::HYPERPLATFORM: return VM::brands::HYPERPLATFORM;
+                case brand_enum::MINIVISOR: return VM::brands::MINIVISOR;
+                case brand_enum::INTEL_TDX: return VM::brands::INTEL_TDX;
+                case brand_enum::LKVM: return VM::brands::LKVM;
+                case brand_enum::AMD_SEV: return VM::brands::AMD_SEV;
+                case brand_enum::AMD_SEV_ES: return VM::brands::AMD_SEV_ES;
+                case brand_enum::AMD_SEV_SNP: return VM::brands::AMD_SEV_SNP;
+                case brand_enum::NEKO_PROJECT: return VM::brands::NEKO_PROJECT;
+                case brand_enum::NOIRVISOR: return VM::brands::NOIRVISOR;
+                case brand_enum::QIHOO: return VM::brands::QIHOO;
+                case brand_enum::NSJAIL: return VM::brands::NSJAIL;
+                case brand_enum::DBVM: return VM::brands::DBVM;
+                case brand_enum::UTM: return VM::brands::UTM;
+                case brand_enum::COMPAQ: return VM::brands::COMPAQ;
+                case brand_enum::INSIGNIA: return VM::brands::INSIGNIA;
+                case brand_enum::CONNECTIX: return VM::brands::CONNECTIX;
+                case brand_enum::NULL_BRAND: return VM::brands::NULL_BRAND; // do not modify placement of this, it's used as an anchor point to count the number of brands
             }
         }
-        
+
         static std::string fetch_brand_name(const brand_list_t& list, const size_t index) {
             return brand_enum_to_string(list[index].first);
         };
@@ -4662,7 +4731,7 @@ private:
             }
             }
 
-            const brand_list_t& list = brand::brand_list(flags);
+            const brand_list_t& list = brands::brand_list(flags);
             const std::string& buffer = brand_multiple(list);
     
             memo::multi_brand::store(buffer);
@@ -4671,25 +4740,25 @@ private:
             
         static std::string brand_multiple(const brand_list_t& list) {
             std::string buffer = {};
-            buffer += brand::fetch_brand_name(list, 0);
+            buffer += brands::fetch_brand_name(list, 0);
 
             for (size_t i = 1; i < list.size(); i++) {
                 buffer += " or "; 
-                buffer += brand::fetch_brand_name(list, i);
+                buffer += brands::fetch_brand_name(list, i);
             }
 
             return buffer;
         }
 
         static brand_enum brand_enum(const flagset& flags = core::generate_default()) {
-            if (memo::brand::is_cached()) {
-                return memo::brand::fetch();
+            if (memo::single_brand::is_cached()) {
+                return memo::single_brand::fetch();
             }
 
-            const brand_list_t& list = brand::brand_list(flags);
+            const brand_list_t& list = brands::brand_list(flags);
             const enum brand_enum brand = brand_enum(list);
     
-            memo::brand::store(brand);
+            memo::single_brand::store(brand);
 
             return brand;
         }
@@ -4700,7 +4769,7 @@ private:
         }
     };
 
-private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
+// START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100
      * @category x86
@@ -7874,7 +7943,7 @@ private: // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
         for (const auto& x : dlls) {
             if (GetModuleHandleA(x.dll_name) != nullptr) {
-                debug("DLL: Found ", x.dll_name, " (", brand::brand_enum_to_string(x.brand), ")");
+                debug("DLL: Found ", x.dll_name, " (", brands::brand_enum_to_string(x.brand), ")");
                 return core::add(x.brand);
             }
         }
@@ -12055,10 +12124,10 @@ public: // START OF PUBLIC FUNCTIONS
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
         if (is_multiple) {
-            return brand::brand_multiple(flags);
+            return brands::brand_multiple(flags);
         } else {
-            const enum brand_enum b = brand::brand_enum(flags);
-            return brand::brand_enum_to_string(b);
+            const enum brand_enum b = brands::brand_enum(flags);
+            return brands::brand_enum_to_string(b);
         }
     }
 
@@ -12408,7 +12477,7 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static std::string type(const flagset &flags = core::generate_default()) {
-        const brand_list_t& list = brand::brand_list(flags);
+        const brand_list_t& list = brands::brand_list(flags);
 
         if (core::is_enabled(flags, MULTIPLE)) {
             if (list.size() > 1) {
@@ -12416,7 +12485,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
     
-        const enum brand_enum brand = brand::brand_enum(list);
+        const enum brand_enum brand = brands::brand_enum(list);
 
         switch (brand) {
             case brand_enum::XEN: return "Hypervisor (type 1)";
@@ -12734,12 +12803,12 @@ std::array<VM::core::brand_entry, VM::MAX_BRANDS> VM::core::brand_scoreboard = [
 
 // initial definitions for cache items because C++ forbids in-class initializations
 std::array<VM::memo::cache_entry, VM::enum_size + 1> VM::memo::cache_table{};
-enum VM::brand_enum VM::memo::brand::brand_cache = brand_enum::NULL_BRAND;
+enum VM::brand_enum VM::memo::single_brand::brand_cache = brand_enum::NULL_BRAND;
 std::string VM::memo::multi_brand::brand_cache = "";
 char VM::memo::cpu_brand::brand_cache[128] = { 0 };
 char VM::memo::bios_info::manufacturer[256] = { 0 };
 char VM::memo::bios_info::model[128] = { 0 };
-bool VM::memo::brand::cached = false;
+bool VM::memo::single_brand::cached = false;
 bool VM::memo::multi_brand::cached = false;
 bool VM::memo::cpu_brand::cached = false;
 bool VM::memo::bios_info::cached = false;
