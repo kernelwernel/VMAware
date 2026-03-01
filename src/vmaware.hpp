@@ -11978,6 +11978,7 @@ public:
 
             // C++ trick to loop over the variadic arguments one by one
             int dummy[] = {
+                0, // MSVC guardrail so it doesn't complain
                 (flag_collector.set(static_cast<u32>(args), true), 0)...
             };
             VMAWARE_UNUSED(dummy);
