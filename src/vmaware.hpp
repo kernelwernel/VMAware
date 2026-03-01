@@ -4472,9 +4472,9 @@ public:
             // run all the techniques
             const u16 score = core::run_all(flags);
 
-            brand_array_t active_brands = {};
-
+            brand_list_t active_brands = {};
             brand_list_t brand_return = {};
+            active_brands.reserve(MAX_BRANDS);
             brand_return.reserve(MAX_BRANDS);
 
             size_t active_count = 0;
@@ -4536,9 +4536,11 @@ public:
                 return brand_return;
             }
 
-            // remove Hyper-V artifacts if found with other brands
+            // remove Hyper-V artifacts and Unknown if found with other brands
             if (active_count > 1) {
                 remove(brand_enum::HYPERV_ARTIFACT);
+                remove(brand_enum::NULL_BRAND);
+                remove(brand_enum::UNKNOWN);
             }
 
             // this bitset acts as an abstraction layer for the merging stage of this function.
@@ -4714,6 +4716,8 @@ public:
                 case brand_enum::CONNECTIX: return VM::brands::CONNECTIX;
                 case brand_enum::NULL_BRAND: return VM::brands::NULL_BRAND; // do not modify placement of this, it's used as an anchor point to count the number of brands
             }
+
+            return "Invalid";
         }
 
         static std::string fetch_brand_name(const brand_list_t& list, const size_t index) {
@@ -4723,12 +4727,6 @@ public:
         static std::string brand_multiple(const flagset& flags = core::generate_default()) {
             if (memo::multi_brand::is_cached()) {
                 return memo::multi_brand::fetch();
-            if (memo::multi_brand::is_cached()) {
-                return memo::multi_brand::fetch();
-            }
-            if (memo::multi_brand::is_cached()) {
-                return memo::multi_brand::fetch();
-            }
             }
 
             const brand_list_t& list = brands::brand_list(flags);
@@ -12116,11 +12114,11 @@ public: // START OF PUBLIC FUNCTIONS
     template <typename ...Args>
     static std::string brand(Args ...args) {
         const flagset flags = core::arg_handler(args...);
-        return internal_brand(flags);
+        return brand(flags);
     }
 
 
-    static std::string internal_brand(const flagset& flags = core::generate_default()) {
+    static std::string brand(const flagset& flags = core::generate_default()) {
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
@@ -12562,6 +12560,8 @@ public: // START OF PUBLIC FUNCTIONS
             case brand_enum::NULL_BRAND: return "Unknown";
             case brand_enum::UNKNOWN: return "Invalid";
         }
+
+        return "Invalid";
     }
 
 
@@ -12578,7 +12578,7 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static std::string conclusion(const flagset &flags = core::generate_default()) {
-        std::string brand_tmp = internal_brand(flags);
+        std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
         const bool has_hardener = is_hardened();
 
@@ -12761,7 +12761,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // having this design avoids some niche errors
         void initialise(const flagset &flags) {
-            brand = VM::internal_brand(flags);
+            brand = VM::brand(flags);
             type = VM::type(flags);
             conclusion = VM::conclusion(flags);
             is_vm = VM::detect(flags);
