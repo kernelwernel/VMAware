@@ -12693,10 +12693,11 @@ public: // START OF PUBLIC FUNCTIONS
             };
 
             const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
+            const bool has_hyper_x = (detected_brand(VM::HYPERVISOR_BIT) == brand_enum::HYPERV_ARTIFACT);
 
             // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
             const enum brand_enum firmware_brand = detected_brand(VM::FIRMWARE);
-            if (firmware_brand != brand_enum::NULL_BRAND && !hv_present) {
+            if (firmware_brand != brand_enum::NULL_BRAND && !hv_present && !has_hyper_x) {
                 debug("is_hardened(): firmware and hypervisor bit/str are not detected together");
                 return true;
             }
@@ -12721,7 +12722,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
 
             // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-            if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present) {
+            if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present && !has_hyper_x) {
                 debug("is_hardened(): trap/NVRAM and hypervisor bit/str are not detected together");
                 return true;
             }

@@ -368,12 +368,12 @@ Extra:
     std::exit(0);
 }
 
-static const char* color(const u8 score) {
+static const char* color(const u8 score, const bool is_hardened) {
     if (arg_bitset.test(NO_ANSI)) {
         return "";
     }
 
-    if (VM::is_hardened()) {
+    if (is_hardened) {
         return green.c_str();
     }
 
@@ -1100,10 +1100,10 @@ static void general(
     {
         std::cout << bold << "VM hardening: " << ansi_exit;
 
-        if (VM::is_hardened()) {
-            std::cout << green << "found" << ansi_exit << "\n";
+        if (vm.is_hardened) {
+            std::cout << green << "likely" << ansi_exit << "\n";
         } else {
-            std::cout << grey << "not found" << ansi_exit << "\n";
+            std::cout << grey << "unlikely" << ansi_exit << "\n";
         }
     }
 
@@ -1177,7 +1177,7 @@ static void general(
 
     // conclusion manager
     {
-        const char* conclusion_color = color(vm.percentage);
+        const char* conclusion_color = color(vm.percentage, vm.is_hardened);
 
         std::string conclusion = vm.conclusion;
 
