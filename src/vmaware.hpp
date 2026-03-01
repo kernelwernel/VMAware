@@ -4472,9 +4472,8 @@ public:
             // run all the techniques
             const u16 score = core::run_all(flags);
 
-            brand_list_t active_brands = {};
+            brand_array_t active_brands = {};
             brand_list_t brand_return = {};
-            active_brands.reserve(MAX_BRANDS);
             brand_return.reserve(MAX_BRANDS);
 
             size_t active_count = 0;
