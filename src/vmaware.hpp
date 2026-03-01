@@ -12693,7 +12693,13 @@ public: // START OF PUBLIC FUNCTIONS
             };
 
             const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
-            const bool has_hyper_x = (detected_brand(VM::HYPERVISOR_BIT) == brand_enum::HYPERV_ARTIFACT);
+            const bool has_hyper_x = []() {
+                if (check(VM::HYPERVISOR_BIT)) {
+                    return false;
+                }
+
+                return memo::cache_table[VM::HYPERVISOR_BIT].brand_name == brand_enum::HYPERV_ARTIFACT;
+            }();
 
             // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
             const enum brand_enum firmware_brand = detected_brand(VM::FIRMWARE);
