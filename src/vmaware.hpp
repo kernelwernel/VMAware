@@ -12046,19 +12046,19 @@ public: // START OF PUBLIC FUNCTIONS
     template <typename ...Args>
     static std::string brand(Args ...args) {
         const flagset flags = core::arg_handler(args...);
-        return internal_brand(flags);
+        return brand(flags);
     }
 
 
-    static std::string internal_brand(const flagset& flags = core::generate_default()) {
+    static std::string brand(const flagset& flags = core::generate_default()) {
         // is the multiple setting flag enabled?
         const bool is_multiple = core::is_enabled(flags, MULTIPLE);
 
         if (is_multiple) {
             return brand::brand_multiple(flags);
         } else {
-            const enum brand_enum brand = brand::brand_enum(flags);
-            return brand::brand_enum_to_string(brand);
+            const enum brand_enum b = brand::brand_enum(flags);
+            return brand::brand_enum_to_string(b);
         }
     }
 
@@ -12508,7 +12508,7 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static std::string conclusion(const flagset &flags = core::generate_default()) {
-        std::string brand_tmp = internal_brand(flags);
+        std::string brand_tmp = brand(flags);
         const u8 percent_tmp = percentage(flags);
         const bool has_hardener = is_hardened();
 
@@ -12691,7 +12691,7 @@ public: // START OF PUBLIC FUNCTIONS
 
         // having this design avoids some niche errors
         void initialise(const flagset &flags) {
-            brand = VM::internal_brand(flags);
+            brand = VM::brand(flags);
             type = VM::type(flags);
             conclusion = VM::conclusion(flags);
             is_vm = VM::detect(flags);
