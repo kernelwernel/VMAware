@@ -12697,6 +12697,7 @@ public: // START OF PUBLIC FUNCTIONS
             // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
             const enum brand_enum firmware_brand = detected_brand(VM::FIRMWARE);
             if (firmware_brand != brand_enum::NULL_BRAND && !hv_present) {
+                debug("is_hardened(): firmware and hypervisor bit/str are not detected together");
                 return true;
             }
 
@@ -12705,6 +12706,7 @@ public: // START OF PUBLIC FUNCTIONS
             if (firmware_brand == brand_enum::QEMU || firmware_brand == brand_enum::VBOX) {
                 const enum brand_enum cvendor_brand = detected_brand(VM::CVENDOR);
                 if (firmware_brand != cvendor_brand) {
+                    debug("is_hardened(): firmware and chassis vendor brands do not match");
                     return true;
                 }
             }
@@ -12714,11 +12716,13 @@ public: // START OF PUBLIC FUNCTIONS
             // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
             const enum brand_enum acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
             if (acpi_brand == brand_enum::QEMU && firmware_brand != brand_enum::QEMU) {
+                debug("is_hardened(): firmware and ACPI signature are not detected together");
                 return true;
             }
 
             // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
             if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present) {
+                debug("is_hardened(): trap/NVRAM and hypervisor bit/str are not detected together");
                 return true;
             }
         #endif
