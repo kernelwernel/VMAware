@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.6.0 (February 2026)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.6.0 (March 2026)
  *
  *  C++ VM detection library
  *
@@ -54,14 +54,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 549
- * - struct for internal cpu operations        => line 721
- * - struct for internal memoization           => line 3048
- * - struct for internal utility functions     => line 3231
- * - struct for internal core components       => line 11180
- * - start of VM detection technique list      => line 4286
- * - start of public VM detection functions    => line 11558
- * - start of externally defined variables     => line 12566
+ * - enums for publicly accessible techniques  => line 556
+ * - struct for internal cpu operations        => line 804
+ * - struct for internal memoization           => line 3131
+ * - struct for internal utility functions     => line 3338
+ * - struct for internal core components       => line 11664
+ * - start of VM detection technique list      => line 4769
+ * - start of public VM detection functions    => line 12029
+ * - start of externally defined variables     => line 12816
  *
  *
  * ============================== EXAMPLE ===================================
@@ -12961,7 +12961,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::NSJAIL_PID, {75, VM::nsjail_proc_id}},
             {VM::BLUESTACKS_FOLDERS, {5, VM::bluestacks}},
             {VM::AMD_SEV_MSR, {50, VM::amd_sev_msr}},
-            {VM::TEMPERATURE, {80, VM::temperature}},
+            {VM::TEMPERATURE, {20, VM::temperature}},
             {VM::PROCESSES, {40, VM::processes}},
         #endif    
 
