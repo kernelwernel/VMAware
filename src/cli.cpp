@@ -627,7 +627,7 @@ static const char* get_vm_description(const std::string& vm_brand) {
         { VM::brands::INTEL_KGT, "Intel Kernel Guard Technology (KGT) is a policy specification and enforcement framework for ensuring runtime integrity of kernel and platform assets. Demonstrated secure enclaves for critical OS components using VT-x/EPT before being superseded by CET (Control-flow Enforcement Technology) and HyperGuard in Windows 10." },
         { VM::brands::AZURE_HYPERV, "Azure Hyper-V is Microsoft's cloud-optimized hypervisor variant powering Azure VMs. Implements Azure-specific virtual devices like NVMe Accelerated Networking and vTPMs. Supports nested virtualization for running Hyper-V/containers within Azure VMs, enabling cloud-based CI/CD pipelines and dev/test environments." },
         { VM::brands::SIMPLEVISOR, "SimpleVisor is a minimalist Intel VT-x hypervisor by Alex Ionescu for Windows/Linux research. Demonstrates EPT-based memory isolation and hypercall handling. Used to study VM escapes and hypervisor rootkits, with hooks for intercepting CR3 changes and MSR accesses." },
-        { VM::brands::HYPERV_ARTIFACT, "VMAware detected Hyper-V operating as a type 1 hypervisor, not as a guest virtual machine. Although your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
+        { VM::brands::HYPERV_ROOT, "VMAware detected Hyper-V operating as a type 1 hypervisor, not as a guest virtual machine. Although your hardware/firmware signatures match Microsoft's Hyper-V architecture, we determined that you're running on baremetal. This prevents false positives, as Windows sometimes runs under Hyper-V (type 1) hypervisor." },
         { VM::brands::UML, "User-Mode Linux (UML) allows running Linux kernels as user-space processes using ptrace-based virtualization. Primarily used for kernel debugging and network namespace testing. Offers lightweight isolation without hardware acceleration, but requires host/guest kernel version matching for stable operation." },
         { VM::brands::POWERVM, "IBM PowerVM is a type 1 hypervisor for POWER9/10 systems, supporting Live Partition Mobility and Shared Processor Pools. Implements VIOS (Virtual I/O Server) for storage/networking virtualization, enabling concurrent AIX, IBM i, and Linux workloads with RAS features like predictive failure analysis." },
         { VM::brands::GCE, "Google Compute Engine (GCE) utilizes KVM-based virtualization with custom Titanium security chips for hardware root of trust. Features live migration during host maintenance and shielded VMs with UEFI secure boot. Underpins Google Cloud's Confidential Computing offering using AMD SEV-SNP memory encryption." },
@@ -904,7 +904,7 @@ static void general(
         }
     #elif (CLI_WINDOWS)
         if (!is_admin()) {
-            std::cout << note << " Not running as admin - NVRAM detections will be disabled.\n";
+            std::cout << note << " Not running as admin, some technique may not run\n";
         }
     #endif
 
@@ -1021,7 +1021,7 @@ static void general(
 
         const bool is_red = (
             (brand == VM::brands::NULL_BRAND) || 
-            (brand == VM::brands::HYPERV_ARTIFACT)
+            (brand == VM::brands::HYPERV_ROOT)
         );
 
         std::cout << bold << "VM brand: " << ansi_exit << (is_red ? red : green) << brand << ansi_exit << "\n";

@@ -498,7 +498,8 @@ namespace brands { // TODO, remove this in the 2.8.0 or any release after the 2.
     LEGACY(INTEL_KGT, "Intel KGT (Trusty)");
     LEGACY(AZURE_HYPERV, "Microsoft Azure Hyper-V");
     LEGACY(SIMPLEVISOR, "SimpleVisor");
-    LEGACY(HYPERV_ARTIFACT, "Hyper-V artifact (host running Hyper-V)");
+    // not in macro due to mismatch with VM::brands and brands:: renaming this to HYPERV_ROOT
+    [[deprecated("Use VM::brands::HYPERV_ROOT instead")]] static constexpr const char* HYPERV_ARTIFACT = "Hyper-V root partition (host system, not an actual VM)";
     LEGACY(UML, "User-mode Linux");
     LEGACY(POWERVM, "IBM PowerVM");
     LEGACY(GCE, "Google Compute Engine (KVM)");
@@ -707,7 +708,7 @@ public:
         INTEL_KGT,
         AZURE_HYPERV,
         SIMPLEVISOR,
-        HYPERV_ARTIFACT,
+        HYPERV_ROOT,
         UML,
         POWERVM,
         GCE,
@@ -762,7 +763,7 @@ public:
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
     static constexpr u8 MACOS_END = VM::MAC_SYS;
-    
+
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
     static u8 detected_count_num; 
@@ -3834,7 +3835,7 @@ public:
                 else {
                     // Windows machine running under Hyper-V type 1
                     debug("HYPER_X: Detected Hyper-V host machine");
-                    core::add(brand_enum::HYPERV_ARTIFACT);
+                    core::add(brand_enum::HYPERV_ROOT);
                     state = HYPERV_ARTIFACT_VM;
                 } 
             }
@@ -4436,7 +4437,7 @@ public:
         static constexpr const char* INTEL_KGT = "Intel KGT (Trusty)";
         static constexpr const char* AZURE_HYPERV = "Microsoft Azure Hyper-V";
         static constexpr const char* SIMPLEVISOR = "SimpleVisor";
-        static constexpr const char* HYPERV_ARTIFACT = "Hyper-V artifact (host running Hyper-V)";
+        static constexpr const char* HYPERV_ROOT = "Hyper-V root partition (host system, not an actual VM)";
         static constexpr const char* UML = "User-mode Linux";
         static constexpr const char* POWERVM = "IBM PowerVM";
         static constexpr const char* GCE = "Google Compute Engine (KVM)";
@@ -4520,7 +4521,7 @@ public:
                         continue;
                     }
 
-                    if (brand.first == brand_enum::HYPERV_ARTIFACT && score > 0) {
+                    if (brand.first == brand_enum::HYPERV_ROOT && score > 0) {
                         brand_return.push_back({brand_enum::NULL_BRAND, 1});
                         memo::brand_list::store(brand_return);
                         return brand_return;
@@ -4537,7 +4538,7 @@ public:
 
             // remove Hyper-V artifacts and Unknown if found with other brands
             if (active_count > 1) {
-                remove(brand_enum::HYPERV_ARTIFACT);
+                remove(brand_enum::HYPERV_ROOT);
                 remove(brand_enum::NULL_BRAND);
                 remove(brand_enum::UNKNOWN);
             }
@@ -4640,7 +4641,7 @@ public:
             return brand_return;
         }
 
-        static std::string brand_enum_to_string(const brand_enum brand) {
+        static const char* brand_enum_to_string(const brand_enum brand) {
             switch (brand) {
                 case brand_enum::UNKNOWN: return "Invalid";
                 case brand_enum::VBOX: return VM::brands::VBOX;
@@ -4686,7 +4687,7 @@ public:
                 case brand_enum::INTEL_KGT: return VM::brands::INTEL_KGT;
                 case brand_enum::AZURE_HYPERV: return VM::brands::AZURE_HYPERV;
                 case brand_enum::SIMPLEVISOR: return VM::brands::SIMPLEVISOR;
-                case brand_enum::HYPERV_ARTIFACT: return VM::brands::HYPERV_ARTIFACT;
+                case brand_enum::HYPERV_ROOT: return VM::brands::HYPERV_ROOT;
                 case brand_enum::UML: return VM::brands::UML;
                 case brand_enum::POWERVM: return VM::brands::POWERVM;
                 case brand_enum::GCE: return VM::brands::GCE;
@@ -5078,7 +5079,7 @@ public:
 
     /**
      * @brief Check for timing anomalies in the system
-     * @category x86x86
+     * @category x86
      * @implements VM::TIMER
      */
     [[nodiscard]] static bool timer() {
@@ -12555,7 +12556,7 @@ public: // START OF PUBLIC FUNCTIONS
             case brand_enum::BAREVISOR: return "Hypervisor (type 1)";
             case brand_enum::HYPERPLATFORM: return "Hypervisor (type 1)";
             case brand_enum::MINIVISOR: return "Hypervisor (type 1)";
-            case brand_enum::HYPERV_ARTIFACT: return "Unknown"; // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
+            case brand_enum::HYPERV_ROOT: return "Host machine"; // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
             case brand_enum::NULL_BRAND: return "Unknown";
             case brand_enum::UNKNOWN: return "Invalid";
         }
@@ -12577,10 +12578,13 @@ public: // START OF PUBLIC FUNCTIONS
 
 
     static std::string conclusion(const flagset &flags = core::generate_default()) {
-        std::string brand_tmp = brand(flags);
+        if (memo::conclusion::cached) {
+            return memo::conclusion::fetch();
+        }
+
         const u8 percent_tmp = percentage(flags);
         const bool has_hardener = is_hardened();
-
+        
         constexpr const char* very_unlikely = "Very unlikely";
         constexpr const char* unlikely = "Unlikely";
         constexpr const char* potentially = "Potentially";
@@ -12588,11 +12592,12 @@ public: // START OF PUBLIC FUNCTIONS
         constexpr const char* likely = "Likely";
         constexpr const char* very_likely = "Very likely";
         constexpr const char* inside_vm = "Running inside";
-
+        
         auto make_conclusion = [&](const char* category) -> std::string {
-            if (memo::conclusion::cached) {
-                return memo::conclusion::fetch();
-            }
+            const brand_list_t& list = brands::brand_list(flags);
+
+            const brand_enum first_brand = brands::brand_enum(list);
+
 
             const char* hardener = "";
             
@@ -12609,40 +12614,48 @@ public: // START OF PUBLIC FUNCTIONS
             // condition fixes that issue.
             if (
                 !has_hardener && (
-                    (brand_tmp == brands::ACRN) ||
-                    (brand_tmp == brands::ANUBIS) ||
-                    (brand_tmp == brands::BSD_VMM) ||
-                    (brand_tmp == brands::INTEL_HAXM) ||
-                    (brand_tmp == brands::APPLE_VZ) ||
-                    (brand_tmp == brands::INTEL_KGT) ||
-                    (brand_tmp == brands::POWERVM) ||
-                    (brand_tmp == brands::OPENSTACK) ||
-                    (brand_tmp == brands::AWS_NITRO) ||
-                    (brand_tmp == brands::OPENVZ) ||
-                    (brand_tmp == brands::INTEL_TDX) ||
-                    (brand_tmp == brands::AMD_SEV) ||
-                    (brand_tmp == brands::AMD_SEV_ES) ||
-                    (brand_tmp == brands::AMD_SEV_SNP) ||
-                    (brand_tmp == brands::NSJAIL) ||
-                    (brand_tmp == brands::NULL_BRAND)
+                    (first_brand == brand_enum::ACRN) ||
+                    (first_brand == brand_enum::ANUBIS) ||
+                    (first_brand == brand_enum::BSD_VMM) ||
+                    (first_brand == brand_enum::INTEL_HAXM) ||
+                    (first_brand == brand_enum::APPLE_VZ) ||
+                    (first_brand == brand_enum::INTEL_KGT) ||
+                    (first_brand == brand_enum::POWERVM) ||
+                    (first_brand == brand_enum::OPENSTACK) ||
+                    (first_brand == brand_enum::AWS_NITRO) ||
+                    (first_brand == brand_enum::OPENVZ) ||
+                    (first_brand == brand_enum::INTEL_TDX) ||
+                    (first_brand == brand_enum::AMD_SEV) ||
+                    (first_brand == brand_enum::AMD_SEV_ES) ||
+                    (first_brand == brand_enum::AMD_SEV_SNP) ||
+                    (first_brand == brand_enum::NSJAIL) ||
+                    (first_brand == brand_enum::NULL_BRAND)
                 )
             ) {
                 addition = " an ";
             }
 
+            std::string brand_str = "";
+
             // this is basically just to remove the capital "U", 
             // since it doesn't make sense to see "an Unknown"
-            if (brand_tmp == brands::NULL_BRAND) {
-                brand_tmp = "unknown";
+            if (first_brand == brand_enum::NULL_BRAND) {
+                brand_str = "unknown";
+            } else {
+                if (core::is_enabled(flags, MULTIPLE)) {
+                    brand_str = brands::brand_multiple(flags);
+                } else {
+                    brand_str = brands::brand_enum_to_string(first_brand);
+                }
             }
 
-            // Hyper-V artifacts are an exception due to how unique the circumstance is
             const std::string result = 
                 std::string(category) + 
                 addition + 
                 hardener + 
-                brand_tmp + 
-                (brand_tmp == brands::HYPERV_ARTIFACT ? "" : " VM");
+                brand_str + 
+                // Hyper-V artifacts are an exception due to how unique the circumstance is
+                (first_brand == brand_enum::HYPERV_ROOT ? "" : " VM");
 
             memo::conclusion::store(result.c_str());
 
@@ -12694,11 +12707,17 @@ public: // START OF PUBLIC FUNCTIONS
 
             const bool hv_present = (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR));
             const bool has_hyper_x = []() {
-                if (check(VM::HYPERVISOR_BIT)) {
+                if (check(VM::HYPERVISOR_BIT) || check(VM::HYPERVISOR_STR)) {
                     return false;
                 }
 
-                return memo::cache_table[VM::HYPERVISOR_BIT].brand_name == brand_enum::HYPERV_ARTIFACT;
+                const brand_enum bit_brand = memo::cache_table[VM::HYPERVISOR_BIT].brand_name;
+                const brand_enum str_brand = memo::cache_table[VM::HYPERVISOR_STR].brand_name;
+
+                return (
+                    (bit_brand == brand_enum::HYPERV_ROOT) || 
+                    (str_brand == brand_enum::HYPERV_ROOT)
+                );
             }();
 
             // rule 1: if VM::FIRMWARE is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
@@ -12719,7 +12738,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         #endif
 
-        #if (WINDOWS)        
+        #if (WINDOWS)
             // rule 3: if VM::ACPI_SIGNATURE (QEMU) is detected, so should VM::FIRMWARE (QEMU)
             const enum brand_enum acpi_brand = detected_brand(VM::ACPI_SIGNATURE);
             if (acpi_brand == brand_enum::QEMU && firmware_brand != brand_enum::QEMU) {
@@ -12728,7 +12747,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
 
             // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-            if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present && !has_hyper_x) {
+            if ((check(VM::TRAP) || check(VM::NVRAM)) && (hv_present || (!hv_present && has_hyper_x))) {
                 debug("is_hardened(): trap/NVRAM and hypervisor bit/str are not detected together");
                 return true;
             }

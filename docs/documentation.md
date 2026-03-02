@@ -649,7 +649,7 @@ This is the table of all the brands the lib supports.
 | Intel KGT (Trusty) | `brands::INTEL_KGT` | Hypervisor (type 1) |  |
 | Microsoft Azure Hyper-V | `brands::AZURE_HYPERV` | Hypervisor (type 1) |  |
 | SimpleVisor | `brands::SIMPLEVISOR` | Hypervisor (type 1) |  |
-| Hyper-V artifact (not an actual VM) | `brands::HYPERV_ARTIFACT` | Unknown | Windows Hyper-V has a tendency to modify host hardware values with VM values. In other words, this brand signifies that you're running on a host system, but the Hyper-V that's installed (either by default or manually by the user) is misleadingly making the whole system look like it's in a VM when in reality it's not. <br><br> For more information, refer to [this graph](https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v5/Hyper-X_version_5.drawio.png). |
+| Hyper-V root partition (host system, not an actual VM) | `brands::HYPERV_ARTIFACT` | Host machine | Windows Hyper-V has a tendency to modify host hardware values with VM values. In other words, this brand signifies that you're running on a host system, but the Hyper-V that's installed (either by default or manually by the user) is misleadingly making the whole system look like it's in a VM when in reality it's not. <br><br> For more information, refer to [this graph](https://github.com/kernelwernel/VMAware/blob/main/assets/hyper-x/v5/Hyper-X_version_5.drawio.png). |
 | User-mode Linux | `brands::UML` | Paravirtualised/Hypervisor (type 2) |  |
 | IBM PowerVM | `brands::POWERVM` | Hypervisor (type 1) |  |
 | OpenStack (KVM) | `brands::OPENSTACK` | Hypervisor (type 1) |  |
