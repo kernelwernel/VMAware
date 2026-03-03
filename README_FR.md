@@ -259,6 +259,13 @@ Et si ce projet vous a été utile, un star serait très apprécié :)
 <br>
 
 ## Crédits, contributeurs et remerciements ✒️
+
+<a href="https://github.com/kernelwernel/VMAware/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=kernelwernel/VMAware" />
+</a>
+
+<br>
+
 - [kernelwernel](https://github.com/kernelwernel) (Maintainer and developer)
 - [Requiem](https://github.com/NotRequiem) (Maintainer and co-developer)
 - [Check Point Research](https://research.checkpoint.com/)
