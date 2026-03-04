@@ -12720,7 +12720,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
 
             // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-            if ((check(VM::TRAP) || check(VM::NVRAM)) && (hv_present || (!hv_present && has_hyper_x))) {
+            if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present && !has_hyper_x) {
                 debug("is_hardened(): trap/NVRAM and hypervisor bit/str are not detected together");
                 return true;
             }
