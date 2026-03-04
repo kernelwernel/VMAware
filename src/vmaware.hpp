@@ -664,7 +664,7 @@ public:
     };
 
     enum class brand_enum : u8 {
-        UNKNOWN,
+        INVALID,
         VBOX,
         VMWARE,
         VMWARE_EXPRESS,
@@ -4514,7 +4514,7 @@ public:
             // but we must also nullify the result if the score is above 0, 
             // which would most likely indicate a hardened VM instead and return "Unknown".
             if (active_count == 1) {
-                enum brand_enum initial_brand = brand_enum::UNKNOWN;
+                enum brand_enum initial_brand = brand_enum::INVALID;
 
                 for (const auto brand : active_brands) {
                     if (brand.second == 0) {
@@ -4540,7 +4540,7 @@ public:
             if (active_count > 1) {
                 remove(brand_enum::HYPERV_ROOT);
                 remove(brand_enum::NULL_BRAND);
-                remove(brand_enum::UNKNOWN);
+                remove(brand_enum::INVALID);
             }
 
             // this bitset acts as an abstraction layer for the merging stage of this function.
@@ -4643,7 +4643,7 @@ public:
 
         static const char* brand_enum_to_string(const brand_enum brand) {
             switch (brand) {
-                case brand_enum::UNKNOWN: return "Invalid";
+                case brand_enum::INVALID: return "Invalid";
                 case brand_enum::VBOX: return VM::brands::VBOX;
                 case brand_enum::VMWARE: return VM::brands::VMWARE;
                 case brand_enum::VMWARE_EXPRESS: return VM::brands::VMWARE_EXPRESS;
@@ -12558,7 +12558,7 @@ public: // START OF PUBLIC FUNCTIONS
             case brand_enum::MINIVISOR: return "Hypervisor (type 1)";
             case brand_enum::HYPERV_ROOT: return "Host machine"; // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
             case brand_enum::NULL_BRAND: return "Unknown";
-            case brand_enum::UNKNOWN: return "Invalid";
+            case brand_enum::INVALID: return "Invalid";
         }
 
         return "Invalid";
