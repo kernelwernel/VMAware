@@ -5127,14 +5127,6 @@ public:
         std::atomic<u64> t2_end(0);
         std::vector<u64> samples(100000, 0);
 
-        auto rdtsc = []() noexcept -> u64 {
-        #if (MSVC)
-            return static_cast<u64>(__rdtsc());
-        #else
-            return static_cast<u64>(__rdtsc());
-        #endif
-        };
-
         struct affinity_cookie {
             bool valid{ false };
         #if (WINDOWS)
@@ -5391,7 +5383,7 @@ public:
             while (ready_count.load(std::memory_order_acquire) < 2)
                 _mm_pause();
 
-            const u64 start = rdtsc();
+            const u64 start = __rdtsc();
             t1_start.store(start, std::memory_order_release);
             state.store(1, std::memory_order_release);
 
@@ -5402,7 +5394,7 @@ public:
             }
             VMAWARE_UNUSED(x);
 
-            const u64 end = rdtsc();
+            const u64 end = __rdtsc();
             t1_end.store(end - start, std::memory_order_release);
             state.store(2, std::memory_order_release);
         });
@@ -5413,7 +5405,7 @@ public:
             while (ready_count.load(std::memory_order_acquire) < 2)
                 _mm_pause();
 
-            u64 last = rdtsc();
+            u64 last = __rdtsc();
 
             // local accumulator and local index into samples
             u64 acc = 0;
@@ -5426,7 +5418,7 @@ public:
 
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
                         // read rdtsc and accumulate delta
-                        const u64 now = rdtsc();
+                        const u64 now = __rdtsc();
 
                         // If now < last, the hypervisor rewound the TSC or it's a very rare 64-bit overflow
                         // we do not increment acc to ensure ratio t2_delta / t1_delta drops below 0.95
@@ -5449,7 +5441,7 @@ public:
             }
 
             // final rdtsc after detecting finish
-            const u64 final_now = rdtsc();
+            const u64 final_now = __rdtsc();
             if (final_now >= last) acc += (final_now - last);
             t2_end.store(acc, std::memory_order_release);
         });
