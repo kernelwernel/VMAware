@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 804
  * - struct for internal memoization           => line 3131
  * - struct for internal utility functions     => line 3338
- * - struct for internal core components       => line 11664
+ * - struct for internal core components       => line 11629
  * - start of VM detection technique list      => line 4769
- * - start of public VM detection functions    => line 12029
- * - start of externally defined variables     => line 12816
+ * - start of public VM detection functions    => line 11994
+ * - start of externally defined variables     => line 12781
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5127,14 +5127,6 @@ public:
         std::atomic<u64> t2_end(0);
         std::vector<u64> samples(100000, 0);
 
-        auto rdtsc = []() noexcept -> u64 {
-        #if (MSVC)
-            return static_cast<u64>(__rdtsc());
-        #else
-            return static_cast<u64>(__rdtsc());
-        #endif
-        };
-
         struct affinity_cookie {
             bool valid{ false };
         #if (WINDOWS)
@@ -5285,7 +5277,7 @@ public:
             // const size_t frac_win = (N * 8 + 99) / 100; // ceil(N * 0.08)
             // const size_t win = std::min(N, std::max(MIN_WIN, frac_win));
             const size_t MIN_WIN = 10;
-            // Manual min/max calculation for win size
+            // manual min/max calculation for win size
             const size_t calc_frac = static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08));
             const size_t inner_max = (MIN_WIN > calc_frac) ? MIN_WIN : calc_frac;
             const size_t win = (N < inner_max) ? N : inner_max;
@@ -5311,7 +5303,7 @@ public:
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi - 1] <= (s[cluster_lo - 1] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     --cluster_lo;
-                    // Manual min calculation
+                    // manual min calculation
                     best_span = (best_span < new_span) ? best_span : new_span;
                 }
                 else break;
@@ -5322,7 +5314,6 @@ public:
                 if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
                     (s[cluster_hi] <= (s[cluster_lo] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
                     ++cluster_hi;
-                    // Manual min calculation
                     best_span = (best_span < new_span) ? best_span : new_span;
                 }
                 else break;
@@ -5333,8 +5324,7 @@ public:
             // cluster must be reasonably dense and cover a non-negligible portion of samples, so this is pure sanity checks
             const double fraction_in_cluster = static_cast<double>(cluster_size) / static_cast<double>(N);
 
-            // Manual min/max calculation for MIN_CLUSTER
-            // Original: std::min(static_cast<size_t>(std::max<int>(5, static_cast<int>(N / 50))), N);
+            // min/max calculation for MIN_CLUSTER
             const int val_n_50 = static_cast<int>(N / 50);
             const size_t val_max = static_cast<size_t>((5 > val_n_50) ? 5 : val_n_50);
             const size_t MIN_CLUSTER = (val_max < N) ? val_max : N; // at least 2% or 5 elements
@@ -5393,7 +5383,7 @@ public:
             while (ready_count.load(std::memory_order_acquire) < 2)
                 _mm_pause();
 
-            const u64 start = rdtsc();
+            const u64 start = __rdtsc();
             t1_start.store(start, std::memory_order_release);
             state.store(1, std::memory_order_release);
 
@@ -5404,7 +5394,7 @@ public:
             }
             VMAWARE_UNUSED(x);
 
-            const u64 end = rdtsc();
+            const u64 end = __rdtsc();
             t1_end.store(end - start, std::memory_order_release);
             state.store(2, std::memory_order_release);
         });
@@ -5415,7 +5405,7 @@ public:
             while (ready_count.load(std::memory_order_acquire) < 2)
                 _mm_pause();
 
-            u64 last = rdtsc();
+            u64 last = __rdtsc();
 
             // local accumulator and local index into samples
             u64 acc = 0;
@@ -5428,7 +5418,7 @@ public:
 
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
                         // read rdtsc and accumulate delta
-                        const u64 now = rdtsc();
+                        const u64 now = __rdtsc();
 
                         // If now < last, the hypervisor rewound the TSC or it's a very rare 64-bit overflow
                         // we do not increment acc to ensure ratio t2_delta / t1_delta drops below 0.95
@@ -5451,7 +5441,7 @@ public:
             }
 
             // final rdtsc after detecting finish
-            const u64 final_now = rdtsc();
+            const u64 final_now = __rdtsc();
             if (final_now >= last) acc += (final_now - last);
             t2_end.store(acc, std::memory_order_release);
         });
@@ -5477,10 +5467,12 @@ public:
         std::vector<u64> used;
         for (u64 s : samples) if (s != 0) used.push_back(s);
         const u64 cpuid_latency = calculate_latency(used);
+        const double cycles_per_iter = static_cast<double>(t1_delta) / static_cast<double>(ITER_XOR);
 
         debug("TIMER: T1 delta:     ", t1_delta);
         debug("TIMER: T2 delta:     ", t2_delta);
         debug("TIMER: VMEXIT latency:    ", cpuid_latency);
+        debug("TIMER: IPC: ", cycles_per_iter);
 
         if (cpuid_latency >= cycle_threshold) {
             debug("TIMER: Detected a vmexit on CPUID");
@@ -5493,8 +5485,6 @@ public:
             return true;
         }
 
-        // ========================== LOCAL RATIO ==========================
-
         // Within the same run, does Thread 2 see a smaller TSC delta than Thread 1?
         // If so, a hypervisor downscaled TSC in the core where exits were occurring to hide vmexit latency
         // while in the other core where no exits occurred, no TSC cycles were decreased, thus thread 2 ran faster than thread 1
@@ -5502,65 +5492,40 @@ public:
         const double local_ratio = double(t2_delta) / double(t1_delta);
 
         if (local_ratio < 0.95 || local_ratio > 1.05) {
-            debug("TIMER: Detected a hypervisor intercepting TSC: ", local_ratio, "");
+            debug("TIMER: Detected a hypervisor intercepting TSC locally: ", local_ratio, "");
             return true;
         }
 
-    #if (WINDOWS)
-        typedef struct _PROCESSOR_POWER_INFORMATION {
-            u32 Number;
-            u32 MaxMhz;
-            u32 CurrentMhz;
-            u32 MhzLimit;
-            u32 MaxIdleState;
-            u32 CurrentIdleState;
-        } PROCESSOR_POWER_INFORMATION, * PPROCESSOR_POWER_INFORMATION;
+        // To calculate the global ratio, we calculate the TSC cycles consumed per iteration of the Thread 1 workload
+        // Thread 1 ran this dependency chain, x ^= i; x = (x << 1) ^ (x >> 3)
+        // because each instruction depends on the result of the previous one, the CPU cannot execute these in parallel
+        // on bare metal, a dependent ALU operation takes a minimum number of core cycles, for this is typically 2-4 per iteration
+        // Even with an extreme 6.0GHz Turbo on a 2.0GHz Base Clock (3x ratio), this results in at least 0.7 to 1.0 TSC cycles per iteration
 
-        enum POWER_INFORMATION_LEVEL_MIN {
-            ProcessorInformation = 11
-        };
+        // If a hypervisor is "shaving" cycles globally to hide the latency of Thread 2's CPUID spam,
+        // it subtracts time from the global counter. This causes Thread 1 (which caused no exits)
+        // to appear to have finished its work instantly or impossibly fast. 
+        // If thread 1 reports finishing 100000000 dependent iterations in only 10000000 TSC cycles (so 0.1 cycles/iter), the CPU effectively ran at 10 instructions per cycle on a dependent chain 
+        // which is basically impossible on x86 silicon and confirms the TSC was manipulated
 
-        const HMODULE hPowr = LoadLibraryA("powrprof.dll");
-        if (!hPowr) return 0;
-
-        const char* names[] = { "CallNtPowerInformation" };
-        void* funcs[1] = { nullptr };
-        util::get_function_address(hPowr, names, funcs, 1);
-        if (!funcs[0]) return 0;
-
-        using CallNtPowerInformation_t = NTSTATUS(__stdcall*)(int, PVOID, ULONG, PVOID, ULONG);
-        CallNtPowerInformation_t CallNtPowerInformation =
-            reinterpret_cast<CallNtPowerInformation_t>(funcs[0]);
-
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        const DWORD procCount = si.dwNumberOfProcessors;
-        if (procCount == 0) return 0;
-
-        const SIZE_T bufSize = static_cast<SIZE_T>(procCount) * sizeof(PROCESSOR_POWER_INFORMATION);
-        void* raw = _malloca(bufSize);
-        if (!raw) return 0;
-        memset(raw, 0, bufSize);
-
-        const NTSTATUS status = CallNtPowerInformation(
-            ProcessorInformation,
-            nullptr, 0,
-            raw, static_cast<ULONG>(bufSize)
-        );
-
-        unsigned speed = 0;
-        if ((LONG)status >= 0) {
-            PROCESSOR_POWER_INFORMATION* info = reinterpret_cast<PROCESSOR_POWER_INFORMATION*>(raw);
-            speed = static_cast<unsigned>(info[0].CurrentMhz);
-        }
-
-        _freea(raw);
-
-        if (speed < 800) {
-            debug("TIMER: Detected a hook in rdtsc, frequency was: ", speed);
+        // 0.25 is an extremely conservative threshold but there's no need to raise it
+        // because mathematically talking, considering the number of times cpuid is called in thread 2, they will pass this limit even with a patch that downscales only 100 cycles per cpuid call
+        // a value this low implies the code ran 4x faster than the theoretical limit of the silicon,
+        // or roughly 12x faster than the actual core clock speed
+       
+        // This is immune to turbo/throttling noise because those variances (10-30%) are negligible 
+        // compared to the massive reduction (like 90%+) caused by exit hiding
+        if (cycles_per_iter < 0.25) {
+            debug("TIMER: Detected a hypervisor dowscaling TSC globally (IPC was impossible): ", cycles_per_iter);
             return true;
         }
-    #endif
+
+        // so if the patch substracted too much TSC cycles, the shaving might result in a near-zero or negative delta
+        // (handled by u64 overflow usually making it huge, but good shaves clamp to 0 or 1)
+        if (t1_delta < 1000) {
+            debug("TIMER: Detected a hypervisor downscaling TSC globally (time was stopped): ", t1_delta);
+            return true;
+        }
 #endif
         return false;
     }
@@ -12747,7 +12712,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
 
             // rule 4: if VM::TRAP or VM::NVRAM is detected, so should VM::HYPERVISOR_BIT or VM::HYPERVISOR_STR
-            if ((check(VM::TRAP) || check(VM::NVRAM)) && (hv_present || (!hv_present && has_hyper_x))) {
+            if ((check(VM::TRAP) || check(VM::NVRAM)) && !hv_present && !has_hyper_x) {
                 debug("is_hardened(): trap/NVRAM and hypervisor bit/str are not detected together");
                 return true;
             }
