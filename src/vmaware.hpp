@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 804
  * - struct for internal memoization           => line 3131
  * - struct for internal utility functions     => line 3338
- * - struct for internal core components       => line 11629
+ * - struct for internal core components       => line 11752
  * - start of VM detection technique list      => line 4769
- * - start of public VM detection functions    => line 11994
- * - start of externally defined variables     => line 12781
+ * - start of public VM detection functions    => line 12117
+ * - start of externally defined variables     => line 12904
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5084,6 +5084,78 @@ public:
      */
     [[nodiscard]] static bool timer() {
     #if (x86)
+
+        /**
+        * This is an explanation for any person, even if you don't have any kind of knowledge into this topic, without going depth into technical stuff.
+        * 
+        * ======== General Explanation ========
+        * This function runs a CPU instruction that takes a lot of time to run inside a VM, and returns true if the latency (time) was high
+        * It also checks for hypervisors trying to hide this latency, and it has been historically refactored over the last two years to take into account every false positive and false negative
+        *
+        * Techniques a hypervisor can use to hide latency:
+        * 1. A hypervisor that, whenever the latency is measured by VMAware, returns a spoofed latency
+        * 2. A hypervisor that makes the cpu instruction itself have a fast routine, so it doesn't take too much time to run in the VM
+        * 
+        * Small introduction:
+        * the instruction that always (unconditionally) takes a lot of time to run inside the VM is "cpuid"
+        * the instruction used to read its latency is "rdtsc", which reads the TSC, measured in cycles
+        * so, if we do: start = rdtsc, then cpuid, then end = rdtsc, and finally end - start, we know how much time cpuid took to run, being high if a VM is present
+        * this measurement must always be done multiple times to be as accurate as possible
+        * cpuid takes a lot to run in VMs because its a instruction that spends time in switching from usermode (where vmaware runs) to hypervisor mode (where cpuid will be handled)
+        * 
+        * ======== Detection Explanation ========
+        * - Local Ratio Check -
+        * A hypervisor will of course try to hide this latency, they can intercept any of those two instructions, or both: cpuid and rdtsc
+        * After being intercepted, the hypervisor can return a fake TSC value
+        * They can intercept those 2 instructions in one cpu core, or in all cpu cores
+        * Example: If a VM in normal conditions has 2000 cycles of real cpuid latency (because it spent 1600 cycles in the hypervisor), they do:
+        * spoofed_tsc = real_cpuid_latency (2000) - time_spent_in_hypervisor (1600) and return spoofed_tsc (400) to VMAware in the core where vmaware is measuring latency
+        * This is called TSC offsetting/downclocking, in this case VMAware would see a latency of 400 cycles (which is below our 800 cycle threshold), instead of 2000
+        * 
+        * VMAware knows whether the time is spoofed or real by cross-referencing.
+        * VMAware runs a thread, pinned to core 1 that runs an instruction that can't be intercepted by hypervisors: "xor"
+        * VMAware runs another thread simultaneously, in CPU core 2, that runs the rdtsc-cpuid-rdtsc loop explained before, which is intercepted by the hypervisor
+        * When both threads end, VMAware compares the time spent in both loops. In normal conditions, both loops reported having the same TSC, because they ran simultaneously
+        * But, if a hypervisor intercepts cpuid or rdtsc, they would have to hide the latency of thread 2 so that VMAware doesnt see a high cpuid latency
+        * This makes thread 2 (which ran cpuid) have a much smaller (spoofed) TSC than thread 1 (which didnt run any instruction that the hypervisor can intercept)
+        * 
+        * But, what if when thread 2 is running cpuid, the hypervisor downclocks all cpu cores, instead of only core 2, affecting thread 1 as well?
+        * 
+        * - Global Ratio Check -
+        * If a hypervisor downclocks latency in all cpu cores, all instructions in thread 1 and 2, including XOR of thread 1, might appear to have ran extremely fast
+        * Because of this, VMAware checks the IPC (Instruction per Cycle) that were run during the measurement:
+        * Example: If thread 1 reports finishing 100000000 dependent iterations in only 10000000 TSC cycles, the CPU effectively ran at 10 IPS 
+        * which is basically impossible on x86 silicon and confirms the TSC was manipulated
+        * 
+        * This makes impossible for hypervisors to hide the latency in either one or all cores, so they always attempt to restore the time debt.
+        * 
+        * - Transient TSC Check - 
+        * Since the hypervisor cant hide reliably the latency against this code, they do the following:
+        * 1. VMAware runs rdtsc
+        * 2. VMAware runs cpuid
+        * 3. VMAware runs rdtsc, hypervisor returns spoofed tsc, but saves the real latency (previous real_cpuid_latency)
+        * 4. VMAware stores result and prepares next iteration in the loop
+        * 5. While VMAware is doing step 4, hypervisor puts all cores to current_tsc + real_cpuid_latency, restoring the TSC to its original value
+        * 6. Loop repeats
+        * 
+        * The hypervisor must return the time debt between the first loop and the second loop: always after step 3 and always before step 6
+        * To counter this, VMAware simply keeps track of latency between iterations, so no matter when the hypervisor restores the time debt, it sees the hidden latency
+        * 
+        * So, now what they can do?
+        * - Low Latency Check -
+        * If they cant do technique 1 (hiding the latency), they might attempt technique 2 (making the VM as fast as possible)
+        * Remember that we use the cpuid instruction, which always haves high latency in a VM, which return results containing info about the CPU
+        * 
+        * To do this, they might cache results and give them back instantly when cpuid is executed, or recode the whole kernel to just make it handle the cpuid quickly
+        * But they can't avoid one thing: the latency of the CPU switching from vmaware to the hypervisor itself
+        * No matter how fast the hypervisor is at handling cpuid, you cannot make the CPU faster than what it is at a hardware level.
+        * VMAware puts a threshold specifically tailored to the minimum latency seen on the wild, across more than 10000000 machines
+        * that the CPU takes to switch from user-mode (VMAware) to VMM (hypervisor), this latency is often called the "vmexit" latency
+        * 
+        * To give the worst nightmare, VMAware runs all the aforementioned checks in parallel, trillions of times in a single loop, so the hypervisor finds a paradox: 
+        * Either they downclock TSC (failing the local/global ratio checks), or either they pay the time debt (exposing the vmexit latency), they cant do both
+        */
+
         #if (MSVC)
             #define COMPILER_BARRIER() _ReadWriteBarrier()
         #else
@@ -5097,7 +5169,7 @@ public:
             return false;
         }
         // will be used in cpuid measurements
-        u16 cycle_threshold = 800; // average latency of a VMX/SVM VMEXIT alone
+        u16 cycle_threshold = 800; // average latency of a VMX/SVM VMEXIT alone, we should never include more than that
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             cycle_threshold = 3250; // if we're running under Hyper-V, make VMAware detect nested virtualization
         }
@@ -5111,10 +5183,22 @@ public:
             return true;
         }
 
-        constexpr u64 ITER_XOR = 100000000ULL;
+        constexpr u64 ITER_XOR = 150000000ULL;
         constexpr size_t CPUID_ITER = 100; // per leaf
+        // we try many leaves so that it's extremely heavy to recode every cpuid path to exit quickly enough so that it doesn't trigger the cycle threshold
         static constexpr unsigned int leaves[] = {
-             0xB, 0xD, 0x4, 0x1, 0x7, 0xA, 0x12, 0x5, 0x40000000u, 0x80000008u, 0x0
+            0x0u, 0x1u, 0x2u, 0x3u, 0x4u, 0x5u, 0x6u, 0x7u, 0x8u, 0x9u,
+            0xAu, 0xBu, 0xCu, 0xDu, 0xEu, 0xFu, 0x10u, 0x11u, 0x12u, 0x13u,
+            0x14u, 0x15u, 0x16u, 0x17u, 0x18u, 0x19u, 0x1Au, 0x1Bu, 0x1Cu, 0x1Du,
+            0x1Eu, 0x1Fu,
+            0x40000000u, 0x40000001u, 0x40000002u, 0x40000003u, 0x40000004u,
+            0x40000005u, 0x40000006u, 0x40000007u, 0x40000008u, 0x40000009u,
+            0x80000000u, 0x80000001u, 0x80000002u, 0x80000003u, 0x80000004u,
+            0x80000005u, 0x80000006u, 0x80000007u, 0x80000008u, 0x80000009u,
+            0x8000000Au, 0x8000000Bu, 0x8000000Cu, 0x8000000Du, 0x8000000Eu,
+            0x8000000Fu, 0x80000010u, 0x80000011u, 0x80000012u, 0x80000013u,
+            0x80000014u, 0x80000015u, 0x80000016u, 0x80000017u, 0x80000018u,
+            0x80000019u, 0x8000001Au
         };
         constexpr size_t n_leaves = sizeof(leaves) / sizeof(leaves[0]);
 
@@ -5178,6 +5262,7 @@ public:
         #endif
         };
 
+        // lambda that calculates how much cycles a single vmexit takes
         auto cpuid = [](unsigned int leaf) noexcept -> u64 {
         #if (MSVC)
             thread_local u32 aux = 0;
@@ -5200,42 +5285,62 @@ public:
             // the idea is to let rdtscp internally wait until cpuid is executed rather than using another memory barrier
             const u64 t2 = __rdtscp(&aux);
 
-            // ensure the read of t2 doesn't bleed into future instructions
+            // ensure the read of t2 doesn't bleed into future instructions, also force vmx preemption timers to fire here
             _mm_lfence();
+            const u64 t3 = __rdtsc(); // capture tail
 
             // Create a dependency on regs so the cast above isn't ignored
             (void)regs[0];
 
-            return t2 - t1;
+            u64 delta = t2 - t1;
+            const u64 tail = t3 - t2;
+
+            // normal tail (RDTSC + LFENCE) is about 20-40 cycles
+            // if tail is massive, it means the hypervisor paused execution AFTER the t2 measurement
+            // to restore the TSC offset. Since it had to hide it, now its trying to restore it
+            // so that it doesn't trigger our "global ratio" check (will be explained later)
+            if (tail > 500) {
+                delta += tail;
+            }
+
+            return delta;
         #else
             // same logic of above
-            unsigned int lo1, hi1, lo2, hi2;
+            unsigned int lo1, hi1, lo2, hi2, lo3, hi3;
 
             asm volatile("lfence" ::: "memory");
             asm volatile("rdtsc" : "=a"(lo1), "=d"(hi1) :: "memory");
             COMPILER_BARRIER();
 
             volatile unsigned int a, b, c, d;
-
-            // this differs from the code above because a, b, c and d are effectively used
-            // the compiler must honor the write to a volatile variable
             asm volatile("cpuid"
                 : "=a"(a), "=b"(b), "=c"(c), "=d"(d)
                 : "a"(leaf)
                 : "memory");
 
             COMPILER_BARRIER();
-
             asm volatile("rdtscp" : "=a"(lo2), "=d"(hi2) :: "rcx", "memory");
+
+            // tail
             asm volatile("lfence" ::: "memory");
+            asm volatile("rdtsc" : "=a"(lo3), "=d"(hi3) :: "memory");
 
             const u64 t1 = (u64(hi1) << 32) | lo1;
             const u64 t2 = (u64(hi2) << 32) | lo2;
+            const u64 t3 = (u64(hi3) << 32) | lo3;
 
-            return t2 - t1;
+            u64 delta = t2 - t1;
+            const u64 tail = t3 - t2;
+
+            if (tail > 500) {
+                delta += tail;
+            }
+
+            return delta;
         #endif
         };
 
+        // lambda that takes all vmexit samples and filters kernel noise statistically
         auto calculate_latency = [&](const std::vector<u64>& samples_in) -> u64 {
             if (samples_in.empty()) return 0;
             const size_t N = samples_in.size();
@@ -5269,7 +5374,7 @@ public:
             std::sort(absdev.begin(), absdev.end());
             const u64 MAD = median_of_sorted(absdev, 0, absdev.size());
             // convert MAD to an approximate standard-deviation-like measure
-            const long double kmad_to_sigma = 1.4826L; // consistent for normal approx
+            constexpr long double kmad_to_sigma = 1.4826L; // consistent for normal approx
             const long double sigma = (MAD == 0) ? 1.0L : (static_cast<long double>(MAD) * kmad_to_sigma);
 
             // find the densest small-valued cluster by sliding a fixed-count window
@@ -5372,7 +5477,7 @@ public:
             return result;
         };
 
-        // exercise the XOR loop and CPUID paths to wake up the CPU from low-power states
+        // exercise the XOR loop and CPUID paths to wake up the CPU from low-power states, warm cache and train branch predictor
         volatile u64 warm_x = 0;
         for (int w = 0; w < 64; ++w) cpuid(leaves[w % n_leaves]);
         VMAWARE_UNUSED(warm_x);    
@@ -5429,7 +5534,25 @@ public:
                         last = now;
 
                         // store latency if buffer has space
-                        if (idx < samples.size()) samples[idx] = cpuid(leaf);
+                        if (idx < samples.size()) {
+                            u64 lat = cpuid(leaf);
+
+                            // If a VMX Preemption Timer is delayed (firing after cpuid returns to bypass t3 inside our cpuid lambda), 
+                            // OR if the hypervisor intercepts RDTSC to restore the time debt instead of CPUID, 
+                            // this outer total_overhead will include that hidden latency because it's at the end of this for loop
+                            // if the hypervisor delays it even more, now will catch it, making the total_overhead check still detect it
+                            // this means that no matter where the time debt is restored, VMAware will always be able to see the hidden latency
+                            const u64 post = __rdtsc();
+                            const u64 total_overhead = post - now;
+
+                            // On bare metal, total_overhead is lat + 20 cycles which is the loop overhead
+                            // If total_overhead is > lat + 500, the hypervisor hid cycles outside the cpuid lambda.
+                            if (total_overhead > (lat + 500)) {
+                                lat = total_overhead;
+                            }
+
+                            samples[idx] = lat;
+                        }
                         ++idx;
 
                         // if thread 1 finished
@@ -5475,8 +5598,8 @@ public:
         debug("TIMER: IPC: ", cycles_per_iter);
 
         if (cpuid_latency >= cycle_threshold) {
-            debug("TIMER: Detected a vmexit on CPUID");
-            return core::add(brand_enum::NULL_BRAND, 100); // to prevent false positives due to kernel noise, doesn't trigger the default score
+            debug("TIMER: Detected a VMEXIT on CPUID");
+            return core::add(brand_enum::NULL_BRAND, 100); // to prevent false positives due to jitter, doesn't trigger a 150 score, so it never reaches 100%
         }
         else if (cpuid_latency <= 25) {
             debug("TIMER: Detected a hypervisor downscaling CPUID latency");
