@@ -5141,9 +5141,27 @@ public:
         * The hypervisor must return the time debt between the first loop and the second loop: always after step 3 and always before step 6
         * To counter this, VMAware simply keeps track of latency between iterations, so no matter when the hypervisor restores the time debt, it sees the hidden latency
         * 
+        * - Statistical Check -
+        * Now, they might try to downscale TSC sometimes, and pay the debt much later, so for example, when vmaware runs cpuid, it sees:
+        * fast fast fast fast fast fast fast fast fast fast fast fast fast fast slow (time debt of all previous iterations is paid here in slow) 
+        * VMAware sees: 94% fast, 6% slow, thinks 6% slow are normal kernel noise, and discards them, so it gets bypassed...
+        * 
+        * Thus, VMAware when detects a spike that seems to be a time debt payment, it redistributes them into previous samples, so it becomes:
+        * before redistribution:
+        * 100 100 100 100 100 100 100 100 100 100 100 100 100 100 1000
+        * 
+        * after redistribution:
+        * 166 166 166 166 166 166 166 166 166 166 166 166 166 166 166
+        * 
+        * After the hypervisor have paid all the time debt, ALL the hidden latency will be redistributed into all samples, and will mathematically always cross the latency threshold
+        * They might try to keep playing with the time debt redistribution, like not paying 20-30% of the time debt, but thresholds in VMAware's code (and the excesive number of iterations)
+        * are calculated in purpose so that it's mathematically impossible (even with a patch that only downscales 1 cycle) to contaminate samples selectively so that it doesn't trigger any check
+        * If a hypervisor doesn't pay sometimes the time debt (enough so that sample redistribution is not larger than the latency threshold), it trips the local or global ratio check
+        * and if you do pay the time debt but at any interval (lets say at loop iteration 15, or 32, or 47...), you trip the cpuid latency check
+        * 
         * So, now what they can do?
         * - Low Latency Check -
-        * If they cant do technique 1 (hiding the latency), they might attempt technique 2 (making the VM as fast as possible)
+        * If they can't do technique 1 (hiding the latency), they might attempt technique 2 (making the VM as fast as possible)
         * Remember that we use the cpuid instruction, which always haves high latency in a VM, which return results containing info about the CPU
         * 
         * To do this, they might cache results and give them back instantly when cpuid is executed, or recode the whole kernel to just make it handle the cpuid quickly
@@ -5516,12 +5534,20 @@ public:
             u64 acc = 0;
             size_t idx = 0;
 
+            // Track sparse latency spikes that may represent "time debt repayment".
+            // Hypervisors hiding VMEXIT cost often subtract cycles on most CPUID calls
+            // and restore them periodically, producing rare but large spikes.
+            u64 last_spike_idx = 0;
+            u64 spike_count = 0;
+
             // for each leaf do CPUID_ITER samples, then repeat
             while (state.load(std::memory_order_acquire) != 2) {
                 for (size_t li = 0; li < n_leaves; ++li) {
+
                     const unsigned int leaf = leaves[li];
 
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
+
                         // read rdtsc and accumulate delta
                         const u64 now = __rdtsc();
 
@@ -5535,10 +5561,11 @@ public:
 
                         // store latency if buffer has space
                         if (idx < samples.size()) {
+
                             u64 lat = cpuid(leaf);
 
-                            // If a VMX Preemption Timer is delayed (firing after cpuid returns to bypass t3 inside our cpuid lambda), 
-                            // OR if the hypervisor intercepts RDTSC to restore the time debt instead of CPUID, 
+                            // If a VMX Preemption Timer is delayed (firing after cpuid returns to bypass t3 inside our cpuid lambda),
+                            // OR if the hypervisor intercepts RDTSC to restore the time debt instead of CPUID,
                             // this outer total_overhead will include that hidden latency because it's at the end of this for loop
                             // if the hypervisor delays it even more, now will catch it, making the total_overhead check still detect it
                             // this means that no matter where the time debt is restored, VMAware will always be able to see the hidden latency
@@ -5551,21 +5578,49 @@ public:
                                 lat = total_overhead;
                             }
 
+                            // If the hypervisor hides VMEXIT latency statistically, most CPUID calls will appear
+                            // very fast while occasional spikes repay the hidden cycles. MAD filtering in calculate_latency() later
+                            // will discard these spikes as outliers, so we detect and redistribute them here
+                            if (lat > cycle_threshold) {
+
+                                const size_t gap = idx - last_spike_idx;
+                                last_spike_idx = idx;
+                                spike_count++;
+
+                                // If spikes appear periodically relative to CPUID frequency,
+                                // treat them as time debt repayment instead of real interrupts
+                                if (gap > 1 && gap < 64 && spike_count > 2) {
+                                    const u64 repay = lat / gap;
+
+                                    // distribute hidden cycles backwards across recent samples, exactly the ones were spikes didnt occur
+                                    for (size_t j = 1; j < gap && (idx >= j); ++j) {
+                                        samples[idx - j] += repay;
+                                    }
+
+                                    lat = repay;
+                                }
+                            }
+
                             samples[idx] = lat;
                         }
+
                         ++idx;
 
                         // if thread 1 finished
-                        if (state.load(std::memory_order_acquire) == 2) break;
+                        if (state.load(std::memory_order_acquire) == 2)
+                            break;
                     }
 
-                    if (state.load(std::memory_order_acquire) == 2) break;
+                    if (state.load(std::memory_order_acquire) == 2)
+                        break;
                 }
             }
 
             // final rdtsc after detecting finish
             const u64 final_now = __rdtsc();
-            if (final_now >= last) acc += (final_now - last);
+            if (final_now >= last)
+                acc += (final_now - last);
+
             t2_end.store(acc, std::memory_order_release);
         });
 
@@ -5614,7 +5669,7 @@ public:
         // this logic can be bypassed if the hypervisor downscales TSC in both cores, and that's precisely why we do now a Global Ratio
         const double local_ratio = double(t2_delta) / double(t1_delta);
 
-        if (local_ratio < 0.95 || local_ratio > 1.05) {
+        if (local_ratio < 0.95) {
             debug("TIMER: Detected a hypervisor intercepting TSC locally: ", local_ratio, "");
             return true;
         }
