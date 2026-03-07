@@ -1038,7 +1038,7 @@ static void general(
                 type = "Sandbox";
             }
 
-            if (type == VM::brands::NULL_BRAND || type == VM::brands::HYPERV_ROOT) {
+            if (type == "Unknown" || type == "Host machine") {
                 current_color = red;
             } else {
                 current_color = green;
