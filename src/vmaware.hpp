@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 804
  * - struct for internal memoization           => line 3131
  * - struct for internal utility functions     => line 3338
- * - struct for internal core components       => line 11752
+ * - struct for internal core components       => line 11807
  * - start of VM detection technique list      => line 4769
- * - start of public VM detection functions    => line 12117
- * - start of externally defined variables     => line 12904
+ * - start of public VM detection functions    => line 12172
+ * - start of externally defined variables     => line 12959
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3815,12 +3815,12 @@ public:
             if (!is_root_partition()) {
                 if (eax() == 11 && is_hyperv_present()) {
                     // Windows machine running under Hyper-V type 2
-                    debug("HYPER_X: Detected Hyper-V guest VM");
+                    debug("HYPER-X: Detected Hyper-V guest VM");
                     core::add(brand_enum::HYPERV);
                     state = HYPERV_REAL_VM;
                 }
                 else {
-                    debug("HYPER_X: Hyper-V is not active");
+                    debug("HYPER-X: Hyper-V is not active");
                     state = HYPERV_UNKNOWN;
                 }
             }
@@ -3828,15 +3828,50 @@ public:
                 const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
                 
                 if (util::find(brand_str, "KVM")) {
-                    debug("HYPER_X: Detected Hyper-V enlightenments");
+                    debug("HYPER-X: Detected Hyper-V enlightenments");
                     core::add(brand_enum::QEMU_KVM_HYPERV);
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
-                    debug("HYPER_X: Detected Hyper-V host machine");
-                    core::add(brand_enum::HYPERV_ROOT);
-                    state = HYPERV_ARTIFACT_VM;
+                    // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, bypassing some detections
+                    #if (x86_64)
+                        u8 idtr_buffer[10] = { 0 };
+                    #else
+                        u8 idtr_buffer[6] = { 0 };
+                    #endif
+
+                    // we know we're not using SEH here, it's on purpose, and doesn't matter the CPU core
+                    #if (CLANG || GCC)
+                        __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
+                    #elif (MSVC) && (x86_32)
+                        __asm { sidt idtr_buffer }
+                    #elif (MSVC) && (x86_64)
+                        #pragma pack(push, 1)
+                        struct {
+                            USHORT Limit;
+                            ULONG_PTR Base;
+                        } idtr;
+                        #pragma pack(pop)
+                        __sidt(&idtr);
+                        memcpy(idtr_buffer, &idtr, sizeof(idtr));
+                    #endif   
+
+                    ULONG_PTR idt_base = 0;
+                    memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
+
+                    // if running under Hyper-V (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
+                    // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
+                    // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
+                    if (idt_base == 0xfffff80000001000) {
+                        debug("HYPER-X: Detected Hyper-V host machine");
+                        core::add(brand_enum::HYPERV_ROOT);
+                        state = HYPERV_ARTIFACT_VM;
+                    }
+                    else {
+                        debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
+                        state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
+                    }
                 } 
             }
 
@@ -5084,7 +5119,6 @@ public:
      */
     [[nodiscard]] static bool timer() {
     #if (x86)
-
         /**
         * This is an explanation for any person, even if you don't have any kind of knowledge into this topic, without going depth into technical stuff.
         * 
@@ -5534,25 +5568,23 @@ public:
             u64 acc = 0;
             size_t idx = 0;
 
-            // Track sparse latency spikes that may represent "time debt repayment".
+            // Track sparse latency spikes that may represent "time debt repayment"
             // Hypervisors hiding VMEXIT cost often subtract cycles on most CPUID calls
-            // and restore them periodically, producing rare but large spikes.
+            // and restore them periodically, producing rare but large spikes
             u64 last_spike_idx = 0;
             u64 spike_count = 0;
 
             // for each leaf do CPUID_ITER samples, then repeat
             while (state.load(std::memory_order_acquire) != 2) {
                 for (size_t li = 0; li < n_leaves; ++li) {
-
                     const unsigned int leaf = leaves[li];
 
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
-
                         // read rdtsc and accumulate delta
                         const u64 now = __rdtsc();
 
-                        // If now < last, the hypervisor rewound the TSC or it's a very rare 64-bit overflow
-                        // we do not increment acc to ensure ratio t2_delta / t1_delta drops below 0.95
+                        // If now < last, the hypervisor rewound the TSC to a point before the start of the read, or it's a very rare 64-bit overflow
+                        // we do not increment acc to ensure ratio t2_delta / t1_delta drops below 0.95 so that is detected later if this happens
                         if (now >= last) {
                             acc += (now - last);
                         }
@@ -5561,7 +5593,6 @@ public:
 
                         // store latency if buffer has space
                         if (idx < samples.size()) {
-
                             u64 lat = cpuid(leaf);
 
                             // If a VMX Preemption Timer is delayed (firing after cpuid returns to bypass t3 inside our cpuid lambda),
@@ -5573,23 +5604,22 @@ public:
                             const u64 total_overhead = post - now;
 
                             // On bare metal, total_overhead is lat + 20 cycles which is the loop overhead
-                            // If total_overhead is > lat + 500, the hypervisor hid cycles outside the cpuid lambda.
+                            // If total_overhead is > lat + 500, the hypervisor hid cycles outside the cpuid lambda
                             if (total_overhead > (lat + 500)) {
                                 lat = total_overhead;
                             }
 
-                            // If the hypervisor hides VMEXIT latency statistically, most CPUID calls will appear
+                            // If the hypervisor hides VMEXIT latency statistically (this is, it only returns the time debt at random intervals), most CPUID calls will appear
                             // very fast while occasional spikes repay the hidden cycles. MAD filtering in calculate_latency() later
-                            // will discard these spikes as outliers, so we detect and redistribute them here
+                            // will discard these spikes as outliers, we detect and redistribute them here so that this situation doesn't happen
                             if (lat > cycle_threshold) {
-
                                 const size_t gap = idx - last_spike_idx;
                                 last_spike_idx = idx;
                                 spike_count++;
 
-                                // If spikes appear periodically relative to CPUID frequency,
-                                // treat them as time debt repayment instead of real interrupts
-                                if (gap > 1 && gap < 64 && spike_count > 2) {
+                                // If spikes appeared, even if we redistribute spikes correlated with legitimate interrupts, they are statistically filtered out
+                                // A time debt payment can't be statistically filtered because no matter how many cycles you downscale, you will always end up with the same latency you tried to hide
+                                if (gap > 1 && spike_count > 2) {
                                     const u64 repay = lat / gap;
 
                                     // distribute hidden cycles backwards across recent samples, exactly the ones were spikes didnt occur
@@ -5695,13 +5725,6 @@ public:
         // compared to the massive reduction (like 90%+) caused by exit hiding
         if (cycles_per_iter < 0.25) {
             debug("TIMER: Detected a hypervisor dowscaling TSC globally (IPC was impossible): ", cycles_per_iter);
-            return true;
-        }
-
-        // so if the patch substracted too much TSC cycles, the shaving might result in a near-zero or negative delta
-        // (handled by u64 overflow usually making it huge, but good shaves clamp to 0 or 1)
-        if (t1_delta < 1000) {
-            debug("TIMER: Detected a hypervisor downscaling TSC globally (time was stopped): ", t1_delta);
             return true;
         }
 #endif
@@ -6819,7 +6842,7 @@ public:
                     memcpy(gdtr, &_gdtr, sizeof(_gdtr));
                 #endif
                 }
-                __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+                __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP, default is disabled
 
                 ULONG_PTR gdt_base = 0;
                 memcpy(&gdt_base, &gdtr[2], sizeof(gdt_base));
@@ -6846,7 +6869,7 @@ public:
                         }
                     #endif
                     }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+                    __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP, default is disabled
 
                     memcpy(&ldt_val, ldtr_buf, sizeof(ldt_val));
                     if (ldtr_buf[0] != 0x00 && ldtr_buf[1] != 0x00) {
@@ -6884,7 +6907,7 @@ public:
                         memcpy(idtr_buffer, &idtr, sizeof(idtr));
                     #endif
                     }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP
+                    __except (EXCEPTION_EXECUTE_HANDLER) {} // CR4.UMIP, default is disabled
 
                     ULONG_PTR idt_base = 0;
                     memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
@@ -6920,7 +6943,6 @@ public:
                 }
             }
         #endif
-
     #endif
 
         return found;
