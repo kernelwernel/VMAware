@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 804
  * - struct for internal memoization           => line 3131
  * - struct for internal utility functions     => line 3338
- * - struct for internal core components       => line 11807
- * - start of VM detection technique list      => line 4769
- * - start of public VM detection functions    => line 12172
- * - start of externally defined variables     => line 12959
+ * - struct for internal core components       => line 11848
+ * - start of VM detection technique list      => line 4804
+ * - start of public VM detection functions    => line 12213
+ * - start of externally defined variables     => line 13000
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5564,15 +5564,15 @@ public:
 
             u64 last = __rdtsc();
 
+            // track the end of the previous measurement so that the hypervisor cant return spoofed values mid-loop
+            u64 prev_post = last;
+
             // local accumulator and local index into samples
             u64 acc = 0;
             size_t idx = 0;
 
-            // Track sparse latency spikes that may represent "time debt repayment"
-            // Hypervisors hiding VMEXIT cost often subtract cycles on most CPUID calls
-            // and restore them periodically, producing rare but large spikes
-            u64 last_spike_idx = 0;
-            u64 spike_count = 0;
+            // accumulator for spikes that represent potential time debt
+            u64 total_spike_debt = 0;
 
             // for each leaf do CPUID_ITER samples, then repeat
             while (state.load(std::memory_order_acquire) != 2) {
@@ -5580,69 +5580,88 @@ public:
                     const unsigned int leaf = leaves[li];
 
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
-                        // read rdtsc and accumulate delta
                         const u64 now = __rdtsc();
 
-                        // If now < last, the hypervisor rewound the TSC to a point before the start of the read, or it's a very rare 64-bit overflow
-                        // we do not increment acc to ensure ratio t2_delta / t1_delta drops below 0.95 so that is detected later if this happens
+                        // If now < last, the hypervisor rewound the TSC
                         if (now >= last) {
                             acc += (now - last);
                         }
-
                         last = now;
 
-                        // store latency if buffer has space
                         if (idx < samples.size()) {
                             u64 lat = cpuid(leaf);
+
+                            if (now > prev_post) {
+                                u64 gap = now - prev_post;
+
+                                // If the gap is massive, the hypervisor dumped the debt here or is legitimate interrupt latency
+                                // We pull it back into our latency measurement
+                                if (gap > 1000) { // 1000 is generous for a loop latency
+                                    lat += gap;
+                                }
+                            }
+
+                            // Capture post immediately to track the end of this measurement
+                            const u64 post = __rdtsc();
+                            prev_post = post;
 
                             // If a VMX Preemption Timer is delayed (firing after cpuid returns to bypass t3 inside our cpuid lambda),
                             // OR if the hypervisor intercepts RDTSC to restore the time debt instead of CPUID,
                             // this outer total_overhead will include that hidden latency because it's at the end of this for loop
-                            // if the hypervisor delays it even more, now will catch it, making the total_overhead check still detect it
                             // this means that no matter where the time debt is restored, VMAware will always be able to see the hidden latency
-                            const u64 post = __rdtsc();
                             const u64 total_overhead = post - now;
 
-                            // On bare metal, total_overhead is lat + 20 cycles which is the loop overhead
-                            // If total_overhead is > lat + 500, the hypervisor hid cycles outside the cpuid lambda
                             if (total_overhead > (lat + 500)) {
                                 lat = total_overhead;
                             }
 
-                            // If the hypervisor hides VMEXIT latency statistically (this is, it only returns the time debt at random intervals), most CPUID calls will appear
-                            // very fast while occasional spikes repay the hidden cycles. MAD filtering in calculate_latency() later
-                            // will discard these spikes as outliers, we detect and redistribute them here so that this situation doesn't happen
+                            // Instead of local redistribution (which fails on single huge spikes, hypervisor might try to pay the time debt but contaminating only one sample),
+                            // we separate "normal" samples from "spike" samples
                             if (lat > cycle_threshold) {
-                                const size_t gap = idx - last_spike_idx;
-                                last_spike_idx = idx;
-                                spike_count++;
+                                // This is likely a debt payment (or a massive interrupt)
+                                // we accumulate the FULL amount into debt
+                                total_spike_debt += lat;
 
-                                // If spikes appeared, even if we redistribute spikes correlated with legitimate interrupts, they are statistically filtered out
-                                // A time debt payment can't be statistically filtered because no matter how many cycles you downscale, you will always end up with the same latency you tried to hide
-                                if (gap > 1 && spike_count > 2) {
-                                    const u64 repay = lat / gap;
-
-                                    // distribute hidden cycles backwards across recent samples, exactly the ones were spikes didnt occur
-                                    for (size_t j = 1; j < gap && (idx >= j); ++j) {
-                                        samples[idx - j] += repay;
-                                    }
-
-                                    lat = repay;
-                                }
+                                // We store a "capped" value in the vector for now
+                                // if we stored the huge outlier, calculate_latency would discard it
+                                // by capping it, we ensure this sample is treated as "valid but slow" by our calculate_latency lambda
+                                // and the debt will be added back via the global lift later
+                                samples[idx] = cycle_threshold;
                             }
-
-                            samples[idx] = lat;
+                            else {
+                                // normal sample
+                                samples[idx] = lat;
+                            }
                         }
 
                         ++idx;
 
-                        // if thread 1 finished
-                        if (state.load(std::memory_order_acquire) == 2)
-                            break;
+                        if (state.load(std::memory_order_acquire) == 2) break;
                     }
+                    if (state.load(std::memory_order_acquire) == 2) break;
+                }
+            }
 
-                    if (state.load(std::memory_order_acquire) == 2)
-                        break;
+            // global lift
+            // we now take the total accumulated debt and spread it evenly across 
+            // ALL samples collected
+            // 
+            // if it was just noise/interrupts: 
+            //    20,000 cycles / 25,000 samples = +0.8 cycles per sample
+            //
+            // if it was hypervisor debt (must be paid totally, otherwise they would fail the global/local ratio check):
+            //    40,000,000 cycles / 25,000 samples = +1600 cycles per sample, always mathematically crossing the threshold no matter when they pay the time debt
+            // 
+            // this preserves the robust filtering of calculate_latency (it still handles small jitter),
+            // but effectively raises the sea level of all samples based on the debt to mathematically always catch the hidden vmexit latency
+            const size_t captured_count = (idx < samples.size()) ? idx : samples.size();
+
+            if (captured_count > 0 && total_spike_debt > 0) {
+                // we divide debt by the number of samples that actually contributed to the measurement period
+                u64 lift = total_spike_debt / captured_count;
+
+                for (size_t i = 0; i < captured_count; ++i) {
+                    samples[i] += lift;
                 }
             }
 
