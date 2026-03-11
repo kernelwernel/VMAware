@@ -80,5 +80,9 @@ There's a few steps that should be taken:
 Depending on how big the change is, if the change is fairly small then just a simple PR is fine. But if it has hundreds of lines of code changes then it's best to create an issue prior to even starting to write the code, or you can discuss it with us, either works.
 
 
+## I want to contribute in any way but I'm not sure what to do or where to start
+One of the main demands at the moment is creating cross-compatibility for techniques as much as possible. Many techniques in the library are platform specific, but some of those can have shared detection vectors that are implementable on other platforms as well. For example, our firmware technique used to be limited to Windows but we've extended it to support Linux as well. This is a good way to start contributing to the project, so pick any technique to your liking that's applicable to a cross-platform implementation and we'll more than likely accept your change with open arms. You don't need to understand the whole architecture of the project, just a quick glance at a single technique function is all you need. Additionally, we have a [TODO](TODO.md) file at the root of the project that explains the things we need to do, although it's a bit outdated and rarely ever used. Either paths are a good starting point.
+
+
 ## Notes 
 If you have any questions or inquiries, our contact details are in the README.
