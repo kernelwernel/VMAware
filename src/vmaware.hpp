@@ -4508,19 +4508,18 @@ public:
             // run all the techniques
             const u16 score = core::run_all(flags);
 
-            brand_array_t active_brands = {};
-            brand_list_t brand_return = {};
-            brand_return.reserve(MAX_BRANDS);
+            brand_list_t active_brands = {};
+            active_brands.reserve(MAX_BRANDS);
 
             size_t active_count = 0;
 
             for (size_t i = 0; i < MAX_BRANDS; ++i) {
                 if (core::brand_scoreboard.at(i).score > 0) {
-                    active_brands.at(i) = std::make_pair(core::brand_scoreboard.at(i).name, core::brand_scoreboard.at(i).score);
+                    active_brands.push_back(std::make_pair(core::brand_scoreboard.at(i).name, core::brand_scoreboard.at(i).score));
                     active_count++;
                 }
             }
-            
+    
             #ifdef __VMAWARE_DEBUG__
                 for (const auto brand : active_brands) {
                     debug("pre-processed scoreboard: ", int(brand.second), " : ", brands::brand_enum_to_string(brand.first));
@@ -4539,9 +4538,9 @@ public:
 
             // if all brands have a point of 0, return "Unknown"
             if (active_count == 0) {                        
-                brand_return.push_back({brand_enum::NULL_BRAND, 1});
-                memo::brand_list::store(brand_return);
-                return brand_return;
+                active_brands.push_back({brand_enum::NULL_BRAND, 1});
+                memo::brand_list::store(active_brands);
+                return active_brands;
             }
 
             // if there's only a single brand, return it immediately
@@ -4549,26 +4548,15 @@ public:
             // but we must also nullify the result if the score is above 0, 
             // which would most likely indicate a hardened VM instead and return "Unknown".
             if (active_count == 1) {
-                enum brand_enum initial_brand = brand_enum::INVALID;
+                const enum brand_enum brand = active_brands.front().first;
 
-                for (const auto brand : active_brands) {
-                    if (brand.second == 0) {
-                        continue;
-                    }
-
-                    if (brand.first == brand_enum::HYPERV_ROOT && score > 0) {
-                        brand_return.push_back({brand_enum::NULL_BRAND, 1});
-                        memo::brand_list::store(brand_return);
-                        return brand_return;
-                    }
-    
-                    initial_brand = brand.first;
-                    break;
+                if (brand == brand_enum::HYPERV_ROOT && score > 0) {
+                    active_brands.push_back({brand_enum::NULL_BRAND, 1});
+                    remove(brand_enum::HYPERV_ROOT);
                 }
 
-                brand_return.push_back({initial_brand, 1});
-                memo::brand_list::store(brand_return);
-                return brand_return;
+                memo::brand_list::store(active_brands);
+                return active_brands;
             }
 
             // remove Hyper-V artifacts and Unknown if found with other brands
@@ -4662,18 +4650,18 @@ public:
 
             for (const auto brand : active_brands) {
                 if (brand.second > 0) {
-                    brand_return.push_back({brand.first, brand.second});
+                    active_brands.push_back({brand.first, brand.second});
                 }
             }
 
         #ifdef __VMAWARE_DEBUG__
-            for (const auto brand : brand_return) {
+            for (const auto brand : active_brands) {
                 debug("post-processed scoreboard: ", brand.second, " : ", brands::brand_enum_to_string(brand.first));
             }
         #endif
 
-            memo::brand_list::store(brand_return);
-            return brand_return;
+            memo::brand_list::store(active_brands);
+            return active_brands;
         }
 
         static const char* brand_enum_to_string(const brand_enum brand) {
