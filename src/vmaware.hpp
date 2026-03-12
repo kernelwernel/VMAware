@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 804
  * - struct for internal memoization           => line 3131
  * - struct for internal utility functions     => line 3338
- * - struct for internal core components       => line 11848
+ * - struct for internal core components       => line 11827
  * - start of VM detection technique list      => line 4804
- * - start of public VM detection functions    => line 12213
- * - start of externally defined variables     => line 13000
+ * - start of public VM detection functions    => line 12192
+ * - start of externally defined variables     => line 12979
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5187,7 +5187,8 @@ public:
         * that the CPU takes to switch from user-mode (VMAware) to VMM (hypervisor), this latency is often called the "vmexit" latency
         * 
         * To give the worst nightmare, VMAware runs all the aforementioned checks in parallel, trillions of times in a single loop, so the hypervisor finds a paradox: 
-        * Either they downclock TSC (failing the local/global ratio checks), or either they pay the time debt (exposing the vmexit latency), they cant do both
+        * Either the hypervisor downclock TSC (failing the local/global ratio checks), or either the hypervisor pays the time debt (exposing the vmexit latency)
+        * Only solution? Maybe making the whole VM a 52% slower? Who knows...
         */
 
         #if (MSVC)
@@ -5195,8 +5196,6 @@ public:
         #else
             #define COMPILER_BARRIER() asm volatile("" ::: "memory")
         #endif
-
-        // ================ INITIALIZATION STUFF ================
 
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
@@ -5218,6 +5217,7 @@ public:
         }
 
         constexpr u64 ITER_XOR = 150000000ULL;
+        u64 actual_iters = ITER_XOR; // actual_iters is ITER_XOR + any extra XOR instructions vmaware could run before collecting enough cpuid samples
         constexpr size_t CPUID_ITER = 100; // per leaf
         // we try many leaves so that it's extremely heavy to recode every cpuid path to exit quickly enough so that it doesn't trigger the cycle threshold
         static constexpr unsigned int leaves[] = {
@@ -5243,7 +5243,7 @@ public:
         std::atomic<int> state(0);
         std::atomic<u64> t1_start(0), t1_end(0);
         std::atomic<u64> t2_end(0);
-        std::vector<u64> samples(100000, 0);
+        std::vector<u64> samples(200000, 0);
 
         struct affinity_cookie {
             bool valid{ false };
@@ -5319,25 +5319,10 @@ public:
             // the idea is to let rdtscp internally wait until cpuid is executed rather than using another memory barrier
             const u64 t2 = __rdtscp(&aux);
 
-            // ensure the read of t2 doesn't bleed into future instructions, also force vmx preemption timers to fire here
+            // ensure the read of t2 doesn't bleed into future instructions
             _mm_lfence();
-            const u64 t3 = __rdtsc(); // capture tail
-
-            // Create a dependency on regs so the cast above isn't ignored
-            (void)regs[0];
-
-            u64 delta = t2 - t1;
-            const u64 tail = t3 - t2;
-
-            // normal tail (RDTSC + LFENCE) is about 20-40 cycles
-            // if tail is massive, it means the hypervisor paused execution AFTER the t2 measurement
-            // to restore the TSC offset. Since it had to hide it, now its trying to restore it
-            // so that it doesn't trigger our "global ratio" check (will be explained later)
-            if (tail > 500) {
-                delta += tail;
-            }
-
-            return delta;
+          
+            return t2 - t1;
         #else
             // same logic of above
             unsigned int lo1, hi1, lo2, hi2, lo3, hi3;
@@ -5354,21 +5339,11 @@ public:
 
             COMPILER_BARRIER();
             asm volatile("rdtscp" : "=a"(lo2), "=d"(hi2) :: "rcx", "memory");
-
-            // tail
             asm volatile("lfence" ::: "memory");
-            asm volatile("rdtsc" : "=a"(lo3), "=d"(hi3) :: "memory");
 
             const u64 t1 = (u64(hi1) << 32) | lo1;
             const u64 t2 = (u64(hi2) << 32) | lo2;
-            const u64 t3 = (u64(hi3) << 32) | lo3;
-
-            u64 delta = t2 - t1;
-            const u64 tail = t3 - t2;
-
-            if (tail > 500) {
-                delta += tail;
-            }
+            const u64 delta = t2 - t1;
 
             return delta;
         #endif
@@ -5527,10 +5502,21 @@ public:
             state.store(1, std::memory_order_release);
 
             volatile u64 x = 0xDEADBEEFCAFEBABEULL;
-            for (u64 i = 0; i < ITER_XOR; ++i) {
+            u64 i = 0;
+            for (; i < ITER_XOR; ++i) {
                 x ^= i;
                 x = (x << 1) ^ (x >> 3);
             }
+
+            // Loop extensively without bottlenecking standard execution to guarantee Thread 2 hits the desired cpuid threshold limit
+            while (state.load(std::memory_order_acquire) == 1) {
+                for (int j = 0; j < 1000; ++j) {
+                    x ^= i;
+                    x = (x << 1) ^ (x >> 3);
+                    ++i;
+                }
+            }
+            actual_iters = i;
             VMAWARE_UNUSED(x);
 
             const u64 end = __rdtsc();
@@ -5564,7 +5550,7 @@ public:
                     for (unsigned i = 0; i < CPUID_ITER; ++i) {
                         const u64 now = __rdtsc();
 
-                        // If now < last, the hypervisor rewound the TSC
+                        // If now < last, the hypervisor rewound the TSC too much, we ignore it and let it decrement this thread's TSC to be caught by ratio checks later
                         if (now >= last) {
                             acc += (now - last);
                         }
@@ -5573,27 +5559,26 @@ public:
                         if (idx < samples.size()) {
                             u64 lat = cpuid(leaf);
 
+                            // the gap check catches debt injected between our measurements (external window)
                             if (now > prev_post) {
                                 u64 gap = now - prev_post;
 
                                 // If the gap is massive, the hypervisor dumped the debt here or is legitimate interrupt latency
-                                // We pull it back into our latency measurement
-                                if (gap > 1000) { // 1000 is generous for a loop latency
+                                // we pull it back into our latency measurement
+                                if (gap > 400) { // 500 is generous for loop latency
                                     lat += gap;
                                 }
                             }
 
-                            // Capture post immediately to track the end of this measurement
+                            // capture post immediately to track the end of this measurement
                             const u64 post = __rdtsc();
                             prev_post = post;
 
-                            // If a VMX Preemption Timer is delayed (firing after cpuid returns to bypass t3 inside our cpuid lambda),
-                            // OR if the hypervisor intercepts RDTSC to restore the time debt instead of CPUID,
-                            // this outer total_overhead will include that hidden latency because it's at the end of this for loop
-                            // this means that no matter where the time debt is restored, VMAware will always be able to see the hidden latency
                             const u64 total_overhead = post - now;
 
-                            if (total_overhead > (lat + 500)) {
+                            // total_overhead catches debt injected inside the function call (internal window)
+                            // together with the gap, its physically impossible for a hypervisor to hide the time debt
+                            if (total_overhead > (lat + 400)) {
                                 lat = total_overhead;
                             }
 
@@ -5618,11 +5603,24 @@ public:
 
                         ++idx;
 
+                        // Force Thread 1 to finalize when minimum sample quota is met
+                        // this makes impossible for the hypervisor to pause thread 2 so that it only samples a few cpuid, thus only needed to downlock a few million TSC cycles
+                        // enough to bypass ratio checks
+                        if (idx == samples.size() && state.load(std::memory_order_relaxed) == 1) {
+                            state.store(3, std::memory_order_release);
+                        }
+
+                        // if thread1 finishes
                         if (state.load(std::memory_order_acquire) == 2) break;
                     }
                     if (state.load(std::memory_order_acquire) == 2) break;
                 }
             }
+
+            // final rdtsc after detecting finish
+            const u64 final_now = __rdtsc();
+            if (final_now >= last)
+                acc += (final_now - last);
 
             // global lift
             // we now take the total accumulated debt and spread it evenly across 
@@ -5631,26 +5629,21 @@ public:
             // if it was just noise/interrupts: 
             //    20,000 cycles / 25,000 samples = +0.8 cycles per sample
             //
-            // if it was hypervisor debt (must be paid totally, otherwise they would fail the global/local ratio check):
+            // if it was hypervisor debt (must be paid almost totally, otherwise they would fail the global/local ratio check):
             //    40,000,000 cycles / 25,000 samples = +1600 cycles per sample, always mathematically crossing the threshold no matter when they pay the time debt
             // 
             // this preserves the robust filtering of calculate_latency (it still handles small jitter),
             // but effectively raises the sea level of all samples based on the debt to mathematically always catch the hidden vmexit latency
             const size_t captured_count = (idx < samples.size()) ? idx : samples.size();
-
+            
             if (captured_count > 0 && total_spike_debt > 0) {
                 // we divide debt by the number of samples that actually contributed to the measurement period
-                u64 lift = total_spike_debt / captured_count;
+                const u64 lift = total_spike_debt / captured_count;
 
                 for (size_t i = 0; i < captured_count; ++i) {
                     samples[i] += lift;
                 }
             }
-
-            // final rdtsc after detecting finish
-            const u64 final_now = __rdtsc();
-            if (final_now >= last)
-                acc += (final_now - last);
 
             t2_end.store(acc, std::memory_order_release);
         });
@@ -5676,12 +5669,10 @@ public:
         std::vector<u64> used;
         for (u64 s : samples) if (s != 0) used.push_back(s);
         const u64 cpuid_latency = calculate_latency(used);
-        const double cycles_per_iter = static_cast<double>(t1_delta) / static_cast<double>(ITER_XOR);
 
         debug("TIMER: T1 delta:     ", t1_delta);
         debug("TIMER: T2 delta:     ", t2_delta);
         debug("TIMER: VMEXIT latency:    ", cpuid_latency);
-        debug("TIMER: IPC: ", cycles_per_iter);
 
         if (cpuid_latency >= cycle_threshold) {
             debug("TIMER: Detected a VMEXIT on CPUID");
@@ -5709,22 +5700,10 @@ public:
         // Thread 1 ran this dependency chain, x ^= i; x = (x << 1) ^ (x >> 3)
         // because each instruction depends on the result of the previous one, the CPU cannot execute these in parallel
         // on bare metal, a dependent ALU operation takes a minimum number of core cycles, for this is typically 2-4 per iteration
-        // Even with an extreme 6.0GHz Turbo on a 2.0GHz Base Clock (3x ratio), this results in at least 0.7 to 1.0 TSC cycles per iteration
+        const double cycles_per_iter = static_cast<double>(t1_delta) / static_cast<double>(ITER_XOR);
+        debug("TIMER: Cycles per XOR iteration (less is faster): ", cycles_per_iter);
 
-        // If a hypervisor is "shaving" cycles globally to hide the latency of Thread 2's CPUID spam,
-        // it subtracts time from the global counter. This causes Thread 1 (which caused no exits)
-        // to appear to have finished its work instantly or impossibly fast. 
-        // If thread 1 reports finishing 100000000 dependent iterations in only 10000000 TSC cycles (so 0.1 cycles/iter), the CPU effectively ran at 10 instructions per cycle on a dependent chain 
-        // which is basically impossible on x86 silicon and confirms the TSC was manipulated
-
-        // 0.25 is an extremely conservative threshold but there's no need to raise it
-        // because mathematically talking, considering the number of times cpuid is called in thread 2, they will pass this limit even with a patch that downscales only 100 cycles per cpuid call
-        // a value this low implies the code ran 4x faster than the theoretical limit of the silicon,
-        // or roughly 12x faster than the actual core clock speed
-       
-        // This is immune to turbo/throttling noise because those variances (10-30%) are negligible 
-        // compared to the massive reduction (like 90%+) caused by exit hiding
-        if (cycles_per_iter < 0.25) {
+        if (cycles_per_iter <= 2 || cycles_per_iter >= 8.0) {
             debug("TIMER: Detected a hypervisor dowscaling TSC globally (IPC was impossible): ", cycles_per_iter);
             return true;
         }
