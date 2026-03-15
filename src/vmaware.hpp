@@ -589,6 +589,7 @@ public:
         CPU_HEURISTIC,
         CLOCK,
         MSR,
+        VMCALL,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -11364,6 +11365,102 @@ public:
 
         return false;
     }
+
+
+    /**
+     * @brief Check whether KVM attempts to patch a mismatched hypercall instruction
+     * @link https://lists.nongnu.org/archive/html/qemu-devel/2025-07/msg05044.html
+     * @category Windows
+     * @implements VM::VMCALL
+     */
+    [[nodiscard]] static bool vmcall() {
+    #if (!x86)
+        return false;
+    #endif
+        typedef NTSTATUS(__stdcall* NtAllocateVirtualMemoryFn)(
+            HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits,
+            PSIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
+
+        typedef NTSTATUS(__stdcall* NtProtectVirtualMemoryFn)(
+            HANDLE ProcessHandle, PVOID* BaseAddress, PSIZE_T NumberOfBytesToProtect,
+            ULONG NewAccessProtection, PULONG OldAccessProtection);
+
+        typedef NTSTATUS(__stdcall* NtFreeVirtualMemoryFn)(
+            HANDLE ProcessHandle, PVOID* BaseAddress, PSIZE_T RegionSize, ULONG FreeType);
+
+
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFreeVirtualMemory" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemoryFn>(funcs[0]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<NtProtectVirtualMemoryFn>(funcs[1]);
+        const auto nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemoryFn>(funcs[2]);
+
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_free_virtual_memory)
+            return false;
+
+        // VMCALL (0F 01 C1) + RET (C3) and VMMCALL (0F 01 D9) + RET (C3)
+        constexpr BYTE opcodes[2][4] = {
+            { 0x0F, 0x01, 0xC1, 0xC3 },
+            { 0x0F, 0x01, 0xD9, 0xC3 }
+        };
+
+        const HANDLE current_process = reinterpret_cast<HANDLE>(-1);
+        bool is_kvm_detected = false;
+
+        for (int i = 0; i < 2; ++i) {
+            PVOID base_address = nullptr;
+            SIZE_T region_size = 0x1000;
+
+            // memory as RWX initially to write the opcode
+            NTSTATUS status = nt_allocate_virtual_memory(
+                current_process, &base_address, 0, &region_size,
+                MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+            if (!NT_SUCCESS(status))
+                continue;
+
+            // copy stuff to page
+            memcpy(base_address, opcodes[i], sizeof(opcodes[i]));
+
+            ULONG old_protect = 0;
+            PVOID protect_address = base_address;
+            SIZE_T protect_size = region_size;
+
+            // change memory protection to RX because it is what breaks KVM's instruction patching attempt
+            status = nt_protect_virtual_memory(
+                current_process, &protect_address, &protect_size,
+                PAGE_EXECUTE_READ, &old_protect);
+
+            if (NT_SUCCESS(status)) {
+                DWORD exception_status = 0;
+                __try {
+                    const auto execute_hypercall = reinterpret_cast<void(*)()>(base_address);
+                    execute_hypercall();
+                }
+                __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
+                    // if it's #PF instead of #UD then KVM quirk is present
+                    if (exception_status == EXCEPTION_ACCESS_VIOLATION) {
+                        is_kvm_detected = true;
+                    }
+                }
+            }
+
+            // MEM_RELEASE requires RegionSize to be strictly 0 for NtFreeVirtualMemory
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+
+            if (is_kvm_detected) {
+                return core::add(brand_enum::KVM);
+            }
+        }
+
+        return false;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
  
@@ -12073,6 +12170,7 @@ public: // START OF PUBLIC FUNCTIONS
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
             case MSR: return "MSR";
+            case VMCALL: return "VMCALL";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
             case ALL: return "ALL"; 
@@ -12602,14 +12700,14 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
         // START OF TECHNIQUE TABLE
         #if (WINDOWS)
             {VM::TRAP, {100, VM::trap}},
-            {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
             {VM::NVRAM, {100, VM::nvram}},
+            {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
             {VM::CLOCK, {45, VM::clock}},
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
+            {VM::VMCALL, {100, VM::vmcall}},
             {VM::MSR, {100, VM::msr}},
-            {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
             {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::EDID, {100, VM::edid}},
             {VM::IVSHMEM, {100, VM::ivshmem}},

@@ -1001,6 +1001,7 @@ static void general(
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
     checker(VM::MSR, "model specific registers");
+    checker(VM::VMCALL, "KVM guest injection");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
@@ -1207,7 +1208,7 @@ static void general(
                 note << 
                 " If you found a false positive, please make sure to create\n \
               an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
-// ^ do not modify the space above
+        // ^ do not modify the space above
         }
     }
 
