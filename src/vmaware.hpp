@@ -569,7 +569,7 @@ public:
         DISPLAY,
         DLL,
         VMWARE_BACKDOOR,
-        WINE_FUNC,
+        WINE,
         VIRTUAL_REGISTRY,
         MUTEX,
         DEVICE_STRING,
@@ -7668,7 +7668,7 @@ public:
      * @category Windows
      * @implements VM::WINE_FUNC
      */
-    [[nodiscard]] static bool wine_function() {
+    [[nodiscard]] static bool wine() {
         #if (_WIN32_WINNT < _WIN32_WINNT_WIN8)
             return false;
         #else
@@ -12103,7 +12103,7 @@ public: // START OF PUBLIC FUNCTIONS
             case HWMON: return "HWMON";
             case DLL: return "DLL";
             case HWMODEL: return "HWMODEL";
-            case WINE_FUNC: return "WINE_FUNC";
+            case WINE: return "WINE_FUNC";
             case POWER_CAPABILITIES: return "POWER_CAPABILITIES";
             case PROCESSES: return "PROCESSES";
             case LINUX_USER_HOST: return "LINUX_USER_HOST";
@@ -12701,26 +12701,27 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
         #if (WINDOWS)
             {VM::TRAP, {100, VM::trap}},
             {VM::NVRAM, {100, VM::nvram}},
+            {VM::HYPERVISOR_QUERY, {100, VM::hypervisor_query}},
             {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
+            {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
             {VM::CLOCK, {45, VM::clock}},
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
-            {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
-            {VM::BOOT_LOGO, {100, VM::boot_logo}},
+            {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
             {VM::VMCALL, {100, VM::vmcall}},
             {VM::MSR, {100, VM::msr}},
-            {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
+            {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::EDID, {100, VM::edid}},
+            {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
+            {VM::WINE, {100, VM::wine}},
+            {VM::DBVM_HYPERCALL, {150, VM::dbvm_hypercall}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
+            {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::DRIVERS, {100, VM::drivers}},
             {VM::HANDLES, {100, VM::device_handles}},
-            {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::KERNEL_OBJECTS, {100, VM::kernel_objects}},
-            {VM::HYPERVISOR_QUERY, {100, VM::hypervisor_query}},
             {VM::AUDIO, {25, VM::audio}},
             {VM::DISPLAY, {25, VM::display}},
-            {VM::WINE_FUNC, {100, VM::wine_function}},
             {VM::DLL, {50, VM::dll}},
-            {VM::DBVM_HYPERCALL, {150, VM::dbvm_hypercall}},
             {VM::UD, {100, VM::ud}},
             {VM::BLOCKSTEP, {100, VM::blockstep}},
             {VM::VMWARE_BACKDOOR, {100, VM::vmware_backdoor}},

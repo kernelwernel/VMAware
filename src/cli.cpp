@@ -931,7 +931,7 @@ static void general(
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
-    checker(VM::WINE_FUNC, "Wine");
+    checker(VM::WINE, "Wine");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
