@@ -1319,7 +1319,6 @@ public:
             const char* str = result.model_name.c_str();
             size_t best_len = 0;
             u32 z_series_threads = 0;
-            double found_clock = 0.0;
 
             const auto hash_func = hasher::get();
 
@@ -5156,9 +5155,7 @@ public:
 
 
     /**
-     * @brief Check for signatures in leaf 0x40000001 in CPUID
-     * @link https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/shared/hvgdk_mini/hv_hypervisor_interface.htm
-     * @link https://github.com/ionescu007/SimpleVisor/blob/master/shvvp.c
+     * @brief Check for CPUID signatures that reveal the presence of a hypervisor
      * @category x86
      * @implements VM::CPUID_SIGNATURE
      */
@@ -5166,16 +5163,89 @@ public:
     #if (!x86)
         return false;
     #else
-        u32 eax, unused = 0;
-        cpu::cpuid(eax, unused, unused, unused, 0x40000001);
-        VMAWARE_UNUSED(unused);
+        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+        cpu::cpuid(eax, ebx, ecx, edx, 0x40000001);
 
         constexpr u32 simplevisor = 0x00766853; // " vhS"
 
         debug("CPUID_SIGNATURE: eax = ", eax);
 
-        if (eax == simplevisor)
+        if (eax == simplevisor) {
             return core::add(brand_enum::SIMPLEVISOR);
+        }
+
+        if (!cpu::is_intel()) {
+            return false;
+        }
+
+        const bool has_leaf_b = cpu::is_leaf_supported(0x0B);
+        const bool has_leaf_1f = cpu::is_leaf_supported(0x1F);
+
+        // If neither extended topology leaf is supported, we can't perform the check
+        if (!has_leaf_b && !has_leaf_1f) {
+            return false;
+        }
+
+        u32 l1_eax = 0, l1_ebx = 0, l1_ecx = 0, l1_edx = 0;
+        u32 vb_eax = 0, vb_ebx = 0, vb_ecx = 0, vb_edx = 0;
+        u32 v1f_eax = 0, v1f_ebx = 0, v1f_ecx = 0, v1f_edx = 0;
+
+        u32 aba_start = 0, aba_end = 0;
+        u32 unused = 0;
+        int retries = 0;
+
+        // triple-read ABA pattern to detect thread migration and bounded to 8 retries
+        // leaf 1's Initial APIC ID is the ABA guard
+        do {
+            cpu::cpuid(l1_eax, l1_ebx, l1_ecx, l1_edx, 1, 0);
+            aba_start = (l1_ebx >> 24) & 0xFF; // Initial APIC ID
+
+            if (has_leaf_b)  cpu::cpuid(vb_eax, vb_ebx, vb_ecx, vb_edx, 0x0B, 0);
+            if (has_leaf_1f) cpu::cpuid(v1f_eax, v1f_ebx, v1f_ecx, v1f_edx, 0x1F, 0);
+
+            cpu::cpuid(unused, l1_ebx, unused, unused, 1, 0);
+            aba_end = (l1_ebx >> 24) & 0xFF;
+        } while (aba_start != aba_end && ++retries < 8);
+
+        // If we hit the retry limit and the thread is still migrating, 
+        // abort the check to prevent false positives
+        if (aba_start != aba_end) {
+            return false;
+        }
+
+        const u32 initial_apic_id = aba_start;
+
+        // check Leaf 0x0B against Leaf 1
+        if (has_leaf_b) {
+            const u32 vb_level = (vb_ecx >> 8) & 0xFF;
+
+            if (vb_level != 0) {
+                // if x2APIC ID is < 255, Initial APIC ID must match exactly
+                if (vb_edx < 255 && (vb_edx & 0xFF) != initial_apic_id) {
+                    return true;
+                }
+            }
+        }
+
+        // check Leaf 0x1F against Leaf 1, and cross-check with 0x0B
+        if (has_leaf_1f) {
+            const u32 v1f_level = (v1f_ecx >> 8) & 0xFF;
+
+            if (v1f_level != 0) {
+                // if x2APIC ID is < 255, Initial APIC ID must match exactly
+                if (v1f_edx < 255 && (v1f_edx & 0xFF) != initial_apic_id) {
+                    return true;
+                }
+
+                // cross-check 0x0B vs 0x1F if both are supported and valid
+                if (has_leaf_b) {
+                    const u32 vb_level = (vb_ecx >> 8) & 0xFF;
+                    if (vb_level != 0 && vb_edx != v1f_edx) {
+                        return true;
+                    }
+                }
+            }
+        }
 
         return false;
     #endif
@@ -5214,7 +5284,7 @@ public:
      */
     [[nodiscard]] static bool timer() {
     #if (x86)
-        u8 cycle_threshold = 200;
+        u16 cycle_threshold = 200;
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
@@ -11377,17 +11447,9 @@ public:
     #if (!x86)
         return false;
     #endif
-        typedef NTSTATUS(__stdcall* NtAllocateVirtualMemoryFn)(
-            HANDLE ProcessHandle, PVOID* BaseAddress, ULONG_PTR ZeroBits,
-            PSIZE_T RegionSize, ULONG AllocationType, ULONG Protect);
-
-        typedef NTSTATUS(__stdcall* NtProtectVirtualMemoryFn)(
-            HANDLE ProcessHandle, PVOID* BaseAddress, PSIZE_T NumberOfBytesToProtect,
-            ULONG NewAccessProtection, PULONG OldAccessProtection);
-
-        typedef NTSTATUS(__stdcall* NtFreeVirtualMemoryFn)(
-            HANDLE ProcessHandle, PVOID* BaseAddress, PSIZE_T RegionSize, ULONG FreeType);
-
+        using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
 
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
@@ -11396,9 +11458,9 @@ public:
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        const auto nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemoryFn>(funcs[0]);
-        const auto nt_protect_virtual_memory = reinterpret_cast<NtProtectVirtualMemoryFn>(funcs[1]);
-        const auto nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemoryFn>(funcs[2]);
+        const auto nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[1]);
+        const auto nt_free_virtual_memory = reinterpret_cast<nt_free_virtual_memory_t>(funcs[2]);
 
         if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_free_virtual_memory)
             return false;
@@ -11441,6 +11503,7 @@ public:
                 __try {
                     const auto execute_hypercall = reinterpret_cast<void(*)()>(base_address);
                     execute_hypercall();
+                    is_kvm_detected = true; // if no exception occurs then KVM handled it
                 }
                 __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
                     // if it's #PF instead of #UD then KVM quirk is present
@@ -11450,7 +11513,6 @@ public:
                 }
             }
 
-            // MEM_RELEASE requires RegionSize to be strictly 0 for NtFreeVirtualMemory
             SIZE_T free_size = 0;
             nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
 
