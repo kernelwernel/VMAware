@@ -1001,7 +1001,7 @@ static void general(
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
     checker(VM::MSR, "model specific registers");
-    checker(VM::VMCALL, "KVM guest injection");
+    checker(VM::KVM_INTERCEPTION, "KVM interception");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 

@@ -589,7 +589,7 @@ public:
         CPU_HEURISTIC,
         CLOCK,
         MSR,
-        VMCALL,
+        KVM_INTERCEPTION,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -3700,7 +3700,7 @@ public:
                 }
 
                 const char* names[] = { "GetProcessInformation" };
-                void* funcs[1] = { nullptr };
+                void* funcs[ARRAYSIZE(names)] = {};
                 util::get_function_address(ntdll, names, funcs, 1);
 
                 get_process_information get_proc_info = reinterpret_cast<get_process_information>(funcs[0]);
@@ -8814,7 +8814,7 @@ public:
         if (!ntdll) return false;
 
         const char* names[] = { "RtlInitUnicodeString", "NtOpenFile", "NtClose" };
-        void* funcs[sizeof(names) / sizeof(names[0])] = {};
+        void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, (ULONG)(sizeof(names) / sizeof(names[0])));
 
         const auto rtl_init_unicode_string = reinterpret_cast<void(__stdcall*)(PUNICODE_STRING, PCWSTR)>(funcs[0]);
@@ -11464,28 +11464,32 @@ public:
      * @brief Check whether KVM attempts to patch a mismatched hypercall instruction
      * @link https://lists.nongnu.org/archive/html/qemu-devel/2025-07/msg05044.html
      * @category Windows
-     * @implements VM::VMCALL
+     * @implements VM::KVM_INTERCEPTION
      */
-    [[nodiscard]] static bool vmcall() {
+    [[nodiscard]] static bool kvm_interception() {
     #if (!x86)
         return false;
     #endif
         using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
         using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
         using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using nt_flush_instruction_cache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        using nt_close_t = NTSTATUS(__stdcall*)(HANDLE);
 
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
-        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFreeVirtualMemory" };
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFreeVirtualMemory", "NtFlushInstructionCache", "NtClose" };
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
         const auto nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
         const auto nt_protect_virtual_memory = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[1]);
         const auto nt_free_virtual_memory = reinterpret_cast<nt_free_virtual_memory_t>(funcs[2]);
+        const auto nt_flush_instruction_cache = reinterpret_cast<nt_flush_instruction_cache_t>(funcs[3]);
+        const auto nt_close = reinterpret_cast<nt_close_t>(funcs[4]);
 
-        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_free_virtual_memory)
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_free_virtual_memory || !nt_flush_instruction_cache || !nt_close)
             return false;
 
         // VMCALL (0F 01 C1) + RET (C3) and VMMCALL (0F 01 D9) + RET (C3)
@@ -11495,7 +11499,8 @@ public:
         };
 
         const HANDLE current_process = reinterpret_cast<HANDLE>(-1);
-        bool is_kvm_detected = false;
+        bool is_kvm_detected = false; // KVM-specific behavior, detector is 100% sure is running under KVM
+        bool generic_hypervisor = false; // behavior present in KVM but that other hypervisors might replicate as well
 
         for (int i = 0; i < 2; ++i) {
             PVOID base_address = nullptr;
@@ -11526,11 +11531,13 @@ public:
                 __try {
                     const auto execute_hypercall = reinterpret_cast<void(*)()>(base_address);
                     execute_hypercall();
-                    is_kvm_detected = true; // if no exception occurs then a hypervisor handled it, since this is default KVM behavior we guess it's KVM
+                    generic_hypervisor = true; // if no exception occurs then a hypervisor handled it, this is default KVM behavior
+                    debug("KVM_INTERCEPTION: Detected a hypervisor intercepting hypercalls");
                 }
                 __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
-                    // if it's #PF instead of #UD then KVM quirk is present
+                    // if it's #PF instead of #UD then old KVM quirk is present
                     if (exception_status == EXCEPTION_ACCESS_VIOLATION) {
+                        debug("KVM_INTERCEPTION: Detected KVM attempting to patch instructions on the fly");
                         is_kvm_detected = true;
                     }
                 }
@@ -11542,6 +11549,108 @@ public:
             if (is_kvm_detected) {
                 return core::add(brand_enum::KVM);
             }
+            else if (generic_hypervisor) {
+                return true;
+            }
+        }
+
+        // we will run amd only stuff
+        if (!cpu::is_amd()) {
+            return false;
+        }
+
+        struct state {
+            volatile int in_asm;
+            volatile int exception_seen;
+        };
+
+        static thread_local state* tls_state = nullptr;
+
+        state state{};
+        tls_state = &state;
+
+        // lambda to capture exceptions
+        PVECTORED_EXCEPTION_HANDLER handler =
+            +[](PEXCEPTION_POINTERS ep) -> LONG {
+            if (!tls_state || !tls_state->in_asm)
+                return EXCEPTION_CONTINUE_SEARCH;
+
+            const DWORD code = ep->ExceptionRecord->ExceptionCode;
+            if (code == EXCEPTION_ILLEGAL_INSTRUCTION) {
+                tls_state->exception_seen = 1;
+            #if (x86_64)
+                ep->ContextRecord->Rip += 3;
+            #else
+                ep->ContextRecord->Eip += 3;
+            #endif
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+            return EXCEPTION_CONTINUE_SEARCH;
+        };
+
+        const PVOID vh = AddVectoredExceptionHandler(1, handler);
+        if (!vh) return false;
+
+        // xor rdpru ret
+        constexpr unsigned char code[] = {
+            0x31, 0xC9,
+            0x0F, 0x01, 0xFD,
+            0xC3
+        };
+
+        PVOID mem = nullptr;
+        SIZE_T size = sizeof(code);
+
+        if (nt_allocate_virtual_memory(
+            current_process,
+            &mem,
+            0,
+            &size,
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_EXECUTE_READWRITE) != 0 || !mem)
+        {
+            RemoveVectoredExceptionHandler(vh);
+            return false;
+        }
+
+        memcpy(mem, code, sizeof(code));
+
+        nt_flush_instruction_cache(current_process, mem, sizeof(code));
+
+        using fn_t = void(*)();
+        fn_t fn = reinterpret_cast<fn_t>(mem);
+
+        state.exception_seen = 0;
+        state.in_asm = 1;
+
+        __try {
+            fn();
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            state.exception_seen = 1;
+        }
+
+        state.in_asm = 0;
+
+        if (state.exception_seen) {
+            debug("KVM_INTERCEPTION: Detected a hypervisor intercepting performance counter reads");
+            generic_hypervisor = true;
+        }
+
+        SIZE_T free_size = 0;
+        nt_free_virtual_memory(
+            current_process,
+            &mem,
+            &free_size,
+            MEM_RELEASE
+        );
+
+        nt_close(current_process);
+
+        RemoveVectoredExceptionHandler(vh);
+
+        if (generic_hypervisor) {
+            return true; // KVM does this, but other hypervisors might do the same
         }
 
         return false;
@@ -12255,7 +12364,7 @@ public: // START OF PUBLIC FUNCTIONS
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
             case MSR: return "MSR";
-            case VMCALL: return "VMCALL";
+            case KVM_INTERCEPTION: return "KVM_INTERCEPTION";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
             case ALL: return "ALL"; 
@@ -12792,7 +12901,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::CLOCK, {45, VM::clock}},
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
-            {VM::VMCALL, {100, VM::vmcall}},
+            {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
             {VM::MSR, {100, VM::msr}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::EDID, {100, VM::edid}},
