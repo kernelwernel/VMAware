@@ -4898,11 +4898,18 @@ public:
         constexpr u32 HYPERVISOR_MASK = (1u << 31);
 
         if (ecx & HYPERVISOR_MASK) {
+            // if hypervisor bit is enabled, but we're in a root partition, prevent it from flagging
             if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
                 return false;
             }
 
             return true;
+        }
+        else {
+            // if hypervisor bit is disabled, but vmaware detects hyper-v signals, we're in an impossible situation (patching)
+            if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                return true;
+            }
         }
 
         return false;
