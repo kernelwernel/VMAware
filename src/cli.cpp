@@ -1002,6 +1002,7 @@ static void general(
     checker(VM::CLOCK, "system timers");
     checker(VM::MSR, "model specific registers");
     checker(VM::KVM_INTERCEPTION, "KVM interception");
+    checker(VM::BREAKPOINT, "EPT/NPT hooking");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 

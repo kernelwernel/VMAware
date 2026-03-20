@@ -590,6 +590,7 @@ public:
         CLOCK,
         MSR,
         KVM_INTERCEPTION,
+        BREAKPOINT,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -9415,22 +9416,22 @@ public:
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
-        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
-        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
-        using NtGetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
-        using NtSetContextThread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
+        using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using nt_flush_instruction_cache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        using nt_close_t = NTSTATUS(__stdcall*)(HANDLE);
+        using nt_get_context_thread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
+        using nt_set_context_thread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
 
         // volatile ensures these are loaded from stack after SEH unwind when compiled with aggresive optimizations
-        NtAllocateVirtualMemory_t volatile nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
-        NtProtectVirtualMemory_t volatile nt_protect_virtual_memory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
-        NtFreeVirtualMemory_t volatile nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[2]);
-        NtFlushInstructionCache_t volatile nt_flush_instruction_cache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[3]);
-        NtClose_t volatile nt_close = reinterpret_cast<NtClose_t>(funcs[4]);
-        NtGetContextThread_t volatile nt_get_context_thread = reinterpret_cast<NtGetContextThread_t>(funcs[5]);
-        NtSetContextThread_t volatile nt_set_context_thread = reinterpret_cast<NtSetContextThread_t>(funcs[6]);
+        nt_allocate_virtual_memory_t volatile nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
+        nt_protect_virtual_memory_t volatile nt_protect_virtual_memory = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[1]);
+        nt_free_virtual_memory_t volatile nt_free_virtual_memory = reinterpret_cast<nt_free_virtual_memory_t>(funcs[2]);
+        nt_flush_instruction_cache_t volatile nt_flush_instruction_cache = reinterpret_cast<nt_flush_instruction_cache_t>(funcs[3]);
+        nt_close_t volatile nt_close = reinterpret_cast<nt_close_t>(funcs[4]);
+        nt_get_context_thread_t volatile nt_get_context_thread = reinterpret_cast<nt_get_context_thread_t>(funcs[5]);
+        nt_set_context_thread_t volatile nt_set_context_thread = reinterpret_cast<nt_set_context_thread_t>(funcs[6]);
 
         if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_flush_instruction_cache ||
             !nt_free_virtual_memory || !nt_get_context_thread || !nt_set_context_thread || !nt_close) {
@@ -11662,6 +11663,122 @@ public:
 
         return false;
     }
+
+
+    /**
+     * @brief Check whether a hypervisor uses EPT/NPT hooking to intercept hardware breakpoints
+     * @category Windows
+     * @implements VM::BREAKPOINT
+     */
+    [[nodiscard]] static bool breakpoint() {
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = {
+            "NtAllocateVirtualMemory",
+            "NtFreeVirtualMemory",
+            "NtGetContextThread",
+            "NtSetContextThread",
+            "RtlAddVectoredExceptionHandler",
+            "RtlRemoveVectoredExceptionHandler"
+        };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using net_get_context_thread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
+        using nt_set_context_thread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
+        using rtl_add_vectored_exception_handler_t = PVOID(__stdcall*)(ULONG, PVECTORED_EXCEPTION_HANDLER);
+        using rtl_remove_vectored_exception_handler_t = ULONG(__stdcall*)(PVOID);
+
+        // volatile ensures these are loaded from stack after SEH unwind when compiled with aggressive optimizations
+        nt_allocate_virtual_memory_t volatile nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
+        nt_free_virtual_memory_t volatile nt_free_virtual_memory = reinterpret_cast<nt_free_virtual_memory_t>(funcs[1]);
+        net_get_context_thread_t volatile nt_get_context_thread = reinterpret_cast<net_get_context_thread_t>(funcs[2]);
+        nt_set_context_thread_t volatile nt_set_context_thread = reinterpret_cast<nt_set_context_thread_t>(funcs[3]);
+        rtl_add_vectored_exception_handler_t volatile rtl_add_vectored_exception_handler = reinterpret_cast<rtl_add_vectored_exception_handler_t>(funcs[4]);
+        rtl_remove_vectored_exception_handler_t volatile rtl_remove_vectored_exception_handler = reinterpret_cast<rtl_remove_vectored_exception_handler_t>(funcs[5]);
+
+        if (!nt_allocate_virtual_memory || !nt_free_virtual_memory || !nt_get_context_thread ||
+            !nt_set_context_thread || !rtl_add_vectored_exception_handler || !rtl_remove_vectored_exception_handler) {
+            return false;
+        }
+
+        HANDLE current_process = reinterpret_cast<HANDLE>(-1);
+        HANDLE current_thread = reinterpret_cast<HANDLE>(-2);
+
+        PVOID src_page = nullptr;
+        PVOID dst_page = nullptr;
+        SIZE_T region_size = 0x2000;
+
+        // allocate source and destination pages
+        const NTSTATUS status_src = nt_allocate_virtual_memory(current_process, &src_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+        if (status_src < 0 || status_dst < 0) {
+            if (src_page) { SIZE_T free_size = 0; nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE); }
+            if (dst_page) { SIZE_T free_size = 0; nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE); }
+            return false;
+        }
+
+        // initialize src memory
+        __stosb(static_cast<PBYTE>(src_page), 0xAB, 0x2000);
+
+        thread_local static volatile bool ermsb_trap_detected = false;
+        ermsb_trap_detected = false;
+
+        // capture-less local lambda decays to PVECTORED_EXCEPTION_HANDLER function pointer
+        auto veh_handler = [](PEXCEPTION_POINTERS ctx) -> LONG {
+            if (ctx->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
+                ermsb_trap_detected = true;
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+            return EXCEPTION_CONTINUE_SEARCH;
+        };
+
+        const PVOID veh_handle = rtl_add_vectored_exception_handler(1, static_cast<PVECTORED_EXCEPTION_HANDLER>(veh_handler));
+        if (!veh_handle) {
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+            nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+            return false;
+        }
+
+        CONTEXT ctx = { 0 };
+        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        nt_get_context_thread(current_thread, &ctx);
+
+        // set hw breakpoint inside the source page
+        ctx.Dr0 = reinterpret_cast<DWORD64>(src_page) + 0x1000;
+
+        // Dr7 = 0x30001
+        // bit 0      = 1
+        // bits 17:16 = 11b
+        // bits 19:18 = 00b
+        ctx.Dr7 = 0x30001;
+        nt_set_context_thread(current_thread, &ctx);
+
+        __try {
+            __movsb(static_cast<PBYTE>(dst_page), static_cast<PBYTE>(src_page), 0x2000);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            // veh will already detect if Dr0 fired successfully
+        }
+
+        // Cleanup
+        rtl_remove_vectored_exception_handler(veh_handle);
+
+        ctx.Dr0 = 0;
+        ctx.Dr7 = 0;
+        nt_set_context_thread(current_thread, &ctx);
+
+        SIZE_T free_size = 0;
+        nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+        nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+
+        return !ermsb_trap_detected;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 #endif
  
@@ -12372,6 +12489,7 @@ public: // START OF PUBLIC FUNCTIONS
             case CLOCK: return "CLOCK";
             case MSR: return "MSR";
             case KVM_INTERCEPTION: return "KVM_INTERCEPTION";
+            case BREAKPOINT: return "BREAKPOINT";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
             case ALL: return "ALL"; 
@@ -12912,6 +13030,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::MSR, {100, VM::msr}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::EDID, {100, VM::edid}},
+            {VM::BREAKPOINT, {100, VM::breakpoint}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
             {VM::DBVM_HYPERCALL, {150, VM::dbvm_hypercall}},
