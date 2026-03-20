@@ -1036,7 +1036,7 @@ static void general(
             std::string current_color = "";
             std::string type = vm.type;
 
-            if (is_anyrun && (type == VM::brands::NULL_BRAND)) {
+            if (is_anyrun && (type == "Unknown")) {
                 type = "Sandbox";
             }
 

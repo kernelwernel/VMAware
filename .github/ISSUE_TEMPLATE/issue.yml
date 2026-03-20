@@ -22,6 +22,7 @@ body:
         - label: False positive
         - label: Compilation warning/error
         - label: Suggestion
+        - label: Runtime error/crash
         - label: Other
     validations:
       required: true
