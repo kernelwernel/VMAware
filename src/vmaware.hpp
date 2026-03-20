@@ -11508,7 +11508,7 @@ public:
 
         const HANDLE current_process = reinterpret_cast<HANDLE>(-1);
         bool is_kvm_detected = false; // KVM-specific behavior, detector is 100% sure is running under KVM
-        bool generic_hypervisor = false; // behavior present in KVM but that other hypervisors might replicate as well
+        bool generic_hypervisor = false; // behavior present in KVM but other hypervisors might replicate it as well
 
         for (int i = 0; i < 2; ++i) {
             PVOID base_address = nullptr;
@@ -11657,8 +11657,10 @@ public:
 
         RemoveVectoredExceptionHandler(vh);
 
+        // KVM does this, but other hypervisors might do the same, reason why is generic
+        // kernel might configure CR4 to inject exception if CPL > 0, so if this case is detected, trigger a lower probability score 
         if (generic_hypervisor) {
-            return true; // KVM does this, but other hypervisors might do the same
+            return core::add(brand_enum::NULL_BRAND, 50); 
         }
 
         return false;
