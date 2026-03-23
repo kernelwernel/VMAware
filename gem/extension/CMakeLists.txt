@@ -53,7 +53,8 @@ if (MSVC)
     set(CMAKE_CXX_FLAGS "/W4 /EHs")
 else()
     # Linux, Apple, MinGW
-    set(CMAKE_CXX_FLAGS "-Wextra -Wall  -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion -ftemplate-backtrace-limit=0 -fvisibility=hidden -fvisibility-inlines-hidden")
+    # Wno-changes-meaning is here because it gives an error on gitlab container `ruby:4.0@sha256:c4caa2f81d1223b0216e3f49bff31ae87eaa5eb17323ae358b8c0b104e81edac
+    set(CMAKE_CXX_FLAGS "-Wextra -Wall  -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion  Wno-changes-meaning -ftemplate-backtrace-limit=0 -fvisibility=hidden -fvisibility-inlines-hidden")
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
