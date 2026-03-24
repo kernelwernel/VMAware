@@ -5306,7 +5306,7 @@ public:
             return false;
         }
         if (util::hyper_x() != HYPERV_UNKNOWN) {
-            threshold = 10.0;
+            threshold = 15.0;
         }
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
@@ -5629,10 +5629,10 @@ public:
         t2.join();
 
         if (hypervisor_detected) {
-            return core::add(brand_enum::NULL_BRAND, 100); // 100 score
+            return true; // 100 score
         }
         else if (bypass_detected) {
-            return core::add(brand_enum::KVM, 100); // 150 score, KVM is a guess
+            return core::add(brand_enum::KVM, 150); // 150 score, KVM is a guess
         }
 
         return hypervisor_detected;
