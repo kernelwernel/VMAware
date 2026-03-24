@@ -54,14 +54,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 556
- * - struct for internal cpu operations        => line 805
- * - struct for internal memoization           => line 3115
- * - struct for internal utility functions     => line 3322
- * - struct for internal core components       => line 11667
- * - start of VM detection technique list      => line 4788
- * - start of public VM detection functions    => line 12032
- * - start of externally defined variables     => line 12820
+ * - enums for publicly accessible techniques  => line 557
+ * - struct for internal cpu operations        => line 807
+ * - struct for internal memoization           => line 3117
+ * - struct for internal utility functions     => line 3324
+ * - struct for internal core components       => line 12053
+ * - start of VM detection technique list      => line 4772
+ * - start of public VM detection functions    => line 12418
+ * - start of externally defined variables     => line 13207
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5299,7 +5299,7 @@ public:
     [[nodiscard]] static bool timer() {
     #if (x86 && WINDOWS)
         // Detect a hypervisor without giving it time to react (when the hypervisor sees the vmexit, it's already too late for it, as the counter already exceeded the threshold)
-        // Uses our own software-based clock, meaning the hypervisor can't hide time by offsetting TSC or any other hardware timers
+        // Uses our own software-based clock, meaning a hypervisor can't hide time by offsetting TSC or controlling any hardware timer
         double threshold = 4.0;
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
@@ -5321,6 +5321,7 @@ public:
         bool hypervisor_detected = false;
         bool bypass_detected = false;
 
+        // we dont use cpu::cpuid on purpose
         auto trigger_vmexit = [](i32* info, i32 leaf, i32 sub) {
         #if (GCC || CLANG)
             __asm__ volatile (
@@ -5564,7 +5565,7 @@ public:
                 u64 v_pre, v_post, r_pre, r_post, sync;
 
                 sync = state.counter; while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
-                sync = state.counter; while (state.counter == sync); // fastest busy-waiting strategy
+                sync = state.counter; while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
 
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
@@ -5596,7 +5597,7 @@ public:
 
             debug("TIMER: CPUID -> ", cpuid_l, " | Ref -> ",  ref_l, " | Ratio -> ", ratio);
 
-            if (ratio > 4.0) hypervisor_detected = true;
+            if (ratio >= threshold) hypervisor_detected = true;
 
             // Now detect bypassers letting the VM boot with cpuid interception, and then disabling interception with SVM by flipping bit 18 in the VMCB 
             // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying intel-specific behavior)
