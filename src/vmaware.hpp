@@ -3821,18 +3821,13 @@ public:
                 else {
                     // Windows machine running under Hyper-V type 1
                     // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, bypassing some detections
-                    #if (x86_64)
-                        u8 idtr_buffer[10] = { 0 };
-                    #else
-                        u8 idtr_buffer[6] = { 0 };
-                    #endif
+                #if (x86_64)
+                    u8 idtr_buffer[10] = { 0 };
 
                     // we know we're not using SEH here, it's on purpose, and doesn't matter the CPU core
                     #if (CLANG || GCC)
                         __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
-                    #elif (MSVC) && (x86_32)
-                        __asm { sidt idtr_buffer }
-                    #elif (MSVC) && (x86_64)
+                    #elif (MSVC)
                         #pragma pack(push, 1)
                         struct {
                             USHORT Limit;
@@ -3846,7 +3841,7 @@ public:
                     ULONG_PTR idt_base = 0;
                     memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
 
-                    // if running under Hyper-V (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
+                    // if running under Hyper-V in AMD64 (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
                     // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
                     // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
                     if (idt_base == 0xfffff80000001000) {
@@ -3858,6 +3853,11 @@ public:
                         debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
                         state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
                     }
+                #else
+                    debug("HYPER-X: Detected Hyper-V host machine");
+                    core::add(brand_enum::HYPERV_ROOT);
+                    state = HYPERV_ARTIFACT_VM;
+                #endif                    
                 } 
             }
 
@@ -5020,10 +5020,17 @@ public:
     #else
         auto is_smt_enabled = []() noexcept -> bool {
             auto popcount = [](uint64_t v) noexcept -> int {
-            #if (GCC || CLANG)
+            #if (GCC) || (CLANG)
                 return __builtin_popcountll(v);
             #elif (MSVC)
+            #if (x86_32)
+                return static_cast<int>(
+                    __popcnt(static_cast<unsigned int>(v)) +
+                    __popcnt(static_cast<unsigned int>(v >> 32))
+                    );
+            #else
                 return static_cast<int>(__popcnt64(static_cast<unsigned long long>(v)));
+            #endif
             #else
                 int c = 0;
                 while (v) { c += static_cast<int>(v & 1ull); v >>= 1; }
@@ -11838,25 +11845,25 @@ public:
         tls_state = &state;
 
         // lambda to capture exceptions
-        PVECTORED_EXCEPTION_HANDLER handler =
-            +[](PEXCEPTION_POINTERS ep) -> LONG {
-            if (!tls_state || !tls_state->in_asm)
+        const PVOID vh = AddVectoredExceptionHandler(
+            1,
+            [](PEXCEPTION_POINTERS ep) -> LONG {
+                if (!tls_state || !tls_state->in_asm)
+                    return EXCEPTION_CONTINUE_SEARCH;
+
+                const DWORD code = ep->ExceptionRecord->ExceptionCode;
+                if (code == EXCEPTION_ILLEGAL_INSTRUCTION) {
+                    tls_state->exception_seen = 1;
+                #if (x86_64)
+                    ep->ContextRecord->Rip += 3;
+                #else
+                    ep->ContextRecord->Eip += 3;
+                #endif
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                }
                 return EXCEPTION_CONTINUE_SEARCH;
-
-            const DWORD code = ep->ExceptionRecord->ExceptionCode;
-            if (code == EXCEPTION_ILLEGAL_INSTRUCTION) {
-                tls_state->exception_seen = 1;
-            #if (x86_64)
-                ep->ContextRecord->Rip += 3;
-            #else
-                ep->ContextRecord->Eip += 3;
-            #endif
-                return EXCEPTION_CONTINUE_EXECUTION;
             }
-            return EXCEPTION_CONTINUE_SEARCH;
-        };
-
-        const PVOID vh = AddVectoredExceptionHandler(1, handler);
+        );
         if (!vh) return false;
 
         // xor rdpru ret
