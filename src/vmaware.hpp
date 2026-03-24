@@ -376,6 +376,7 @@
 #include <stdexcept>
 #include <numeric>
 #include <atomic>
+#include <random>
 
 #if (WINDOWS)
     #include <windows.h>
@@ -5292,72 +5293,348 @@ public:
 
     /**
      * @brief Check for timing anomalies in the system
-     * @category x86
+     * @category x86, Windows
      * @implements VM::TIMER
      */
     [[nodiscard]] static bool timer() {
-    #if (x86)
-        u16 cycle_threshold = 200;
+    #if (x86 && WINDOWS)
+        // Detect a hypervisor without giving it time to react (when the hypervisor sees the vmexit, it's already too late for it, as the counter already exceeded the threshold)
+        // Uses our own software-based clock, meaning the hypervisor can't hide time by offsetting TSC or any other hardware timers
+        double threshold = 4.0;
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
         if (util::hyper_x() != HYPERV_UNKNOWN) {
-            cycle_threshold = 400;
+            threshold = 10.0;
         }
 
-        struct affinity_cookie {
-            bool valid{ false };
-        #if (WINDOWS)
-            HANDLE thread_handle{ nullptr };
-            DWORD_PTR prev_mask{ 0 };
-        #elif (LINUX)
-            pthread_t thread{ 0 };
-            cpu_set_t prev_mask{};
-        #endif
+        // prevent false sharing when triggering hypervisor exits with the intentional data race condition
+        struct alignas(64) cache_state {
+            alignas(64) volatile u64 counter { 0 };
+            alignas(64) std::atomic<bool> start_test{ false };
+            alignas(64) std::atomic<bool> test_done{ false };
         };
 
-        auto set_affinity = [](std::thread& t, unsigned core) -> affinity_cookie {
-            affinity_cookie cookie;
-        #if (WINDOWS)
-            const HANDLE h = static_cast<HANDLE>(t.native_handle());
-            const DWORD_PTR mask = static_cast<DWORD_PTR>(1ULL) << core;
-            const DWORD_PTR prev = SetThreadAffinityMask(h, mask);
-            if (prev != 0) {
-                cookie.valid = true;
-                cookie.thread_handle = h;
-                cookie.prev_mask = prev;
-            }
-        #elif (LINUX)
-            pthread_t ph = t.native_handle();
-            cpu_set_t prev;
-            if (pthread_getaffinity_np(ph, sizeof(prev), &prev) == 0) {
-                cpu_set_t cp;
-                CPU_ZERO(&cp);
-                CPU_SET(core, &cp);
-                (void)pthread_setaffinity_np(ph, sizeof(cp), &cp);
-                cookie.valid = true;
-                cookie.thread = ph;
-                cookie.prev_mask = prev;
-            }
+        // Shared state and results
+        cache_state state;
+        bool hypervisor_detected = false;
+        bool bypass_detected = false;
+
+        auto trigger_vmexit = [](i32* info, i32 leaf, i32 sub) {
+        #if (GCC || CLANG)
+            __asm__ volatile (
+                "cpuid"
+                : "=a"(info[0]), "=b"(info[1]), "=c"(info[2]), "=d"(info[3])
+                : "a"(leaf), "c"(sub)
+                : "cc", "memory"
+                );
         #else
-            (void)t; (void)core;
-        #endif
-            return cookie;
-        };
-
-        auto restore_affinity = [](const affinity_cookie& cookie) {
-            if (!cookie.valid) return;
-        #if (WINDOWS)
-            (void)SetThreadAffinityMask(cookie.thread_handle, cookie.prev_mask);
-        #elif (LINUX)
-            (void)pthread_setaffinity_np(cookie.thread, sizeof(cookie.prev_mask), &cookie.prev_mask);
-        #else
-            (void)cookie;
+            __cpuidex(info, leaf, sub);
         #endif
         };
 
-        
+        auto counter_thread = [&state]() {
+            const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
+            const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+
+            // search for the physical sibling of CPU 0, then pick a random CPU excluding it to avoid SMT locks
+            DWORD_PTR procMask = 0, sysMask = 0;
+            GetProcessAffinityMask(current_process, &procMask, &sysMask);
+
+            DWORD len = 0;
+            GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len);
+
+            BYTE stackBuf[1024]{};
+            BYTE* buf = stackBuf;
+
+            std::vector<BYTE> heapBuf;
+            if (len > sizeof(stackBuf)) {
+                heapBuf.resize(len);
+                buf = heapBuf.data();
+            }
+
+            GetLogicalProcessorInformationEx(RelationProcessorCore,
+                reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf), &len);
+
+            DWORD_PTR cpu0CoreMask = 0;
+            for (BYTE* p = buf; p < buf + len; ) {
+                const auto* r = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(p);
+                if (r->Relationship == RelationProcessorCore) {
+                    for (WORD i = 0; i < r->Processor.GroupCount; ++i) {
+                        const auto& m = r->Processor.GroupMask[i];
+                        if (m.Group == 0 && (m.Mask & 1)) cpu0CoreMask |= m.Mask;
+                    }
+                }
+                p += r->Size;
+            }
+
+            const DWORD_PTR choices = procMask & ~cpu0CoreMask;
+
+            DWORD idxs[64]{}, n = 0;
+            for (DWORD i = 0; i < 64; ++i)
+                if (choices & (1ull << i)) idxs[n++] = i;
+
+            if (n) {
+                // random so that the hypervisor doesn't know where the counter thread is
+                // this will affect latency if cache lines from trigger_thread and counter_thread are separated
+                // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
+                std::mt19937 gen(std::random_device{}());
+                const u32 cpu = idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
+                SetThreadAffinityMask(current_thread, 1ull << cpu);
+            }
+            SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST); // decrease chance of being rescheduled
+
+            while (!state.start_test.load(std::memory_order_acquire)) {}
+
+            while (!state.test_done.load(std::memory_order_relaxed)) {
+            #if (GCC || CLANG)
+                #if (x86_64)
+                // A single incq is enough. Unrolling for example 8 times on a volatile memory address 
+                // creates unpredictable store-buffer behavior and we want it stable, latency is aprox 1 cycle in all microarchs
+                    __asm__ volatile ("incq %0\n\t" : "+m" (state.counter) : : "cc", "memory");
+                #else
+                    __asm__ volatile (
+                        "addl $1, %0; adcl $0, %1\n\t"
+                        : "+m" (((u32*)&state.counter)[0]), "+m" (((u32*)&state.counter)[1])
+                        : : "cc", "memory");
+                #endif
+            #else
+                state.counter++;
+            #endif
+            }
+        };
+
+        auto trigger_thread = [&]() {
+            auto calculate_latency = [&](const std::vector<u64>& samples_in) -> u64 {
+                if (samples_in.empty()) return 0;
+                const size_t N = samples_in.size();
+                if (N == 1) return samples_in[0];
+
+                // local sorted copy
+                std::vector<u64> s = samples_in;
+                std::sort(s.begin(), s.end()); // ascending
+
+                // tiny-sample short-circuits
+                if (N <= 4) return s.front();
+
+                // median (and works for sorted input)
+                auto median_of_sorted = [](const std::vector<u64>& v, size_t lo, size_t hi) -> u64 {
+                    // this is the median of v[lo..hi-1], requires 0 <= lo < hi
+                    const size_t len = hi - lo;
+                    if (len == 0) return 0;
+                    const size_t mid = lo + (len / 2);
+                    if (len & 1) return v[mid];
+                    return (v[mid - 1] + v[mid]) / 2;
+                };
+
+                // the robust center: median M and MAD -> approximate sigma
+                const u64 M = median_of_sorted(s, 0, s.size());
+                std::vector<u64> absdev;
+                absdev.reserve(N);
+                for (size_t i = 0; i < N; ++i) {
+                    const u64 d = (s[i] > M) ? (s[i] - M) : (M - s[i]);
+                    absdev.push_back(d);
+                }
+                std::sort(absdev.begin(), absdev.end());
+                const u64 MAD = median_of_sorted(absdev, 0, absdev.size());
+                // convert MAD to an approximate standard-deviation-like measure
+                constexpr long double kmad_to_sigma = 1.4826L; // consistent for normal approx
+                const long double sigma = (MAD == 0) ? 1.0L : (static_cast<long double>(MAD) * kmad_to_sigma);
+
+                // find the densest small-valued cluster by sliding a fixed-count window
+                // this locates the most concentrated group of samples (likely it would be the true VMEXIT cluster)
+                // const size_t frac_win = (N * 8 + 99) / 100; // ceil(N * 0.08)
+                // const size_t win = std::min(N, std::max(MIN_WIN, frac_win));
+                const size_t MIN_WIN = 10;
+                // manual min/max calculation for win size
+                const size_t calc_frac = static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08));
+                const size_t inner_max = (MIN_WIN > calc_frac) ? MIN_WIN : calc_frac;
+                const size_t win = (N < inner_max) ? N : inner_max;
+
+                size_t best_i = 0;
+                u64 best_span = (s.back() - s.front()) + 1; // large initial
+                for (size_t i = 0; i + win <= N; ++i) {
+                    const u64 span = s[i + win - 1] - s[i];
+                    if (span < best_span) {
+                        best_span = span;
+                        best_i = i;
+                    }
+                }
+
+                // expand the initial window greedily while staying "tight"
+                // allow expansion while adding samples does not more than multiply the span by EXPAND_FACTOR
+                constexpr long double EXPAND_FACTOR = 1.5L;
+                size_t cluster_lo = best_i;
+                size_t cluster_hi = best_i + win; // exclusive
+                // expand left
+                while (cluster_lo > 0) {
+                    const u64 new_span = s[cluster_hi - 1] - s[cluster_lo - 1];
+                    if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
+                        (s[cluster_hi - 1] <= (s[cluster_lo - 1] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
+                        --cluster_lo;
+                        // manual min calculation
+                        best_span = (best_span < new_span) ? best_span : new_span;
+                    }
+                    else break;
+                }
+                // expand right
+                while (cluster_hi < N) {
+                    const u64 new_span = s[cluster_hi] - s[cluster_lo];
+                    if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
+                        (s[cluster_hi] <= (s[cluster_lo] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
+                        ++cluster_hi;
+                        best_span = (best_span < new_span) ? best_span : new_span;
+                    }
+                    else break;
+                }
+
+                const size_t cluster_size = (cluster_hi > cluster_lo) ? (cluster_hi - cluster_lo) : 0;
+
+                // cluster must be reasonably dense and cover a non-negligible portion of samples, so this is pure sanity checks
+                const double fraction_in_cluster = static_cast<double>(cluster_size) / static_cast<double>(N);
+
+                // min/max calculation for MIN_CLUSTER
+                const int val_n_50 = static_cast<int>(N / 50);
+                const size_t val_max = static_cast<size_t>((5 > val_n_50) ? 5 : val_n_50);
+                const size_t MIN_CLUSTER = (val_max < N) ? val_max : N; // at least 2% or 5 elements
+
+                if (cluster_size < MIN_CLUSTER || fraction_in_cluster < 0.02) {
+                    // low-percentile (10th) trimmed median
+                    // Manual max calculation for fallback_count
+                    const size_t floor_val = static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10));
+                    const size_t fallback_count = (1 > floor_val) ? 1 : floor_val;
+
+                    // median of lowest fallback_count elements (if fallback_count==1 that's smallest)
+                    if (fallback_count == 1) return s.front();
+                    const size_t mid = fallback_count / 2;
+                    if (fallback_count & 1) return s[mid];
+                    return (s[mid - 1] + s[mid]) / 2;
+                }
+
+                // now we try to get a robust estimate inside the cluster, trimmed mean (10% trim) centered on cluster
+                const size_t trim_count = static_cast<size_t>(std::floor(static_cast<double>(cluster_size) * 0.10));
+                const size_t lo = cluster_lo + trim_count;
+                const size_t hi = cluster_hi - trim_count; // exclusive
+                if (hi <= lo) {
+                    // degenerate -> median of cluster
+                    return median_of_sorted(s, cluster_lo, cluster_hi);
+                }
+
+                // sum with long double to avoid overflow and better rounding
+                long double sum = 0.0L;
+                for (size_t i = lo; i < hi; ++i) sum += static_cast<long double>(s[i]);
+                const long double avg = sum / static_cast<long double>(hi - lo);
+                u64 result = static_cast<u64>(std::llround(avg));
+
+                // final sanity adjustments:
+                // if the computed result is suspiciously far from the global median (e.g., > +6*sigma)
+                // clamp toward the median to avoid choosing a high noisy cluster by mistake
+                const long double diff_from_med = static_cast<long double>(result) - static_cast<long double>(M);
+                if (diff_from_med > 0 && diff_from_med > (6.0L * sigma)) {
+                    // clamp to median + 4*sigma (conservative)
+                    result = static_cast<u64>(std::llround(static_cast<long double>(M) + 4.0L * sigma));
+                }
+
+                // also, if result is zero (shouldn't be) or extremely small, return a smallest observed sample
+                if (result == 0) result = s.front();
+
+                return result;
+            };
+
+            const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
+            const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+            SetThreadAffinityMask(current_thread, 1);
+            SetPriorityClass(current_process, ABOVE_NORMAL_PRIORITY_CLASS); // ABOVE_NORMAL_PRIORITY_CLASS + THREAD_PRIORITY_HIGHEST = 12 base priority
+            SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST);
+
+            // so that hypervisor can't predict how many samples we will collect
+            std::mt19937 gen(std::random_device{}());
+            std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
+            const size_t BATCH_SIZE = batch_dist(gen);
+            i32 dummy_res[4]{};
+            std::vector<u64> vm_samples(BATCH_SIZE), ref_samples(BATCH_SIZE); // pre page-fault MMU, wwe wont warm-up cpuid samples for the P-states intentionally
+
+            state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3.
+            while (state.counter == 0) {}
+
+            size_t valid = 0;
+            while (valid < BATCH_SIZE) {
+                // interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects both samples
+                u64 v_pre, v_post, r_pre, r_post, sync;
+
+                sync = state.counter; while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
+                sync = state.counter; while (state.counter == sync); // fastest busy-waiting strategy
+
+                v_pre = state.counter;
+                std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
+                // force cpuid collection here so that the hypervisor is either forced to disable interception and try to bypass latency, or intercept cpuid and try to bypass XSAVE states
+                trigger_vmexit(dummy_res, 0, 0);
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+                v_post = state.counter;
+
+                sync = state.counter; while (state.counter == sync); // sync to our counter tick again
+                sync = state.counter; while (state.counter == sync);
+
+                r_pre = state.counter;
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+                for (int i = 0; i < 8; ++i) _mm_lfence(); // 8 LFENCES is enough for the MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+                r_post = state.counter;
+
+                // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not let either the kernel or this app handle a TSC read
+                if (v_post > v_pre && r_post > r_pre) {
+                    vm_samples[valid] = v_post - v_pre;
+                    ref_samples[valid] = r_post - r_pre;
+                    valid++;
+                }
+            }
+
+            const u64 cpuid_l = calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can detect (SMIs, etc)
+            const u64 ref_l = calculate_latency(ref_samples);
+            const double ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
+
+            debug("TIMER: CPUID -> ", cpuid_l, " | Ref -> ",  ref_l, " | Ratio -> ", ratio);
+
+            if (ratio > 4.0) hypervisor_detected = true;
+
+            // Now detect bypassers letting the VM boot with cpuid interception, and then disabling interception with SVM by flipping bit 18 in the VMCB 
+            // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying intel-specific behavior)
+            if (cpu::is_amd()) {
+                i32 res_d0[4], res_d1[4], res_d12[4], res_ext[4];
+                trigger_vmexit(res_d0, 0xD, 0);
+                trigger_vmexit(res_d1, 0xD, 1);
+                trigger_vmexit(res_d12, 0xD, 12);
+                trigger_vmexit(res_ext, 0x80000008, 0);
+
+                const bool hardware_supports_cet = (res_d12[0] > 0);
+                const u32 active_xcr0_size = (u32)res_d0[1];
+                const u32 active_total_size = (u32)res_d1[1];
+
+                if (hardware_supports_cet && (active_total_size == active_xcr0_size)) {
+                    debug("TIMER: VMAware detected a SVM hypervisor with cpuid interception disabled, score was raised up due to a bypass attempt.");
+                    bypass_detected = true;
+                }
+            }
+
+            SetPriorityClass(current_process, NORMAL_PRIORITY_CLASS);
+            state.test_done.store(true, std::memory_order_release);
+        };
+
+        std::thread t1(counter_thread);
+        std::thread t2(trigger_thread);
+
+        t1.join();
+        t2.join();
+
+        if (hypervisor_detected) {
+            return core::add(brand_enum::NULL_BRAND, 100); // 100 score
+        }
+        else if (bypass_detected) {
+            return core::add(brand_enum::KVM, 100); // 150 score, KVM is a guess
+        }
+
+        return hypervisor_detected;
 #endif
         return false;
     }
