@@ -931,7 +931,7 @@ static void general(
     checker(VM::DMESG, "dmesg output");
     checker(VM::HWMON, "hwmon presence");
     checker(VM::DLL, "DLLs");
-    checker(VM::WINE_FUNC, "Wine");
+    checker(VM::WINE, "Wine");
     checker(VM::HWMODEL, "hw.model");
     checker(VM::PROCESSES, "processes");
     checker(VM::LINUX_USER_HOST, "default Linux user/host");
@@ -1001,6 +1001,8 @@ static void general(
     checker(VM::CPU_HEURISTIC, "CPU heuristics");
     checker(VM::CLOCK, "system timers");
     checker(VM::MSR, "model specific registers");
+    checker(VM::KVM_INTERCEPTION, "KVM interception");
+    checker(VM::BREAKPOINT, "EPT/NPT hooking");
 
     // ADD NEW TECHNIQUE CHECKER HERE
 
@@ -1207,7 +1209,7 @@ static void general(
                 note << 
                 " If you found a false positive, please make sure to create\n \
               an issue at https://github.com/kernelwernel/VMAware/issues\n\n";
-// ^ do not modify the space above
+        // ^ do not modify the space above
         }
     }
 
