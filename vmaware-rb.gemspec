@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+if Gem.win_platform?
+  raise Gem::Exception,
+   'Sadly, the vmaware-rb gem is not available on windows, due to heavy reliance on MSVC.'
+end
+
 Gem::Specification.new do |spec|
   spec.name        = 'vmaware-rb'
   spec.version     = '1.0.0'

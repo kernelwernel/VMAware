@@ -34,28 +34,9 @@ set(BUILD_DIR "${PROJECT_DIR}/build")
 set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION "ON")
 
-if(MSVC)
-    # Globally disable specific MSVC warnings from external headers
-    add_compile_options(
-        /wd5039  # 'TpSetCallbackCleanupGroup' potentially throwing
-        /wd4820  # padding added after data member
-        /wd4626  # deleted assignment operator
-        /wd5045  # Spectre mitigation notice
-        /wd4668  # undefined macro replaced with '0'
-        /Zc:enumTypes  # use enum underlying type canonicalization
-    )
-endif()
-
-
 
 # compiler flags
-if (MSVC)
-    set(CMAKE_CXX_FLAGS "/W4 /EHs")
-else()
-    # Linux, Apple, MinGW
-    # Wno-changes-meaning is here because it gives an error on gitlab container `ruby:4.0@sha256:c4caa2f81d1223b0216e3f49bff31ae87eaa5eb17323ae358b8c0b104e81edac
-    set(CMAKE_CXX_FLAGS "-Wextra -Wall  -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion  -Wno-changes-meaning -ftemplate-backtrace-limit=0 -fvisibility=hidden -fvisibility-inlines-hidden")
-endif()
+set(CMAKE_CXX_FLAGS "-Wextra -Wall  -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion -ftemplate-backtrace-limit=0 -fvisibility=hidden -fvisibility-inlines-hidden")
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -lstdc++ -lm")
@@ -78,14 +59,8 @@ endif()
 
 add_compile_definitions(__VMAWARE_RELEASE__)
 
-if (MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /bigobj /utf-8 /DNDEBUG /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /Zc:__cplusplus")
-elseif(MINGW)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}  -Wa,-mbig-obj -O2 -DNDEBUG")
-  set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Wl,--exclude-all-symbols")
-  set(CMAKE_EXE_LINKER_FLAGS "-fuse-ld=lld")
-  set(CMAKE_SHARED_LINKER_FLAGS "-fuse-ld=lld")
-elseif(APPLE)
+
+if(APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g0 -O2 -Wno-unused-private-field  -DNDEBUG")
   set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Wl,-dead_strip -Wl,-x")
 elseif(LINUX)
@@ -222,7 +197,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ../../src)
 # (e.g., lib/3.3/) to support multiple Ruby versions simultaneously.
 
 get_target_property(RUBY_EXT_SUFFIX Ruby::Ruby INTERFACE_RUBY_EXTENSION_SUFFIX)
-message("suffix is ${RUBY_EXT_SUFFIX}")
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
   PREFIX ""
   SUFFIX "${RUBY_EXT_SUFFIX}"
@@ -248,5 +222,3 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   "${CMAKE_PROJECT_NAME}-rb.cpp"
   "../../src/vmaware.hpp"
 )
-
-install()
