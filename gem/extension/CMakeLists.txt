@@ -1,16 +1,3 @@
-# =============================================================================
-# CMakeLists.txt - Building a Ruby Extension with Rice
-# =============================================================================
-#
-# This CMake configuration demonstrates how to build a Ruby native extension
-# using the Rice library (https://github.com/ruby-rice/rice). Rice provides
-# a clean C++ interface for creating Ruby bindings.
-#
-# This file serves as an educational example and can be adapted for your
-# own Rice-based Ruby extensions.
-#
-# =============================================================================
-
 # -----------------------------------------------------------------------------
 # CMake Version and C++ Standard
 # -----------------------------------------------------------------------------
