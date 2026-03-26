@@ -5307,13 +5307,13 @@ public:
     #if (x86 && WINDOWS)
         // Detect a hypervisor without giving it time to react (when the hypervisor sees the vmexit, it's already too late for it, as the counter already exceeded the threshold)
         // Uses our own software-based clock, meaning a hypervisor can't hide time by offsetting TSC or controlling any hardware timer
-        double threshold = 4.0;
+        double threshold = 3;
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
         if (util::hyper_x() != HYPERV_UNKNOWN) {
-            threshold = 15.0;
+            threshold = 20.0;
         }
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
