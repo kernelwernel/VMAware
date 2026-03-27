@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 807
  * - struct for internal memoization           => line 3117
  * - struct for internal utility functions     => line 3324
- * - struct for internal core components       => line 12053
+ * - struct for internal core components       => line 12070
  * - start of VM detection technique list      => line 4772
- * - start of public VM detection functions    => line 12418
- * - start of externally defined variables     => line 13207
+ * - start of public VM detection functions    => line 12435
+ * - start of externally defined variables     => line 13224
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5307,14 +5307,12 @@ public:
     #if (x86 && WINDOWS)
         // Detect a hypervisor without giving it time to react (when the hypervisor sees the vmexit, it's already too late for it, as the counter already exceeded the threshold)
         // Uses our own software-based clock, meaning a hypervisor can't hide time by offsetting TSC or controlling any hardware timer
-        double threshold = 4.0;
+        double threshold = 3.5;
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        if (util::hyper_x() != HYPERV_UNKNOWN) {
-            threshold = 15.0;
-        }
+        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 20.0;
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         struct alignas(64) cache_state {
@@ -5328,25 +5326,10 @@ public:
         bool hypervisor_detected = false;
         bool bypass_detected = false;
 
-        // we dont use cpu::cpuid on purpose
-        auto trigger_vmexit = [](i32* info, i32 leaf, i32 sub) {
-        #if (GCC || CLANG)
-            __asm__ volatile (
-                "cpuid"
-                : "=a"(info[0]), "=b"(info[1]), "=c"(info[2]), "=d"(info[3])
-                : "a"(leaf), "c"(sub)
-                : "cc", "memory"
-                );
-        #else
-            __cpuidex(info, leaf, sub);
-        #endif
-        };
-
-        auto counter_thread = [&state]() {
-            const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
+        // search for the physical sibling of CPU 0, then pick a random CPU excluding it to avoid SMT locks
+        auto get_target_mask = []() -> DWORD_PTR {
             const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
 
-            // search for the physical sibling of CPU 0, then pick a random CPU excluding it to avoid SMT locks
             DWORD_PTR procMask = 0, sysMask = 0;
             GetProcessAffinityMask(current_process, &procMask, &sysMask);
 
@@ -5383,14 +5366,36 @@ public:
             for (DWORD i = 0; i < 64; ++i)
                 if (choices & (1ull << i)) idxs[n++] = i;
 
+            // random so that the hypervisor doesn't know where the counter thread is
+            // this will affect latency if cache lines from trigger_thread and counter_thread are separated
+            // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
             if (n) {
-                // random so that the hypervisor doesn't know where the counter thread is
-                // this will affect latency if cache lines from trigger_thread and counter_thread are separated
-                // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
                 std::mt19937 gen(std::random_device{}());
-                const u32 cpu = idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
-                SetThreadAffinityMask(current_thread, 1ull << cpu);
+                return 1ull << idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
             }
+            return 1ull; // Fallback
+        };
+
+        // we dont use cpu::cpuid on purpose
+        auto trigger_vmexit = [](i32* info, i32 leaf, i32 sub) {
+        #if (GCC || CLANG)
+            __asm__ volatile (
+                "cpuid"
+                : "=a"(info[0]), "=b"(info[1]), "=c"(info[2]), "=d"(info[3])
+                : "a"(leaf), "c"(sub)
+                : "cc", "memory"
+                );
+        #else
+            __cpuidex(info, leaf, sub);
+        #endif
+        };
+
+        const DWORD_PTR target_affinity = get_target_mask();
+
+        // our software clock, it will count how many cycles a vmexit takes
+        auto counter_thread = [&]() {
+            const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
+            SetThreadAffinityMask(current_thread, target_affinity);
             SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST); // decrease chance of being rescheduled
 
             while (!state.start_test.load(std::memory_order_acquire)) {}
@@ -5561,12 +5566,12 @@ public:
             std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
             const size_t BATCH_SIZE = batch_dist(gen);
             i32 dummy_res[4]{};
+            size_t valid = 0;
             std::vector<u64> vm_samples(BATCH_SIZE), ref_samples(BATCH_SIZE); // pre page-fault MMU, wwe wont warm-up cpuid samples for the P-states intentionally
 
-            state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3.
+            state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3
             while (state.counter == 0) {}
 
-            size_t valid = 0;
             while (valid < BATCH_SIZE) {
                 // interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects both samples
                 u64 v_pre, v_post, r_pre, r_post, sync;
@@ -5577,7 +5582,7 @@ public:
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
                 // force cpuid collection here so that the hypervisor is either forced to disable interception and try to bypass latency, or intercept cpuid and try to bypass XSAVE states
-                trigger_vmexit(dummy_res, 0, 0);
+                trigger_vmexit(dummy_res, 0xD, 0);
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 v_post = state.counter;
 
@@ -5598,42 +5603,47 @@ public:
                 }
             }
 
+            state.test_done.store(true, std::memory_order_release);
+
             const u64 cpuid_l = calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can detect (SMIs, etc)
             const u64 ref_l = calculate_latency(ref_samples);
-            const double ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
+            const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
 
-            debug("TIMER: CPUID -> ", cpuid_l, " | Ref -> ",  ref_l, " | Ratio -> ", ratio);
-
-            if (ratio >= threshold) hypervisor_detected = true;
+            // VMM == Time spent in hypervisor; nVMM == Time spent in baremetal; Scheduling == Work done by threads
+            debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ",  ref_l, " | Ratio -> ", latency_ratio);
+            if (latency_ratio >= threshold) hypervisor_detected = true;
 
             // Now detect bypassers letting the VM boot with cpuid interception, and then disabling interception with SVM by flipping bit 18 in the VMCB 
             // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying intel-specific behavior)
-            if (cpu::is_amd()) {
+            if (cpu::is_amd() && !hypervisor_detected) {
                 i32 res_d0[4], res_d1[4], res_d12[4], res_ext[4];
-                trigger_vmexit(res_d0, 0xD, 0);
-                trigger_vmexit(res_d1, 0xD, 1);
-                trigger_vmexit(res_d12, 0xD, 12);
+                trigger_vmexit(res_d0, 0xD, 0);    // XCR0 features
+                trigger_vmexit(res_d1, 0xD, 1);    // XCR0 + XSS features
+                trigger_vmexit(res_d12, 0xD, 12);  // CET State details
                 trigger_vmexit(res_ext, 0x80000008, 0);
 
                 const bool hardware_supports_cet = (res_d12[0] > 0);
-                const u32 active_xcr0_size = (u32)res_d0[1];
-                const u32 active_total_size = (u32)res_d1[1];
+                const u32 active_xcr0_size = (u32)res_d0[1];  // size for features enabled in XCR0
+                const u32 active_total_size = (u32)res_d1[1]; // size for XCR0 + IA32_XSS
 
-                if (hardware_supports_cet && (active_total_size == active_xcr0_size)) {
-                    debug("TIMER: VMAware detected a SVM hypervisor with cpuid interception disabled, score was raised up due to a bypass attempt.");
-                    bypass_detected = true;
+                if (hardware_supports_cet) {
+                    // delta is the size attributed to supervisor states like CET_U
+                    const u32 xss_delta = active_total_size - active_xcr0_size;
+
+                    if (xss_delta != 0x10) {
+                        debug("TIMER: VMAware detected a SVM hypervisor with cpuid interception disabled, score was raised up due to a bypass attempt. XSAVE Delta: 0x%X", xss_delta);
+                        bypass_detected = true;
+                    }
                 }
             }
 
             SetPriorityClass(current_process, NORMAL_PRIORITY_CLASS);
-            state.test_done.store(true, std::memory_order_release);
         };
 
         std::thread t1(counter_thread);
-        std::thread t2(trigger_thread);
+        trigger_thread();
 
         t1.join();
-        t2.join();
 
         if (hypervisor_detected) {
             return true; // 100 score
