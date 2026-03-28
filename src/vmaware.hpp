@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 807
  * - struct for internal memoization           => line 3117
  * - struct for internal utility functions     => line 3324
- * - struct for internal core components       => line 12070
+ * - struct for internal core components       => line 12053
  * - start of VM detection technique list      => line 4772
- * - start of public VM detection functions    => line 12435
- * - start of externally defined variables     => line 13224
+ * - start of public VM detection functions    => line 12418
+ * - start of externally defined variables     => line 13207
  *
  *
  * ============================== EXAMPLE ===================================
@@ -1337,10 +1337,14 @@ public:
 
                 while (true) {
                     char k = str[j];
-                    const bool is_valid = (k >= '0' && k <= '9') ||
+
+                    const bool is_valid = (
+                        (k >= '0' && k <= '9') ||
                         (k >= 'A' && k <= 'Z') ||
                         (k >= 'a' && k <= 'z') ||
-                        (k == '-');
+                        (k == '-')
+                    );
+
                     if (!is_valid) break;
 
                     if (current_len >= max_model_len) {
@@ -1360,20 +1364,24 @@ public:
                         (next >= 'A' && next <= 'Z') ||
                         (next >= 'a' && next <= 'z');
 
-                    if (!next_is_alnum) {
-                        // Check specific Z1 Extreme token
-                        if (type == cpu_type::AMD && current_hash == 0x3D09D5B4) { 
-                            z_series_threads = 16; 
+                    if (next_is_alnum) {
+                        continue;
+                    }
+
+                    // Check specific Z1 Extreme token
+                    if (type == cpu_type::AMD && current_hash == 0x3D09D5B4) { 
+                        z_series_threads = 16; 
+                    }
+
+                    for (size_t idx = 0; idx < db_size; ++idx) {
+                        if (db[idx].hash != current_hash) {
+                            continue;
                         }
 
-                        for (size_t idx = 0; idx < db_size; ++idx) {
-                            if (db[idx].hash == current_hash) {
-                                if (current_len > best_len) {
-                                    best_len = current_len;
-                                    result.expected_threads = db[idx].threads;
-                                    result.found = true;
-                                }
-                            }
+                        if (current_len > best_len) {
+                            best_len = current_len;
+                            result.expected_threads = db[idx].threads;
+                            result.found = true;
                         }
                     }
                 }
@@ -3473,7 +3481,26 @@ public:
             return (base_str.find(keyword) != std::string::npos);
         };
 
-        static std::string narrow_wide(const wchar_t* wstr) {
+        [[nodiscard]] static i32 popcount(u64 v) noexcept {
+            #if (GCC) || (CLANG)
+                return __builtin_popcountll(v);
+            #elif (MSVC)
+                #if (x86_32)
+                    return static_cast<int>(
+                        __popcnt(static_cast<unsigned int>(v)) +
+                        __popcnt(static_cast<unsigned int>(v >> 32))
+                    );
+                #else
+                    return static_cast<int>(__popcnt64(static_cast<unsigned long long>(v)));
+                #endif
+            #else
+                int c = 0;
+                while (v) { c += static_cast<int>(v & 1ull); v >>= 1; }
+                return c;
+            #endif
+        };
+
+        [[nodiscard]] static std::string narrow_wide(const wchar_t* wstr) {
             if (!wstr) return std::string{};
             std::wstring ws(wstr);
             std::string result;
@@ -5019,35 +5046,19 @@ public:
         return false;
     #else
         auto is_smt_enabled = []() noexcept -> bool {
-            auto popcount = [](uint64_t v) noexcept -> int {
-            #if (GCC) || (CLANG)
-                return __builtin_popcountll(v);
-            #elif (MSVC)
-            #if (x86_32)
-                return static_cast<int>(
-                    __popcnt(static_cast<unsigned int>(v)) +
-                    __popcnt(static_cast<unsigned int>(v >> 32))
-                    );
-            #else
-                return static_cast<int>(__popcnt64(static_cast<unsigned long long>(v)));
-            #endif
-            #else
-                int c = 0;
-                while (v) { c += static_cast<int>(v & 1ull); v >>= 1; }
-                return c;
-            #endif
-            };
         #if (WINDOWS)
             DWORD len = 0;
             if (GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len) ||
                 GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
                 return false;
             }
+
             std::vector<char> buf(static_cast<size_t>(len));
             if (!GetLogicalProcessorInformationEx(RelationProcessorCore,
                 reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buf.data()), &len)) {
                 return false;
             }
+
             // first RelationProcessorCore record encountered, basically if two logical processors maps to the same core, SMT is enabled to the OS point of view
             size_t offset = 0;
             while (offset + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) <= static_cast<size_t>(len)) {
@@ -5056,74 +5067,132 @@ public:
                     const PROCESSOR_RELATIONSHIP& pr = rec->Processor;
                     unsigned total = 0;
                     for (WORD i = 0; i < pr.GroupCount; ++i) {
-                        total += popcount(static_cast<uint64_t>(pr.GroupMask[i].Mask));
+                        total += util::popcount(static_cast<uint64_t>(pr.GroupMask[i].Mask));
                     }
                     return total > 1;
                 }
                 if (rec->Size == 0) break;
                 offset += rec->Size;
             }
+
             return false;
         #elif (APPLE)
             int logical = 0, physical = 0;
             size_t sz = sizeof(logical);
-            if (sysctlbyname("hw.logicalcpu", &logical, &sz, nullptr, 0) != 0) logical = 0;
+
+            if (sysctlbyname("hw.logicalcpu", &logical, &sz, nullptr, 0) != 0) {
+                logical = 0;
+            }
+
             sz = sizeof(physical);
-            if (sysctlbyname("hw.physicalcpu", &physical, &sz, nullptr, 0) != 0) physical = 0;
-            if (logical > 0 && physical > 0) return logical > physical;
+
+            if (sysctlbyname("hw.physicalcpu", &physical, &sz, nullptr, 0) != 0) {
+                physical = 0;
+            }
+
+            if (logical > 0 && physical > 0) {
+                return logical > physical;
+            }
+
             return false;
         #else
             //  check cpu0 thread_siblings_list
-            {
-                std::ifstream f("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
-                if (f) {
-                    std::string s;
-                    if (std::getline(f, s)) {
-                        // trim
-                        size_t a = 0; while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-                        size_t b = s.size(); while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-                        if (b > a) {
-                            for (size_t k = a; k < b; ++k) {
-                                if (s[k] == ',' || s[k] == '-') return true;
+            std::ifstream f("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
+            if (f) {
+                std::string s = "";
+                // trim
+                if (std::getline(f, s)) {
+                    size_t a = 0; 
+                    
+                    while (a < s.size() && std::isspace(static_cast<u8>(s[a]))) {
+                        ++a;
+                    }
+
+                    size_t b = s.size(); 
+                    
+                    while (b > a && std::isspace(static_cast<u8>(s[b - 1]))) {
+                        --b;
+                    }
+
+                    if (b > a) {
+                        for (size_t k = a; k < b; ++k) {
+                            if (s[k] == ',' || s[k] == '-') {
+                                return true;
                             }
-                            return false;
                         }
+                        return false;
                     }
                 }
             }
+
             // /proc/cpuinfo for unique (physical id, core id) pairs vs processors
             std::ifstream cpuinfo("/proc/cpuinfo");
-            if (!cpuinfo) return false;
+
+            if (!cpuinfo) {
+                return false;
+            }
+
             std::string line;
             int processors = 0;
             bool in_section = false;
             int cur_phys = -1, cur_core = -1;
+
             std::vector<std::pair<int, int>> cores;
             while (std::getline(cpuinfo, line)) {
                 if (line.empty()) {
-                    if (cur_phys != -1 && cur_core != -1) cores.emplace_back(cur_phys, cur_core);
+                    if (cur_phys != -1 && cur_core != -1) {
+                        cores.emplace_back(cur_phys, cur_core);
+                    }
+
                     cur_phys = cur_core = -1;
                     in_section = false;
                     continue;
                 }
+
                 auto pos = line.find(':');
                 if (pos == std::string::npos) continue;
                 std::string key = line.substr(0, pos);
                 std::string val = line.substr(pos + 1);
+
                 // trim
-                while (!key.empty() && std::isspace(static_cast<unsigned char>(key.back()))) key.pop_back();
-                while (!val.empty() && std::isspace(static_cast<unsigned char>(val.front()))) val.erase(val.begin());
-                if (key == "processor") ++processors;
-                else if (key == "physical id") { try { cur_phys = std::stoi(val); } catch (...) { cur_phys = -1; } }
-                else if (key == "core id") { try { cur_core = std::stoi(val); } catch (...) { cur_core = -1; } }
+                while (!key.empty() && std::isspace(static_cast<u8>(key.back()))) { 
+                    key.pop_back();
+                }
+
+                while (!val.empty() && std::isspace(static_cast<u8>(val.front()))) {
+                    val.erase(val.begin());
+                }
+
+                if (key == "processor") {
+                    processors++;
+                }
+
+                else if (key == "physical id") { 
+                    try { 
+                        cur_phys = std::stoi(val); 
+                    } catch (...) { 
+                        cur_phys = -1; 
+                    } 
+                } else if (key == "core id") { 
+                    try { 
+                        cur_core = std::stoi(val); 
+                    } catch (...) { 
+                        cur_core = -1; 
+                    }
+                }
             }
-            if (cur_phys != -1 && cur_core != -1) cores.emplace_back(cur_phys, cur_core);
+
+            if (cur_phys != -1 && cur_core != -1) {
+                cores.emplace_back(cur_phys, cur_core);
+            }
+
             if (!cores.empty() && processors > 0) {
                 std::sort(cores.begin(), cores.end());
                 cores.erase(std::unique(cores.begin(), cores.end()), cores.end());
                 int physical_cores = static_cast<int>(cores.size());
                 return processors > physical_cores;
             }
+
             return false;
         #endif
         };
@@ -5137,11 +5206,11 @@ public:
             if (actual != info.expected_threads) {
                 debug(info.debug_tag, ": Current threads -> ", actual);
                 const bool smt = is_smt_enabled();
+
                 if (smt) {
                     debug(info.debug_tag, ": Expected  ", info.expected_threads, " threads");
                     return true;
-                }
-                else {
+                } else {
                     debug(info.debug_tag, ": Expected ", info.expected_threads, " threads, but found SMT disabled");
                     return false;
                 }         
@@ -5307,12 +5376,14 @@ public:
     #if (x86 && WINDOWS)
         // Detect a hypervisor without giving it time to react (when the hypervisor sees the vmexit, it's already too late for it, as the counter already exceeded the threshold)
         // Uses our own software-based clock, meaning a hypervisor can't hide time by offsetting TSC or controlling any hardware timer
-        double threshold = 3.5;
+        double threshold = 4.0;
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 20.0;
+        if (util::hyper_x() != HYPERV_UNKNOWN) {
+            threshold = 15.0;
+        }
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         struct alignas(64) cache_state {
@@ -5326,10 +5397,25 @@ public:
         bool hypervisor_detected = false;
         bool bypass_detected = false;
 
-        // search for the physical sibling of CPU 0, then pick a random CPU excluding it to avoid SMT locks
-        auto get_target_mask = []() -> DWORD_PTR {
+        // we dont use cpu::cpuid on purpose
+        auto trigger_vmexit = [](i32* info, i32 leaf, i32 sub) {
+        #if (GCC || CLANG)
+            __asm__ volatile (
+                "cpuid"
+                : "=a"(info[0]), "=b"(info[1]), "=c"(info[2]), "=d"(info[3])
+                : "a"(leaf), "c"(sub)
+                : "cc", "memory"
+                );
+        #else
+            __cpuidex(info, leaf, sub);
+        #endif
+        };
+
+        auto counter_thread = [&state]() {
+            const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
             const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
 
+            // search for the physical sibling of CPU 0, then pick a random CPU excluding it to avoid SMT locks
             DWORD_PTR procMask = 0, sysMask = 0;
             GetProcessAffinityMask(current_process, &procMask, &sysMask);
 
@@ -5366,36 +5452,14 @@ public:
             for (DWORD i = 0; i < 64; ++i)
                 if (choices & (1ull << i)) idxs[n++] = i;
 
-            // random so that the hypervisor doesn't know where the counter thread is
-            // this will affect latency if cache lines from trigger_thread and counter_thread are separated
-            // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
             if (n) {
+                // random so that the hypervisor doesn't know where the counter thread is
+                // this will affect latency if cache lines from trigger_thread and counter_thread are separated
+                // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
                 std::mt19937 gen(std::random_device{}());
-                return 1ull << idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
+                const u32 cpu = idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
+                SetThreadAffinityMask(current_thread, 1ull << cpu);
             }
-            return 1ull; // Fallback
-        };
-
-        // we dont use cpu::cpuid on purpose
-        auto trigger_vmexit = [](i32* info, i32 leaf, i32 sub) {
-        #if (GCC || CLANG)
-            __asm__ volatile (
-                "cpuid"
-                : "=a"(info[0]), "=b"(info[1]), "=c"(info[2]), "=d"(info[3])
-                : "a"(leaf), "c"(sub)
-                : "cc", "memory"
-                );
-        #else
-            __cpuidex(info, leaf, sub);
-        #endif
-        };
-
-        const DWORD_PTR target_affinity = get_target_mask();
-
-        // our software clock, it will count how many cycles a vmexit takes
-        auto counter_thread = [&]() {
-            const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
-            SetThreadAffinityMask(current_thread, target_affinity);
             SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST); // decrease chance of being rescheduled
 
             while (!state.start_test.load(std::memory_order_acquire)) {}
@@ -5566,12 +5630,12 @@ public:
             std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
             const size_t BATCH_SIZE = batch_dist(gen);
             i32 dummy_res[4]{};
-            size_t valid = 0;
             std::vector<u64> vm_samples(BATCH_SIZE), ref_samples(BATCH_SIZE); // pre page-fault MMU, wwe wont warm-up cpuid samples for the P-states intentionally
 
-            state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3
+            state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3.
             while (state.counter == 0) {}
 
+            size_t valid = 0;
             while (valid < BATCH_SIZE) {
                 // interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects both samples
                 u64 v_pre, v_post, r_pre, r_post, sync;
@@ -5582,7 +5646,7 @@ public:
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
                 // force cpuid collection here so that the hypervisor is either forced to disable interception and try to bypass latency, or intercept cpuid and try to bypass XSAVE states
-                trigger_vmexit(dummy_res, 0xD, 0);
+                trigger_vmexit(dummy_res, 0, 0);
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 v_post = state.counter;
 
@@ -5603,47 +5667,42 @@ public:
                 }
             }
 
-            state.test_done.store(true, std::memory_order_release);
-
             const u64 cpuid_l = calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can detect (SMIs, etc)
             const u64 ref_l = calculate_latency(ref_samples);
-            const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
+            const double ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
 
-            // VMM == Time spent in hypervisor; nVMM == Time spent in baremetal; Scheduling == Work done by threads
-            debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ",  ref_l, " | Ratio -> ", latency_ratio);
-            if (latency_ratio >= threshold) hypervisor_detected = true;
+            debug("TIMER: CPUID -> ", cpuid_l, " | Ref -> ",  ref_l, " | Ratio -> ", ratio);
+
+            if (ratio >= threshold) hypervisor_detected = true;
 
             // Now detect bypassers letting the VM boot with cpuid interception, and then disabling interception with SVM by flipping bit 18 in the VMCB 
             // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying intel-specific behavior)
-            if (cpu::is_amd() && !hypervisor_detected) {
+            if (cpu::is_amd()) {
                 i32 res_d0[4], res_d1[4], res_d12[4], res_ext[4];
-                trigger_vmexit(res_d0, 0xD, 0);    // XCR0 features
-                trigger_vmexit(res_d1, 0xD, 1);    // XCR0 + XSS features
-                trigger_vmexit(res_d12, 0xD, 12);  // CET State details
+                trigger_vmexit(res_d0, 0xD, 0);
+                trigger_vmexit(res_d1, 0xD, 1);
+                trigger_vmexit(res_d12, 0xD, 12);
                 trigger_vmexit(res_ext, 0x80000008, 0);
 
                 const bool hardware_supports_cet = (res_d12[0] > 0);
-                const u32 active_xcr0_size = (u32)res_d0[1];  // size for features enabled in XCR0
-                const u32 active_total_size = (u32)res_d1[1]; // size for XCR0 + IA32_XSS
+                const u32 active_xcr0_size = (u32)res_d0[1];
+                const u32 active_total_size = (u32)res_d1[1];
 
-                if (hardware_supports_cet) {
-                    // delta is the size attributed to supervisor states like CET_U
-                    const u32 xss_delta = active_total_size - active_xcr0_size;
-
-                    if (xss_delta != 0x10) {
-                        debug("TIMER: VMAware detected a SVM hypervisor with cpuid interception disabled, score was raised up due to a bypass attempt. XSAVE Delta: 0x%X", xss_delta);
-                        bypass_detected = true;
-                    }
+                if (hardware_supports_cet && (active_total_size == active_xcr0_size)) {
+                    debug("TIMER: VMAware detected a SVM hypervisor with cpuid interception disabled, score was raised up due to a bypass attempt.");
+                    bypass_detected = true;
                 }
             }
 
             SetPriorityClass(current_process, NORMAL_PRIORITY_CLASS);
+            state.test_done.store(true, std::memory_order_release);
         };
 
         std::thread t1(counter_thread);
-        trigger_thread();
+        std::thread t2(trigger_thread);
 
         t1.join();
+        t2.join();
 
         if (hypervisor_detected) {
             return true; // 100 score
@@ -11937,7 +11996,7 @@ public:
         // KVM does this, but other hypervisors might do the same, reason why is generic
         // kernel might configure CR4 to inject exception if CPL > 0, so if this case is detected, trigger a lower probability score 
         if (generic_hypervisor) {
-            return core::add(brand_enum::NULL_BRAND, 50); 
+            return core::add(brand_enum::NULL_BRAND, 50);
         }
 
         return false;
