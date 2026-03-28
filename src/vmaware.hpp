@@ -3473,7 +3473,7 @@ public:
             return (base_str.find(keyword) != std::string::npos);
         };
 
-        [[nodiscard]] i32 popcount(u64 v) {
+        [[nodiscard]] static i32 popcount(u64 v) {
         #if (GCC) || (CLANG)
             return __builtin_popcountll(v);
         #elif (MSVC)
