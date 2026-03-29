@@ -5678,8 +5678,10 @@ public:
             debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ",  ref_l, " | Ratio -> ", latency_ratio);
             if (latency_ratio >= threshold) hypervisor_detected = true;
 
-            // Now detect bypassers letting the VM boot with cpuid interception, and then disabling interception with SVM by flipping bit 18 in the VMCB 
-            // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying intel-specific behavior)
+            // Now detect bypassers disabling cpuid interception with SVM
+            // Even when a bypasser disables INTERCEPT_CPUID in the VMCB, they often fail to realize that certain CPUID leaves do not return static values from the hardware
+            // Instead, they return values based on the LAPIC state or internal CPU registers that the hypervisor must initialize for the vCPU to function
+            // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying Intel-specific behavior)
             if (cpu::is_amd() && !hypervisor_detected) {
                 i32 res_d0[4], res_d1[4], res_d12[4], res_ext[4];
                 trigger_vmexit(res_d0, 0xD, 0);    // XCR0 features
@@ -5707,7 +5709,6 @@ public:
 
         std::thread t1(counter_thread);
         trigger_thread();
-
         t1.join();
 
         if (hypervisor_detected) {
@@ -5718,7 +5719,7 @@ public:
         }
 
         return hypervisor_detected;
-#endif
+    #endif
         return false;
     }
 
@@ -11903,108 +11904,7 @@ public:
                 return true;
             }
         }
-
-        // we will run amd only stuff
-        if (!cpu::is_amd()) {
-            return false;
-        }
-
-        struct state {
-            volatile int in_asm;
-            volatile int exception_seen;
-        };
-
-        static thread_local state* tls_state = nullptr;
-
-        state state{};
-        tls_state = &state;
-
-        // lambda to capture exceptions
-        const PVOID vh = AddVectoredExceptionHandler(
-            1,
-            [](PEXCEPTION_POINTERS ep) -> LONG {
-                if (!tls_state || !tls_state->in_asm)
-                    return EXCEPTION_CONTINUE_SEARCH;
-
-                const DWORD code = ep->ExceptionRecord->ExceptionCode;
-                if (code == EXCEPTION_ILLEGAL_INSTRUCTION) {
-                    tls_state->exception_seen = 1;
-                #if (x86_64)
-                    ep->ContextRecord->Rip += 3;
-                #else
-                    ep->ContextRecord->Eip += 3;
-                #endif
-                    return EXCEPTION_CONTINUE_EXECUTION;
-                }
-                return EXCEPTION_CONTINUE_SEARCH;
-            }
-        );
-        if (!vh) return false;
-
-        // xor rdpru ret
-        constexpr unsigned char code[] = {
-            0x31, 0xC9,
-            0x0F, 0x01, 0xFD,
-            0xC3
-        };
-
-        PVOID mem = nullptr;
-        SIZE_T size = sizeof(code);
-
-        if (nt_allocate_virtual_memory(
-            current_process,
-            &mem,
-            0,
-            &size,
-            MEM_COMMIT | MEM_RESERVE,
-            PAGE_EXECUTE_READWRITE) != 0 || !mem)
-        {
-            RemoveVectoredExceptionHandler(vh);
-            return false;
-        }
-
-        memcpy(mem, code, sizeof(code));
-
-        nt_flush_instruction_cache(current_process, mem, sizeof(code));
-
-        using fn_t = void(*)();
-        fn_t fn = reinterpret_cast<fn_t>(mem);
-
-        state.exception_seen = 0;
-        state.in_asm = 1;
-
-        __try {
-            fn();
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            state.exception_seen = 1;
-        }
-
-        state.in_asm = 0;
-
-        if (state.exception_seen) {
-            debug("KVM_INTERCEPTION: Detected a hypervisor intercepting performance counter reads");
-            generic_hypervisor = true;
-        }
-
-        SIZE_T free_size = 0;
-        nt_free_virtual_memory(
-            current_process,
-            &mem,
-            &free_size,
-            MEM_RELEASE
-        );
-
-        nt_close(current_process);
-
-        RemoveVectoredExceptionHandler(vh);
-
-        // KVM does this, but other hypervisors might do the same, reason why is generic
-        // kernel might configure CR4 to inject exception if CPL > 0, so if this case is detected, trigger a lower probability score 
-        if (generic_hypervisor) {
-            return core::add(brand_enum::NULL_BRAND, 50); 
-        }
-
+ 
         return false;
     }
 
