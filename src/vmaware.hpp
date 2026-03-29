@@ -3473,6 +3473,25 @@ public:
             return (base_str.find(keyword) != std::string::npos);
         };
 
+        [[nodiscard]] static i32 popcount(u64 v) {
+        #if (GCC) || (CLANG)
+            return __builtin_popcountll(v);
+        #elif (MSVC)
+        #if (x86_32)
+            return static_cast<int>(
+                __popcnt(static_cast<unsigned int>(v)) +
+                __popcnt(static_cast<unsigned int>(v >> 32))
+                );
+        #else
+            return static_cast<int>(__popcnt64(static_cast<unsigned long long>(v)));
+        #endif
+        #else
+            int c = 0;
+            while (v) { c += static_cast<int>(v & 1ull); v >>= 1; }
+            return c;
+        #endif
+        };
+
         static std::string narrow_wide(const wchar_t* wstr) {
             if (!wstr) return std::string{};
             std::wstring ws(wstr);
@@ -4005,10 +4024,13 @@ public:
 
                 while (true) {
                     char k = str[j];
-                    const bool is_valid = (k >= '0' && k <= '9') ||
+                    const bool is_valid = (
+                        (k >= '0' && k <= '9') ||
                         (k >= 'A' && k <= 'Z') ||
                         (k >= 'a' && k <= 'z') ||
-                        (k == '-'); // models have hyphen
+                        (k == '-') // models have hyphen
+                    );
+    
                     if (!is_valid) break;
 
                     if (current_len >= max_model_len) {
@@ -4046,16 +4068,18 @@ public:
 
                         // since it's a contiguous block of integers in .rodata/.rdata, this is extremely fast
                         for (size_t idx = 0; idx < db_size; ++idx) {
-                            if (db[idx].hash == current_hash) {
-                                if (current_len > best_len) {
-                                    best_len = current_len;
-                                    expected_threads = db[idx].threads;
-                                    found = true;
-                                }
-                                // since hashing implies uniqueness in this dataset, you might say we could break here,
-                                // but we continue to ensure we find the longest substring match if overlaps exist,
-                                // so like it finds both "i9-11900" and "i9-11900K" i.e.
+                            if (db[idx].hash != current_hash) {
+                                continue;
                             }
+
+                            if (current_len > best_len) {
+                                best_len = current_len;
+                                expected_threads = db[idx].threads;
+                                found = true;
+                            }
+                            // since hashing implies uniqueness in this dataset, you might say we could break here,
+                            // but we continue to ensure we find the longest substring match if overlaps exist,
+                            // so like it finds both "i9-11900" and "i9-11900K" i.e.
                         }
                     }
                 }
@@ -5019,47 +5043,35 @@ public:
         return false;
     #else
         auto is_smt_enabled = []() noexcept -> bool {
-            auto popcount = [](uint64_t v) noexcept -> int {
-            #if (GCC) || (CLANG)
-                return __builtin_popcountll(v);
-            #elif (MSVC)
-            #if (x86_32)
-                return static_cast<int>(
-                    __popcnt(static_cast<unsigned int>(v)) +
-                    __popcnt(static_cast<unsigned int>(v >> 32))
-                    );
-            #else
-                return static_cast<int>(__popcnt64(static_cast<unsigned long long>(v)));
-            #endif
-            #else
-                int c = 0;
-                while (v) { c += static_cast<int>(v & 1ull); v >>= 1; }
-                return c;
-            #endif
-            };
         #if (WINDOWS)
             DWORD len = 0;
             if (GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len) ||
                 GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
                 return false;
             }
+
             std::vector<char> buf(static_cast<size_t>(len));
             if (!GetLogicalProcessorInformationEx(RelationProcessorCore,
                 reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buf.data()), &len)) {
                 return false;
             }
+
             // first RelationProcessorCore record encountered, basically if two logical processors maps to the same core, SMT is enabled to the OS point of view
             size_t offset = 0;
             while (offset + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) <= static_cast<size_t>(len)) {
                 auto rec = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buf.data() + offset);
+
                 if (rec->Relationship == RelationProcessorCore) {
                     const PROCESSOR_RELATIONSHIP& pr = rec->Processor;
                     unsigned total = 0;
+
                     for (WORD i = 0; i < pr.GroupCount; ++i) {
-                        total += popcount(static_cast<uint64_t>(pr.GroupMask[i].Mask));
+                        total += util::popcount(static_cast<uint64_t>(pr.GroupMask[i].Mask));
                     }
+
                     return total > 1;
                 }
+
                 if (rec->Size == 0) break;
                 offset += rec->Size;
             }
@@ -5067,57 +5079,109 @@ public:
         #elif (APPLE)
             int logical = 0, physical = 0;
             size_t sz = sizeof(logical);
-            if (sysctlbyname("hw.logicalcpu", &logical, &sz, nullptr, 0) != 0) logical = 0;
+
+            if (sysctlbyname("hw.logicalcpu", &logical, &sz, nullptr, 0) != 0) {
+                logical = 0;
+            }
+
             sz = sizeof(physical);
-            if (sysctlbyname("hw.physicalcpu", &physical, &sz, nullptr, 0) != 0) physical = 0;
-            if (logical > 0 && physical > 0) return logical > physical;
+
+            if (sysctlbyname("hw.physicalcpu", &physical, &sz, nullptr, 0) != 0) {
+                physical = 0;
+            }
+
+            if (logical > 0 && physical > 0) {
+                return logical > physical;
+            }
+
             return false;
         #else
             //  check cpu0 thread_siblings_list
-            {
-                std::ifstream f("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
-                if (f) {
-                    std::string s;
-                    if (std::getline(f, s)) {
-                        // trim
-                        size_t a = 0; while (a < s.size() && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
-                        size_t b = s.size(); while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
-                        if (b > a) {
-                            for (size_t k = a; k < b; ++k) {
-                                if (s[k] == ',' || s[k] == '-') return true;
-                            }
-                            return false;
+            std::ifstream f("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
+            if (f) {
+                std::string s;
+                if (std::getline(f, s)) {
+                    // trim
+                    size_t a = 0; 
+                    
+                    while (a < s.size() && std::isspace(static_cast<u8>(s[a]))) {
+                        ++a;
+                    }
+
+                    size_t b = s.size();
+                    
+                    while (b > a && std::isspace(static_cast<u8>(s[b - 1]))) {
+                        --b;
+                    }
+
+                    if (b > a) {
+                        for (size_t k = a; k < b; ++k) {
+                            if (s[k] == ',' || s[k] == '-') return true;
                         }
+                        return false;
                     }
                 }
             }
+
             // /proc/cpuinfo for unique (physical id, core id) pairs vs processors
             std::ifstream cpuinfo("/proc/cpuinfo");
-            if (!cpuinfo) return false;
+
+            if (!cpuinfo) {
+                return false;
+            }
+
             std::string line;
             int processors = 0;
             bool in_section = false;
             int cur_phys = -1, cur_core = -1;
             std::vector<std::pair<int, int>> cores;
+    
             while (std::getline(cpuinfo, line)) {
                 if (line.empty()) {
-                    if (cur_phys != -1 && cur_core != -1) cores.emplace_back(cur_phys, cur_core);
+                    if (cur_phys != -1 && cur_core != -1) {
+                        cores.emplace_back(cur_phys, cur_core);
+                    }
+
                     cur_phys = cur_core = -1;
                     in_section = false;
                     continue;
                 }
+    
                 auto pos = line.find(':');
                 if (pos == std::string::npos) continue;
                 std::string key = line.substr(0, pos);
                 std::string val = line.substr(pos + 1);
+
                 // trim
-                while (!key.empty() && std::isspace(static_cast<unsigned char>(key.back()))) key.pop_back();
-                while (!val.empty() && std::isspace(static_cast<unsigned char>(val.front()))) val.erase(val.begin());
-                if (key == "processor") ++processors;
-                else if (key == "physical id") { try { cur_phys = std::stoi(val); } catch (...) { cur_phys = -1; } }
-                else if (key == "core id") { try { cur_core = std::stoi(val); } catch (...) { cur_core = -1; } }
+                while (!key.empty() && std::isspace(static_cast<u8>(key.back()))) {
+                    key.pop_back();
+                }
+
+                while (!val.empty() && std::isspace(static_cast<u8>(val.front()))) {
+                    val.erase(val.begin());
+                }
+
+                if (key == "processor") {
+                    processors++;
+                } else if (key == "physical id") { 
+                    try { 
+                        cur_phys = std::stoi(val); 
+                    } catch (...) { 
+                        cur_phys = -1; 
+                    } 
+                } else if (key == "core id") { 
+                    try { 
+                        cur_core = std::stoi(val); 
+                    } catch (...) { 
+                        cur_core = -1;
+                    }
+                }
             }
-            if (cur_phys != -1 && cur_core != -1) cores.emplace_back(cur_phys, cur_core);
+
+            if (cur_phys != -1 && cur_core != -1) {
+                cores.emplace_back(cur_phys, cur_core);
+            }
+
             if (!cores.empty() && processors > 0) {
                 std::sort(cores.begin(), cores.end());
                 cores.erase(std::unique(cores.begin(), cores.end()), cores.end());
@@ -5134,14 +5198,15 @@ public:
             debug(info.debug_tag, ": CPU model = ", info.model_name);
 
             const u32 actual = memo::threadcount::fetch();
+
             if (actual != info.expected_threads) {
                 debug(info.debug_tag, ": Current threads -> ", actual);
                 const bool smt = is_smt_enabled();
+
                 if (smt) {
                     debug(info.debug_tag, ": Expected  ", info.expected_threads, " threads");
                     return true;
-                }
-                else {
+                } else {
                     debug(info.debug_tag, ": Expected ", info.expected_threads, " threads, but found SMT disabled");
                     return false;
                 }         
