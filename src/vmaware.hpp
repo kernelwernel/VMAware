@@ -5377,7 +5377,7 @@ public:
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 20.0;
+        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 25.0;
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         struct alignas(64) cache_state {
@@ -5647,7 +5647,7 @@ public:
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
                 // force cpuid collection here so that the hypervisor is either forced to disable interception and try to bypass latency, or intercept cpuid and try to bypass XSAVE states
-                trigger_vmexit(dummy_res, 0xD, 0);
+                trigger_vmexit(dummy_res, 0x0, 0); // fastest cpuid path, on purpose for stability in the measurement
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 v_post = state.counter;
 
@@ -12010,7 +12010,7 @@ public:
             // veh will already detect if Dr0 fired successfully
         }
 
-        // Cleanup
+        // cleanup
         rtl_remove_vectored_exception_handler(veh_handle);
 
         ctx.Dr0 = 0;
