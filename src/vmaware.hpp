@@ -5462,6 +5462,7 @@ public:
             const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
             SetThreadAffinityMask(current_thread, target_affinity);
             SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST); // decrease chance of being rescheduled
+            SetThreadPriorityBoost(current_thread, TRUE); // disable dynamic boosts
 
             while (!state.start_test.load(std::memory_order_acquire)) {}
 
@@ -5508,14 +5509,28 @@ public:
 
                 // the robust center: median M and MAD -> approximate sigma
                 const u64 M = median_of_sorted(s, 0, s.size());
+
+                // Faster MAD: select the median deviation in linear time instead of sorting all deviations.
                 std::vector<u64> absdev;
-                absdev.reserve(N);
+                absdev.resize(N);
                 for (size_t i = 0; i < N; ++i) {
                     const u64 d = (s[i] > M) ? (s[i] - M) : (M - s[i]);
-                    absdev.push_back(d);
+                    absdev[i] = d;
                 }
-                std::sort(absdev.begin(), absdev.end());
-                const u64 MAD = median_of_sorted(absdev, 0, absdev.size());
+
+                const size_t mad_mid = N / 2;
+                std::nth_element(absdev.begin(), absdev.begin() + mad_mid, absdev.end());
+
+                u64 MAD = 0;
+                if (N & 1) {
+                    MAD = absdev[mad_mid];
+                }
+                else {
+                    const u64 upper = absdev[mad_mid];
+                    const u64 lower = *std::max_element(absdev.begin(), absdev.begin() + mad_mid);
+                    MAD = (lower + upper) / 2;
+                }
+
                 // convert MAD to an approximate standard-deviation-like measure
                 constexpr long double kmad_to_sigma = 1.4826L; // consistent for normal approx
                 const long double sigma = (MAD == 0) ? 1.0L : (static_cast<long double>(MAD) * kmad_to_sigma);
@@ -5625,20 +5640,29 @@ public:
             SetThreadAffinityMask(current_thread, 1);
             SetPriorityClass(current_process, ABOVE_NORMAL_PRIORITY_CLASS); // ABOVE_NORMAL_PRIORITY_CLASS + THREAD_PRIORITY_HIGHEST = 12 base priority
             SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST);
+            SetThreadPriorityBoost(current_thread, TRUE); // disable dynamic boosts
 
             // so that hypervisor can't predict how many samples we will collect
             std::mt19937 gen(std::random_device{}());
             std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
             const size_t BATCH_SIZE = batch_dist(gen);
             i32 dummy_res[4]{};
-            size_t valid = 0;
+            size_t valid = 0; // end of setup phase
+            SleepEx(0, FALSE); // try to get fresh quantum before starting warm-up phase, give time to kernel to set up priorities
+
             std::vector<u64> vm_samples(BATCH_SIZE), ref_samples(BATCH_SIZE); // pre page-fault MMU, wwe wont warm-up cpuid samples for the P-states intentionally
+            VirtualLock(vm_samples.data(), BATCH_SIZE * sizeof(u64)); // lock the memory for the samples to prevent page faults if permissions are enough
+            VirtualLock(ref_samples.data(), BATCH_SIZE * sizeof(u64));
 
             state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3
-            while (state.counter == 0) {}
+            // warm-up to settle caches, scheduler and frequency boosts
+            for (int i = 0; i < 1000; ++i) {
+                trigger_vmexit(dummy_res, 0x0, 0);
+                for (int j = 0; j < 8; ++j) _mm_lfence();
+            }
 
             while (valid < BATCH_SIZE) {
-                // interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects both samples
+                // interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
                 u64 v_pre, v_post, r_pre, r_post, sync;
 
                 sync = state.counter; while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
@@ -5704,6 +5728,8 @@ public:
                 }
             }
 
+            VirtualUnlock(vm_samples.data(), BATCH_SIZE * sizeof(u64));
+            VirtualUnlock(ref_samples.data(), BATCH_SIZE * sizeof(u64));
             SetPriorityClass(current_process, NORMAL_PRIORITY_CLASS);
         };
 
