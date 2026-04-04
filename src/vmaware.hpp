@@ -5637,7 +5637,9 @@ public:
 
             const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
             const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
-            SetThreadAffinityMask(current_thread, 1);
+            const DWORD_PTR old_affinity = SetThreadAffinityMask(current_thread, 1);
+            const int old_thread_priority = GetThreadPriority(current_thread);
+            const DWORD old_process_priority = GetPriorityClass(current_process);
             SetPriorityClass(current_process, ABOVE_NORMAL_PRIORITY_CLASS); // ABOVE_NORMAL_PRIORITY_CLASS + THREAD_PRIORITY_HIGHEST = 12 base priority
             SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST);
             SetThreadPriorityBoost(current_thread, TRUE); // disable dynamic boosts
@@ -5728,9 +5730,13 @@ public:
                 }
             }
 
+            // cleanup
+            SetThreadPriorityBoost(current_thread, FALSE);
+            SetThreadPriority(current_thread, old_thread_priority);
+            SetPriorityClass(current_process, old_process_priority);
+            SetThreadAffinityMask(current_thread, old_affinity);
             VirtualUnlock(vm_samples.data(), BATCH_SIZE * sizeof(u64));
             VirtualUnlock(ref_samples.data(), BATCH_SIZE * sizeof(u64));
-            SetPriorityClass(current_process, NORMAL_PRIORITY_CLASS);
         };
 
         std::thread t1(counter_thread);
