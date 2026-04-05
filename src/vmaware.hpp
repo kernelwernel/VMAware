@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.6.0 (March 2026)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.6.0 (April 2026)
  *
  *  C++ VM detection library
  *
@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 807
  * - struct for internal memoization           => line 3117
  * - struct for internal utility functions     => line 3324
- * - struct for internal core components       => line 12070
- * - start of VM detection technique list      => line 4772
- * - start of public VM detection functions    => line 12435
- * - start of externally defined variables     => line 13224
+ * - struct for internal core components       => line 12085
+ * - start of VM detection technique list      => line 4800
+ * - start of public VM detection functions    => line 12450
+ * - start of externally defined variables     => line 13239
  *
  *
  * ============================== EXAMPLE ===================================
@@ -3851,11 +3851,15 @@ public:
                         struct {
                             USHORT Limit;
                             ULONG_PTR Base;
-                        } idtr;
+                        } idtr = { 0 }; 
                         #pragma pack(pop)
                         __sidt(&idtr);
-                        memcpy(idtr_buffer, &idtr, sizeof(idtr));
-                    #endif   
+
+                        volatile u8* idtr_ptr = (volatile u8*)&idtr;
+                        for (size_t j = 0; j < sizeof(idtr); ++j) {
+                            idtr_buffer[j] = idtr_ptr[j];
+                        }
+                    #endif
 
                     ULONG_PTR idt_base = 0;
                     memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
@@ -8772,6 +8776,7 @@ public:
         const auto system_module_info_ex = reinterpret_cast<PSYSTEM_MODULE_INFORMATION_EX>(allocated_memory);
         status = nt_query_system_information(system_module_information, system_module_info_ex, ul_size, &ul_size);
         if (!(((NTSTATUS)(status)) >= 0)) {
+            region_size = 0;
             nt_free_virtual_memory(current_process, &allocated_memory, &region_size, MEM_RELEASE);
             return false;
         }
@@ -8784,6 +8789,7 @@ public:
                 strstr(driverPath, "VBoxSF")
             ) {
                 debug("DRIVERS: Detected VBox driver: ", driverPath);
+                region_size = 0;
                 nt_free_virtual_memory(current_process, &allocated_memory, &region_size, MEM_RELEASE);
                 return core::add(brand_enum::VBOX);
             }
@@ -8794,12 +8800,14 @@ public:
                 strstr(driverPath, "vmmemctl")
             ) {
                 debug("DRIVERS: Detected VMware driver: ", driverPath);
+                region_size = 0;
                 nt_free_virtual_memory(current_process, &allocated_memory, &region_size, MEM_RELEASE);
                 return core::add(brand_enum::VMWARE);
             }
         }
 
-        nt_free_virtual_memory(current_process, &allocated_memory, &region_size, MEM_RELEASE);
+        SIZE_T free_size = 0;
+        nt_free_virtual_memory(current_process, &allocated_memory, &free_size, MEM_RELEASE);
         return false;
     }
 
@@ -8972,7 +8980,7 @@ public:
                         allocated_buffer, static_cast<ULONG>(allocated_size));
                     if (!NT_SUCCESS(st)) {
                         PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                        SIZE_T free_size = allocated_size;
+                        SIZE_T free_size = 0;
                         nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
                         nt_close(device);
                         continue;
@@ -8991,7 +8999,7 @@ public:
                 if (reported_size < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reported_size) > MAX_DESCRIPTOR_SIZE) {
                     if (allocated_buffer) {
                         PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                        SIZE_T free_size = allocated_size;
+                        SIZE_T free_size = 0;
                         nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
                         allocated_buffer = nullptr;
                     }
@@ -9013,7 +9021,7 @@ public:
                 if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
                     if (allocated_buffer) {
                         PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                        SIZE_T free_size = allocated_size;
+                        SIZE_T free_size = 0;
                         nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
                         allocated_buffer = nullptr;
                     }
@@ -9025,7 +9033,7 @@ public:
             // Cleanup for the current iteration if no VM was detected on this drive
             if (allocated_buffer) {
                 PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                SIZE_T free_size = allocated_size;
+                SIZE_T free_size = 0;
                 nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
                 allocated_buffer = nullptr;
             }
@@ -9829,7 +9837,7 @@ public:
             st = nt_protect_virtual_memory(current_process, &tmp_base, &tmp_sz, PAGE_EXECUTE_READ, &oldProt);
             if (!NT_SUCCESS(st)) {
                 PVOID free_base = exec_mem;
-                SIZE_T free_size = trampoline_size;
+                SIZE_T free_size = 0;
                 nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
                 return false;
             }
@@ -9845,7 +9853,7 @@ public:
 
         if (!NT_SUCCESS(nt_get_context_thread(current_thread, &original_context))) {
             PVOID free_base = exec_mem;
-            SIZE_T free_size = trampoline_size;
+            SIZE_T free_size = 0;
             nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
             return false;
         }
@@ -9863,7 +9871,7 @@ public:
         if (!NT_SUCCESS(nt_set_context_thread(current_thread, &debug_context))) {
             nt_set_context_thread(current_thread, &original_context);
             PVOID free_base = exec_mem;
-            SIZE_T free_size = trampoline_size;
+            SIZE_T free_size = 0;
             nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
             return false;
         }
@@ -9931,7 +9939,7 @@ public:
         nt_set_context_thread(current_thread, &original_context);
 
         PVOID free_base = exec_mem;
-        SIZE_T free_size = trampoline_size;
+        SIZE_T free_size = 0;
         nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
     #endif
         return hypervisor_caught;
@@ -9990,6 +9998,7 @@ public:
         ULONG old_protection = 0;
         st = nt_protect_virtual_memory(current_process, &base, &region_size, PAGE_EXECUTE_READ, &old_protection);
         if (!NT_SUCCESS(st)) {
+            region_size = 0;
             nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
             return false;
         }
@@ -10003,6 +10012,7 @@ public:
             saw_ud = true;
         }
 
+        region_size = 0;
         nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
 
         return !saw_ud;
@@ -10140,6 +10150,7 @@ public:
         ULONG old_protection = 0;
         st = nt_protect_virtual_memory(current_process, &stub, &region_size, PAGE_EXECUTE_READ, &old_protection);
         if (!NT_SUCCESS(st)) {
+            region_size = 0;
             nt_free_virtual_memory(current_process, &stub, &region_size, MEM_RELEASE);
             return false;
         }
@@ -10165,6 +10176,7 @@ public:
 
         const bool found = tryPass();
 
+        region_size = 0;
         nt_free_virtual_memory(current_process, &stub, &region_size, MEM_RELEASE);
 
         if (found) return core::add(brand_enum::DBVM);
@@ -11441,12 +11453,12 @@ public:
         }
 
         if (exec_mem) {
-            free_base = exec_mem; free_size = codeSize;
+            free_base = exec_mem; free_size = 0;
             nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
             exec_mem = nullptr;
         }
         if (amd_target_mem) {
-            free_base = amd_target_mem; free_size = target_size;
+            free_base = amd_target_mem; free_size = 0;
             nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
             amd_target_mem = nullptr;
         }
@@ -11993,8 +12005,14 @@ public:
         const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
         if (status_src < 0 || status_dst < 0) {
-            if (src_page) { SIZE_T free_size = 0; nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE); }
-            if (dst_page) { SIZE_T free_size = 0; nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE); }
+            if (src_page) { 
+                SIZE_T free_size = 0; 
+                nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE); 
+            }
+            if (dst_page) { 
+                SIZE_T free_size = 0; 
+                nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE); 
+            }
             return false;
         }
 
