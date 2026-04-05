@@ -4,7 +4,7 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ 2.7.0 (April 2026)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.7.0 (April 2026)
  *
  *  C++ VM detection library
  *
@@ -58,10 +58,10 @@
  * - struct for internal cpu operations        => line 807
  * - struct for internal memoization           => line 3117
  * - struct for internal utility functions     => line 3324
- * - struct for internal core components       => line 12085
+ * - struct for internal core components       => line 12084
  * - start of VM detection technique list      => line 4800
- * - start of public VM detection functions    => line 12450
- * - start of externally defined variables     => line 13239
+ * - start of public VM detection functions    => line 12449
+ * - start of externally defined variables     => line 13238
  *
  *
  * ============================== EXAMPLE ===================================
@@ -5136,7 +5136,6 @@ public:
 
             std::string line;
             int processors = 0;
-            bool in_section = false;
             int cur_phys = -1, cur_core = -1;
             std::vector<std::pair<int, int>> cores;
     
