@@ -10278,7 +10278,7 @@ public:
         switch (hash) {
             case 0x110350C5: return core::add(brand_enum::QEMU); // TianoCore EDK2
             case 0x87c39681: return core::add(brand_enum::HYPERV);
-            case 0x9502cb33: return core::add(brand_enum::VBOX);
+            // case 0x9502cb33: return core::add(brand_enum::VBOX); // conflicts with some MSI logo images
             default:         return false;
         }
     #else
