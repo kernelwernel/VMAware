@@ -8034,7 +8034,6 @@ public:
 
         return (
             check_usb() ||
-            check_general() ||
             check_rom()
         );
     }
