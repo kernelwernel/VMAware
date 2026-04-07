@@ -11956,6 +11956,9 @@ public:
      * @implements VM::BREAKPOINT
      */
     [[nodiscard]] static bool breakpoint() {
+    #if (!x86)
+        return false;
+    #endif
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
