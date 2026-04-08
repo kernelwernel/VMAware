@@ -335,6 +335,12 @@
     #warning "Unknown OS detected, tests will be severely limited"
 #endif
 
+#if (CLANG)
+    // This happens because Windows API structures or aliases are typedef'd inside a local scope (like inside a function) but never actually used
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wunused-local-typedef"
+#endif
+
 #if (VMA_CPP >= 23)
     #include <limits>
 #endif
@@ -4278,13 +4284,13 @@ public:
                 UNICODE_STRING FullDllName;
                 BYTE Reserved4[8];
                 PVOID Reserved5[3];
-            #pragma warning(push)
-            #pragma warning(disable: 4201)
+            #if (MSVC)
+            #pragma warning(suppress: 4201)
+            #endif
                 union {
                     ULONG CheckSum;
                     PVOID Reserved6;
                 } DUMMYUNIONNAME;
-            #pragma warning(pop)
                 ULONG TimeDateStamp;
             } LDR_DATA_TABLE_ENTRY, * PLDR_DATA_TABLE_ENTRY;
 
@@ -5382,11 +5388,18 @@ public:
         if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 25.0;
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
+        #if (MSVC)
+        #pragma warning(push)
+        #pragma warning(disable: 4324) 
+        #endif
         struct alignas(64) cache_state {
             alignas(64) volatile u64 counter { 0 };
             alignas(64) std::atomic<bool> start_test{ false };
             alignas(64) std::atomic<bool> test_done{ false };
         };
+        #if (MSVC)
+        #pragma warning(pop)
+        #endif
 
         // Shared state and results
         cache_state state;
@@ -8185,7 +8198,7 @@ public:
             PVOID, ULONG);
         const auto nt_power_information = reinterpret_cast<NtPI_t>(funcs[0]);
 
-        SYSTEM_POWER_CAPABILITIES caps = { 0 };
+        SYSTEM_POWER_CAPABILITIES caps{};
         const NTSTATUS status = nt_power_information(
             SystemPowerCapabilities,
             nullptr, 0,
@@ -8696,8 +8709,8 @@ public:
      * @implements VM::DEVICE_STRING
      */
     [[nodiscard]] static bool device_string() {
-        DCB dcb = { 0 };
-        COMMTIMEOUTS timeouts = { 0 };
+        DCB dcb{};
+        COMMTIMEOUTS timeouts{};
 
         if (BuildCommDCBAndTimeoutsA("jhl46745fghb", &dcb, &timeouts)) {
             return true;
@@ -9330,9 +9343,7 @@ public:
      * @implements VM::HYPERVISOR_QUERY
      */
     [[nodiscard]] static bool hypervisor_query() {
-    #if (x86_32)
-        return false;
-    #else
+    #if (x86_64)
         if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
@@ -9369,7 +9380,7 @@ public:
 
         const FN_NtQuerySystemInformation nt_query_system_information = reinterpret_cast<FN_NtQuerySystemInformation>(funcs[0]);
         if (nt_query_system_information) {
-            SYSTEM_HYPERVISOR_DETAIL_INFORMATION hypervisor_information = { {} };
+            SYSTEM_HYPERVISOR_DETAIL_INFORMATION hypervisor_information{};
 
             // Request class 0x9F (SystemHypervisorDetailInformation)
             // This asks the OS kernel to fill the structure with information about the 
@@ -11914,7 +11925,7 @@ public:
             return false;
         }
 
-        CONTEXT ctx = { 0 };
+        CONTEXT ctx{};
         ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
         nt_get_context_thread(current_thread, &ctx);
 
@@ -11950,6 +11961,9 @@ public:
     #endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
+    #if (CLANG)
+        #pragma clang diagnostic pop
+    #endif
 #endif
  
 
@@ -12338,6 +12352,9 @@ public: // START OF PUBLIC FUNCTIONS
         , [[maybe_unused]] const std::source_location& loc = std::source_location::current()
     #endif
     ) {
+    #if (SOURCE_LOCATION_SUPPORTED)
+        VMAWARE_UNUSED(loc);
+    #endif
         if (util::is_unsupported(flag_bit)) {
             memo::cache_store(flag_bit, false, 0);
             return false;
@@ -12365,7 +12382,9 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Flag argument must be a technique flag and not a settings flag");
         }
 
-        #if (VMA_CPP >= 23)
+        #if (MSVC && !CLANG)
+            __assume(flag_bit < technique_end);
+        #elif (VMA_CPP >= 23)
             [[assume(flag_bit < technique_end)]];
         #endif
 
@@ -12521,12 +12540,15 @@ public: // START OF PUBLIC FUNCTIONS
         , const std::source_location& loc = std::source_location::current()
         #endif
     ) {
-        // lambda to throw the error
+        #if (SOURCE_LOCATION_SUPPORTED)
+            VMAWARE_UNUSED(loc);
+        #endif
+
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-    #if (VMA_CPP >= 20 && !CLANG)
+        #if (VMA_CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-    #endif
+        #endif
             ss << ". Consult the documentation's parameters for VM::add_custom()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
@@ -12534,10 +12556,12 @@ public: // START OF PUBLIC FUNCTIONS
         if (percent > 100) {
             throw_error("Percentage parameter must be between 0 and 100");
         }
-
-    #if (VMA_CPP >= 23)
-        [[assume(percent > 0 && percent <= 100)]];
-    #endif
+        
+        #if (MSVC && !CLANG)
+            __assume(percent > 0 && percent <= 100);
+        #elif (VMA_CPP >= 23)
+            [[assume(percent > 0 && percent <= 100)]];
+        #endif
 
         size_t current_index = core::custom_table.size();
 
@@ -12716,12 +12740,15 @@ public: // START OF PUBLIC FUNCTIONS
         , const std::source_location& loc = std::source_location::current()
     #endif
     ) {
-        // lambda to throw the error
+        #if (SOURCE_LOCATION_SUPPORTED)
+            VMAWARE_UNUSED(loc);
+        #endif
+
         auto throw_error = [&](const char* text) -> void {
             std::stringstream ss;
-    #if (VMA_CPP >= 20 && !CLANG)
+        #if (VMA_CPP >= 20 && !CLANG)
             ss << ", error in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line() << ")";
-    #endif
+        #endif
             ss << ". Consult the documentation's parameters for VM::modify_score()";
             throw std::invalid_argument(std::string(text) + ss.str());
         };
@@ -12730,9 +12757,11 @@ public: // START OF PUBLIC FUNCTIONS
             throw_error("Percentage parameter must be between 0 and 100");
         }
 
-    #if (VMA_CPP >= 23)
-        [[assume(percent <= 100)]];
-    #endif  
+        #if (MSVC && !CLANG)
+            __assume(percent <= 100);
+        #elif (VMA_CPP >= 23)
+            [[assume(percent <= 100)]];
+        #endif
 
         // check if the flag provided is a setting flag, which isn't valid
         if (static_cast<u8>(flag) >= technique_end) {
