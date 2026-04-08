@@ -10482,6 +10482,8 @@ public:
      * @implements VM::NVRAM
      */
     static bool nvram() {
+        if (!util::is_admin()) return false;
+
         struct VARIABLE_NAME { ULONG NextEntryOffset; GUID VendorGuid; WCHAR Name[1]; };
         using variable_name_ptr = VARIABLE_NAME*;
         using nt_enumerate_system_environment_values_ex_t = NTSTATUS(__stdcall*)(ULONG, PVOID, PULONG);
@@ -10489,27 +10491,15 @@ public:
         using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
         using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
 
-        // Secure Boot stuff
-        bool found_dbx_default = false;
-        bool found_kek_default = false;
-        bool found_pk_default = false;
-
-        /*
-            MemoryOverwriteRequestControlLock is part of a state machine defined in the TCG Platform Reset Attack Mitigation Specification
-            the SMM driver expects to initialize and manage this variable itself during the DXE phase of booting
-            Secure Boot, TPM and SMM must be enabled to set it
-        */
-        bool found_morcl = false;
         bool detection_result = false;
 
         // Handles and Buffers
         HANDLE token_handle = nullptr;
         PVOID enum_base_buffer = nullptr;
         BYTE* pk_default_buf = nullptr;
-        BYTE* pk_buf = nullptr;
-        BYTE* kek_default_buf = nullptr;
-        BYTE* kek_buf = nullptr;
-        bool privileges_enabled = false;
+        bool privilege_state_saved = false;
+        TOKEN_PRIVILEGES previous_privileges{};
+        DWORD previous_privileges_size = sizeof(previous_privileges);
         LUID luid_struct{};
 
         // Function Pointers
@@ -10519,10 +10509,6 @@ public:
         nt_query_system_environment_value_ex_t nt_query_value = nullptr;
 
         const HANDLE current_process_handle = reinterpret_cast<HANDLE>(-1LL);
-
-        const char* manufacturer_str = "";
-        const char* model_str = "";
-        util::get_manufacturer_model(&manufacturer_str, &model_str);
 
         // -------------------------------------------------------------------------
         // Helper Lambdas
@@ -10534,13 +10520,18 @@ public:
             const BYTE p0 = static_cast<BYTE>((pat[0] >= 'A' && pat[0] <= 'Z') ? (pat[0] + 32) : pat[0]);
             const BYTE* end = data + (len - plen);
             for (const BYTE* p = data; p <= end; ++p) {
-                BYTE c0 = *p; c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
+                BYTE c0 = *p;
+                c0 = static_cast<BYTE>((c0 >= 'A' && c0 <= 'Z') ? (c0 + 32) : c0);
                 if (c0 != p0) continue;
                 bool ok = true;
                 for (size_t j = 1; j < plen; ++j) {
-                    BYTE dj = p[j]; dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
+                    BYTE dj = p[j];
+                    dj = static_cast<BYTE>((dj >= 'A' && dj <= 'Z') ? (dj + 32) : dj);
                     BYTE pj = static_cast<BYTE>((pat[j] >= 'A' && pat[j] <= 'Z') ? (pat[j] + 32) : pat[j]);
-                    if (dj != pj) { ok = false; break; }
+                    if (dj != pj) {
+                        ok = false;
+                        break;
+                    }
                 }
                 if (ok) return true;
             }
@@ -10553,17 +10544,66 @@ public:
             const WCHAR p0 = static_cast<WCHAR>((pat[0] >= L'A' && pat[0] <= L'Z') ? (pat[0] + 32) : pat[0]);
             const WCHAR* end = data + (wlen - plen);
             for (const WCHAR* p = data; p <= end; ++p) {
-                WCHAR c0 = *p; c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
+                WCHAR c0 = *p; 
+                c0 = static_cast<WCHAR>((c0 >= L'A' && c0 <= L'Z') ? (c0 + 32) : c0);
                 if (c0 != p0) continue;
                 bool ok = true;
                 for (size_t j = 1; j < plen; ++j) {
-                    WCHAR dj = p[j]; dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
+                    WCHAR dj = p[j]; 
+                    dj = static_cast<WCHAR>((dj >= L'A' && dj <= L'Z') ? (dj + 32) : dj);
                     WCHAR pj = static_cast<WCHAR>((pat[j] >= L'A' && pat[j] <= L'Z') ? (pat[j] + 32) : pat[j]);
-                    if (dj != pj) { ok = false; break; }
+                    if (dj != pj) { 
+                        ok = false; 
+                        break;  
+                    }
                 }
                 if (ok) return true;
             }
             return false;
+        };
+
+        auto read_variable_to_buffer = [&](const std::wstring& name, GUID& guid, BYTE*& out_buf, SIZE_T& out_len) noexcept -> bool {
+            UNICODE_STRING uni_str{};
+            uni_str.Buffer = const_cast<PWSTR>(name.c_str());
+            uni_str.Length = static_cast<USHORT>(name.length() * sizeof(wchar_t));
+            uni_str.MaximumLength = uni_str.Length + sizeof(wchar_t);
+
+            ULONG required_size = 0;
+            (void)nt_query_value(&uni_str, &guid, nullptr, &required_size, nullptr);
+            if (required_size == 0) return false;
+
+            PVOID allocation_base = nullptr;
+            SIZE_T alloc_size = required_size;
+            if (alloc_size < 0x1000) alloc_size = 0x1000;
+
+            NTSTATUS status = nt_allocate_memory(current_process_handle, &allocation_base, 0, &alloc_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            if (status != 0 || !allocation_base) {
+                out_buf = nullptr;
+                out_len = 0;
+                return false;
+            }
+
+            status = nt_query_value(&uni_str, &guid, allocation_base, &required_size, nullptr);
+            if (status == 0) {
+                out_buf = reinterpret_cast<BYTE*>(allocation_base);
+                out_len = required_size;
+                return true;
+            }
+
+            SIZE_T zero_s = 0;
+            nt_free_memory(current_process_handle, &allocation_base, &zero_s, 0x8000);
+            out_buf = nullptr;
+            out_len = 0;
+            return false;
+        };
+
+        auto cleanup = [&](auto& ptr) {
+            if (ptr) {
+                PVOID base = ptr;
+                SIZE_T size = 0;
+                nt_free_memory(current_process_handle, &base, &size, 0x8000);
+                ptr = nullptr;
+            }
         };
 
         // -------------------------------------------------------------------------
@@ -10571,19 +10611,21 @@ public:
         // -------------------------------------------------------------------------
 
         do {
-            if (!util::is_admin()) break;
-
             if (!OpenProcessToken(current_process_handle, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token_handle)) break;
-
             if (!LookupPrivilegeValue(nullptr, SE_SYSTEM_ENVIRONMENT_NAME, &luid_struct)) break;
 
             TOKEN_PRIVILEGES tp_enable{};
             tp_enable.PrivilegeCount = 1;
             tp_enable.Privileges[0].Luid = luid_struct;
             tp_enable.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-            AdjustTokenPrivileges(token_handle, FALSE, &tp_enable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-            if (GetLastError() != ERROR_SUCCESS) break;
-            privileges_enabled = true;
+
+            previous_privileges_size = sizeof(previous_privileges);
+            if (!AdjustTokenPrivileges(token_handle, FALSE, &tp_enable, previous_privileges_size, &previous_privileges, &previous_privileges_size))
+                break;
+            if (GetLastError() == ERROR_NOT_ALL_ASSIGNED)
+                break;       
+
+            privilege_state_saved = true;
 
             const HMODULE ntdll_module = util::get_ntdll();
             if (!ntdll_module) break;
@@ -10599,43 +10641,29 @@ public:
 
             if (!nt_enumerate_values || !nt_allocate_memory || !nt_free_memory || !nt_query_value) break;
 
-            bool has_function = false;
-            bool call_success = false;
-            SIZE_T enum_alloc_size = 0;
+            NTSTATUS alloc_status = 0;
             ULONG buffer_required_length = 0;
 
             // ask for size
-            if (nt_enumerate_values) {
-                has_function = true;
-                nt_enumerate_values(static_cast<ULONG>(1), nullptr, &buffer_required_length);
+            nt_enumerate_values(static_cast<ULONG>(1), nullptr, &buffer_required_length);
 
-                if (buffer_required_length != 0) {
-                    enum_alloc_size = static_cast<SIZE_T>(buffer_required_length);
-                    NTSTATUS alloc_status = nt_allocate_memory(current_process_handle, &enum_base_buffer, 0, &enum_alloc_size, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
+            if (buffer_required_length != 0) {
+                SIZE_T enum_alloc_size = 0;
+                enum_alloc_size = static_cast<SIZE_T>(buffer_required_length);
+                alloc_status = nt_allocate_memory(current_process_handle, &enum_base_buffer, 0, &enum_alloc_size, static_cast<ULONG>(MEM_COMMIT | MEM_RESERVE), static_cast<ULONG>(PAGE_READWRITE));
 
-                    if (alloc_status == 0 && enum_base_buffer) {
-                        alloc_status = nt_enumerate_values(static_cast<ULONG>(1), enum_base_buffer, &buffer_required_length);
-                        if (alloc_status == 0) {
-                            call_success = true;
-                        }
-                        else {
-                            SIZE_T zero_size = 0;
-                            nt_free_memory(current_process_handle, &enum_base_buffer, &zero_size, 0x8000);
-                            enum_base_buffer = nullptr;
-                            enum_alloc_size = 0;
-                        }
+                if (alloc_status == 0 && enum_base_buffer) {
+                    alloc_status = nt_enumerate_values(static_cast<ULONG>(1), enum_base_buffer, &buffer_required_length);
+                    if (alloc_status != 0) {
+                        SIZE_T zero_size = 0;
+                        nt_free_memory(current_process_handle, &enum_base_buffer, &zero_size, 0x8000);
+                        enum_base_buffer = nullptr;
                     }
                 }
-            }
+            }          
 
-            if (!has_function) {
-                debug("NVRAM: NtEnumerateSystemEnvironmentValuesEx could not be resolved");
-                detection_result = false;
-                break;
-            }
-            if (!call_success) {
+            if (alloc_status != 0 || !enum_base_buffer || buffer_required_length == 0) {
                 debug("NVRAM: System is not UEFI");
-                detection_result = false;
                 break;
             }
 
@@ -10644,106 +10672,10 @@ public:
             // ---------------------------------------------------------------------
             constexpr const char redhat_sig_ascii[] = "red hat";
             constexpr const wchar_t redhat_sig_wide[] = L"red hat";
-
             SIZE_T pk_default_len = 0;
-            SIZE_T pk_len = 0;
-            SIZE_T kek_default_len = 0;
-            SIZE_T kek_len = 0;
-
-            const GUID EFI_GLOBAL_VARIABLE = { 0x8BE4DF61, 0x93CA, 0x11D2, {0xAA,0x0D,0x00,0xE0,0x98,0x03,0x2B,0x8C} };
-
-            // Helper to read 1-byte UEFI variables like SecureBoot or SetupMode
-            auto read_uint8_var = [&](const std::wstring& name, const GUID& g, u8& out) noexcept -> bool {
-                if (!nt_query_value || !nt_allocate_memory || !nt_free_memory) return false;
-                UNICODE_STRING uni_str{};
-                uni_str.Buffer = const_cast<PWSTR>(name.c_str());
-                uni_str.Length = static_cast<USHORT>(name.length() * sizeof(wchar_t));
-                uni_str.MaximumLength = uni_str.Length + sizeof(wchar_t);
-
-                ULONG required_size = 0;
-                NTSTATUS status = nt_query_value(&uni_str, const_cast<LPGUID>(&g), nullptr, &required_size, nullptr);
-                if (required_size == 0) return false;
-
-                PVOID allocation_base = nullptr;
-                SIZE_T alloc_size = required_size;
-                if (alloc_size < 0x1000) alloc_size = 0x1000;
-
-                status = nt_allocate_memory(current_process_handle, &allocation_base, 0, &alloc_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                if (status != 0 || !allocation_base) { return false; }
-
-                status = nt_query_value(&uni_str, const_cast<LPGUID>(&g), allocation_base, &required_size, nullptr);
-                if (status == 0 && required_size >= 1) {
-                    out = *reinterpret_cast<u8*>(allocation_base);
-                    SIZE_T z = 0;
-                    nt_free_memory(current_process_handle, &allocation_base, &z, 0x8000);
-                    return true;
-                }
-
-                SIZE_T zero_s = 0;
-                nt_free_memory(current_process_handle, &allocation_base, &zero_s, 0x8000);
-                return false;
-            };
-
-            bool have_secureboot = false;
-            u8 secureboot_val = 0;
-            if (read_uint8_var(L"SecureBoot", EFI_GLOBAL_VARIABLE, secureboot_val)) {
-                have_secureboot = true;
-                debug("NVRAM: SecureBoot variable detected");
-            }
-
-            bool have_setupmode = false;
-            u8 setupmode_val = 0;
-            if (read_uint8_var(L"SetupMode", EFI_GLOBAL_VARIABLE, setupmode_val)) {
-                have_setupmode = true;
-                debug("NVRAM: SetupMode variable detected");
-            }
-
-            // Determine whether it's safe to run Secure Boot dependent checks
-            const bool sb_active = (have_secureboot && (secureboot_val == 1) && have_setupmode && (setupmode_val == 0));
-            if (!sb_active) {
-                debug("NVRAM: Secure Boot not confirmed active, disabling MOCRL and raw buffer mismatch checks...");
-            }
-
-            auto read_variable_to_buffer = [&](const std::wstring& name, GUID& guid, BYTE*& out_buf, SIZE_T& out_len) noexcept -> bool {
-                UNICODE_STRING uni_str{};
-                uni_str.Buffer = const_cast<PWSTR>(name.c_str());
-                uni_str.Length = static_cast<USHORT>(name.length() * sizeof(wchar_t));
-                uni_str.MaximumLength = uni_str.Length + sizeof(wchar_t);
-
-                ULONG required_size = 0;
-                NTSTATUS status = nt_query_value(&uni_str, &guid, nullptr, &required_size, nullptr);
-
-                if (required_size == 0) return false;
-
-                PVOID allocation_base = nullptr;
-                SIZE_T alloc_size = required_size;
-                if (alloc_size < 0x1000) alloc_size = 0x1000;
-
-                status = nt_allocate_memory(current_process_handle, &allocation_base, 0, &alloc_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                if (status != 0 || !allocation_base) { 
-                    out_buf = nullptr;
-                    out_len = 0; 
-                    return false; 
-                }
-
-                status = nt_query_value(&uni_str, &guid, allocation_base, &required_size, nullptr);
-                if (status == 0) {
-                    out_buf = reinterpret_cast<BYTE*>(allocation_base);
-                    out_len = required_size;
-                    return true;
-                }
-
-                SIZE_T zero_s = 0;
-                nt_free_memory(current_process_handle, &allocation_base, &zero_s, 0x8000);
-                out_buf = nullptr;
-                out_len = 0;
-                return false;
-            };
-
             variable_name_ptr current_var = reinterpret_cast<variable_name_ptr>(enum_base_buffer);
             const size_t buffer_total_size = static_cast<size_t>(buffer_required_length);
             constexpr size_t MAX_NAME_BYTE_LIMIT = 4096;
-
             bool should_break_loop = false;
 
             // ---------------------------------------------------------------------
@@ -10765,7 +10697,6 @@ public:
                 if (current_var->NextEntryOffset != 0) {
                     const SIZE_T next_entry = static_cast<SIZE_T>(current_var->NextEntryOffset);
                     if (next_entry <= name_struct_offset) { 
-                        detection_result = false; 
                         should_break_loop = true; 
                         break;
                     }
@@ -10774,7 +10705,6 @@ public:
                 }
                 else {
                     if (current_offset + name_struct_offset >= buffer_total_size) {
-                        detection_result = false; 
                         should_break_loop = true;
                         break; 
                     }
@@ -10791,7 +10721,6 @@ public:
                     while (real_chars < max_chars && name_ptr[real_chars] != L'\0') 
                         ++real_chars;
                     if (real_chars == max_chars) { 
-                        detection_result = false; 
                         should_break_loop = true;
                         break; 
                     }
@@ -10801,24 +10730,16 @@ public:
                 // Presence checks
                 if (!var_name_view.empty() && var_name_view.rfind(L"VMM", 0) == 0) {
                     debug("NVRAM: Detected hypervisor signature");
-                    detection_result = true;
                     should_break_loop = true;
                     break;
                 }
-                else if (var_name_view == L"KEKDefault") found_kek_default = true;
-                else if (var_name_view == L"PKDefault") found_pk_default = true;
-                else if (var_name_view == L"dbxDefault") found_dbx_default = true;
-                else if (var_name_view == L"MemoryOverwriteRequestControlLock") found_morcl = true;
 
-                // Read specific variables (later checks that act on them will only be performed if Secure Boot was explicitly confirmed active)
-                if (var_name_view == L"PKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_default_buf, pk_default_len);
-                else if (var_name_view == L"PK") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_buf, pk_len);
-                else if (var_name_view == L"KEKDefault") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_default_buf, kek_default_len);
-                else if (var_name_view == L"KEK") (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, kek_buf, kek_len);
+                // Read variables
+                if (var_name_view == L"PKDefault") 
+                    (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_default_buf, pk_default_len);
 
                 if (current_var->NextEntryOffset == 0) break;
                 const SIZE_T next_entry_off = static_cast<SIZE_T>(current_var->NextEntryOffset);
-                if (next_entry_off == 0) break;
                 const size_t next_var_offset = current_offset + next_entry_off;
                 if (next_var_offset <= current_offset || next_var_offset > buffer_total_size) break;
                 current_var = reinterpret_cast<variable_name_ptr>(reinterpret_cast<PBYTE>(enum_base_buffer) + next_var_offset);
@@ -10826,39 +10747,10 @@ public:
 
             if (should_break_loop) break;
 
-            // free enumeration buffer
-            { 
-                SIZE_T z = 0; 
-                nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000); 
-                enum_base_buffer = nullptr; 
-                enum_alloc_size = 0; 
-            }
-
-            // ---------------------------------------------------------------------
-            // EFI variable analysis
-            // ---------------------------------------------------------------------
-            if (sb_active) {
-                if (!found_morcl) {
-                    debug("NVRAM: Missing MemoryOverwriteRequestControlLock"); 
-                    detection_result = true;
-                    break;
-                }
-            }
-            if (!found_dbx_default) {
-                debug("NVRAM: Missing dbxDefault"); 
-                detection_result = true;
-                break;
-            }
-            if (!found_kek_default) {
-                debug("NVRAM: Missing KEKDefault"); 
-                detection_result = true;
-                break;
-            }
-            if (!found_pk_default) {
-                debug("NVRAM: Missing PKDefault"); 
-                detection_result = true;
-                break;
-            }
+            // free enumeration buffer          
+            SIZE_T z = 0;
+            nt_free_memory(current_process_handle, &enum_base_buffer, &z, 0x8000);
+            enum_base_buffer = nullptr;          
 
             // check for official red hat certs (QEMU/OVMF)
             bool found_redhat = false;
@@ -10878,34 +10770,15 @@ public:
                 detection_result = core::add(brand_enum::QEMU);
                 break;
             }
-
-            detection_result = false;
-
         } while (false);
 
         // cleanup
-        auto cleanup = [&](auto& ptr) {
-            if (ptr) {
-                PVOID base = ptr;
-                SIZE_T size = 0;
-                nt_free_memory(current_process_handle, &base, &size, 0x8000);
-                ptr = nullptr;
-            }
-        };
-
-        cleanup(pk_buf);
-        cleanup(kek_buf);
         cleanup(pk_default_buf);
-        cleanup(kek_default_buf);
         cleanup(enum_base_buffer);
 
-        if (privileges_enabled && token_handle) {
-            TOKEN_PRIVILEGES tp_disable{};
-            tp_disable.PrivilegeCount = 1;
-            tp_disable.Privileges[0].Luid = luid_struct;
-            tp_disable.Privileges[0].Attributes = 0;
-            AdjustTokenPrivileges(token_handle, FALSE, &tp_disable, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr);
-        }
+        if (privilege_state_saved && token_handle)
+            AdjustTokenPrivileges(token_handle, FALSE, &previous_privileges, previous_privileges_size, nullptr, nullptr);
+        
         if (token_handle) {
             CloseHandle(token_handle);
             token_handle = nullptr;
