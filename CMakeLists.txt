@@ -1,5 +1,11 @@
 # basic info
 cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
+
+# for CMake 3.30+ (normalizes install destination paths)
+if(POLICY CMP0177)
+    cmake_policy(SET CMP0177 NEW)
+endif()
+
 project(
     VMAware
     DESCRIPTION "VM detection library"
@@ -16,11 +22,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(MSVC)
     # Globally disable specific MSVC warnings from external headers
     add_compile_options(
-        /wd5039  # 'TpSetCallbackCleanupGroup' potentially throwing
-        /wd4820  # padding added after data member
-        /wd4626  # deleted assignment operator
-        /wd5045  # Spectre mitigation notice
+        /wd4626  # deleted assignment 
         /wd4668  # undefined macro replaced with '0'
+        /wd4820  # padding added after data member
+        /wd5045  # Spectre mitigation notice
         /Zc:enumTypes  # use enum underlying type canonicalization
     )
 endif()
