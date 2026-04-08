@@ -11681,7 +11681,7 @@ public:
     [[nodiscard]] static bool msr() {
     #if (!x86)
         return false;
-    #endif  
+    #else
         constexpr u32 random_msr = 0xDEADBEEFu;
 
         auto try_read = [](u32 msr_index) -> bool {
@@ -11733,6 +11733,7 @@ public:
         }
 
         return false;
+    #endif
     }
 
 
@@ -11745,7 +11746,7 @@ public:
     [[nodiscard]] static bool kvm_interception() {
     #if (!x86)
         return false;
-    #endif
+    #else
         using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
         using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
         using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
@@ -11831,6 +11832,7 @@ public:
         }
  
         return false;
+    #endif
     }
 
 
@@ -11840,6 +11842,9 @@ public:
      * @implements VM::BREAKPOINT
      */
     [[nodiscard]] static bool breakpoint() {
+    #if (!x86)
+        return false;
+    #else
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -11953,6 +11958,7 @@ public:
         nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
 
         return !ermsb_trap_detected;
+    #endif
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
     #if (CLANG)
