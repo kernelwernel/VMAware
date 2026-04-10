@@ -775,8 +775,8 @@ public:
 
     // this is specifically meant for VM::detected_count() to 
     // get the total number of techniques that detected a VM
-    static u8 detected_count_num; 
-    static u16 technique_count; // get total number of techniques
+    static std::atomic<u8> detected_count_num;
+    static std::atomic<u16> technique_count; // get total number of techniques
 
     static std::vector<enum_flags> disabled_techniques;
 
@@ -12009,9 +12009,10 @@ public:
 
         static std::array<brand_entry, MAX_BRANDS> brand_scoreboard;
 
-        // Temporary storage to capture which brand was detected by the currently running technique
-        static brand_enum last_detected_brand;
-        static u8 last_detected_score;
+        // Temporary storage to capture which brand was detected by the currently running technique.
+        // thread_local ensures each thread running run_all() has its own independent copy.
+        static thread_local brand_enum last_detected_brand;
+        static thread_local u8 last_detected_score;
 
         // 1. one brand, custom score
         static inline bool add(const brand_enum p_brand, u8 score) noexcept {
@@ -13181,8 +13182,8 @@ std::size_t VM::memo::leaf_cache::next_index = 0;
 VM::brand_list_t VM::memo::brand_list::cache = {};
 bool VM::memo::brand_list::cached = false;
 
-enum VM::brand_enum VM::core::last_detected_brand = VM::brand_enum::NULL_BRAND;
-VM::u8 VM::core::last_detected_score = 0;
+thread_local enum VM::brand_enum VM::core::last_detected_brand = VM::brand_enum::NULL_BRAND;
+thread_local VM::u8 VM::core::last_detected_score = 0;
 
 // these are basically the base values for the core::arg_handler function.
 // It's like a bucket that will collect all the bits enabled. If for example 
@@ -13193,7 +13194,7 @@ VM::flagset VM::core::flag_collector;
 VM::flagset VM::core::disabled_flag_collector;
 
 
-VM::u8 VM::detected_count_num = 0;
+std::atomic<VM::u8> VM::detected_count_num{0};
 
 std::vector<VM::enum_flags> VM::disabled_techniques = []() {
     std::vector<VM::enum_flags> c;
@@ -13202,7 +13203,7 @@ std::vector<VM::enum_flags> VM::disabled_techniques = []() {
 }();
 
 // this value is incremented each time VM::add_custom is called
-VM::u16 VM::technique_count = base_technique_count;
+std::atomic<VM::u16> VM::technique_count{VM::base_technique_count};
 
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
 std::vector<VM::core::custom_technique> VM::core::custom_table = {
