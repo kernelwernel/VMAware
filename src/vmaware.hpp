@@ -54,14 +54,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 557
- * - struct for internal cpu operations        => line 807
- * - struct for internal memoization           => line 3117
- * - struct for internal utility functions     => line 3324
- * - struct for internal core components       => line 12083
- * - start of VM detection technique list      => line 4800
- * - start of public VM detection functions    => line 12448
- * - start of externally defined variables     => line 13237
+ * - enums for publicly accessible techniques  => line 563
+ * - struct for internal cpu operations        => line 813
+ * - struct for internal memoization           => line 3123
+ * - struct for internal utility functions     => line 3330
+ * - struct for internal core components       => line 11975
+ * - start of VM detection technique list      => line 4806
+ * - start of public VM detection functions    => line 12341
+ * - start of externally defined variables     => line 13145
  *
  *
  * ============================== EXAMPLE ===================================
@@ -11775,62 +11775,62 @@ public:
             { 0x0F, 0x01, 0xD9, 0xC3 }
         };
 
+        const BYTE* opcode = cpu::is_amd() ? opcodes[1] : opcodes[0];
+
         const HANDLE current_process = reinterpret_cast<HANDLE>(-1);
         bool is_kvm_detected = false; // KVM-specific behavior, detector is 100% sure is running under KVM
         bool generic_hypervisor = false; // behavior present in KVM but other hypervisors might replicate it as well
 
-        for (int i = 0; i < 2; ++i) {
-            PVOID base_address = nullptr;
-            SIZE_T region_size = 0x1000;
+        PVOID base_address = nullptr;
+        SIZE_T region_size = 0x1000;
 
-            // memory as RWX initially to write the opcode
-            NTSTATUS status = nt_allocate_virtual_memory(
-                current_process, &base_address, 0, &region_size,
-                MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+        // memory as RWX initially to write the opcode
+        NTSTATUS status = nt_allocate_virtual_memory(
+            current_process, &base_address, 0, &region_size,
+            MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
-            if (!NT_SUCCESS(status))
-                continue;
+        if (!NT_SUCCESS(status))
+            return false;
 
-            // copy stuff to page
-            memcpy(base_address, opcodes[i], sizeof(opcodes[i]));
+        // copy stuff to page
+        memcpy(base_address, opcode, sizeof(opcodes[0]));
 
-            ULONG old_protect = 0;
-            PVOID protect_address = base_address;
-            SIZE_T protect_size = region_size;
+        ULONG old_protect = 0;
+        PVOID protect_address = base_address;
+        SIZE_T protect_size = region_size;
 
-            // change memory protection to RX because it is what breaks KVM's instruction patching attempt
-            status = nt_protect_virtual_memory(
-                current_process, &protect_address, &protect_size,
-                PAGE_EXECUTE_READ, &old_protect);
+        // change memory protection to RX because it is what breaks KVM's instruction patching attempt
+        status = nt_protect_virtual_memory(
+            current_process, &protect_address, &protect_size,
+            PAGE_EXECUTE_READ, &old_protect);
 
-            if (NT_SUCCESS(status)) {
-                DWORD exception_status = 0;
-                __try {
-                    const auto execute_hypercall = reinterpret_cast<void(*)()>(base_address);
-                    execute_hypercall();
-                    generic_hypervisor = true; // if no exception occurs then a hypervisor handled it, this is default KVM behavior
-                    debug("KVM_INTERCEPTION: Detected a hypervisor intercepting hypercalls");
-                }
-                __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
-                    // if it's #PF instead of #UD then old KVM quirk is present
-                    if (exception_status == EXCEPTION_ACCESS_VIOLATION) {
-                        debug("KVM_INTERCEPTION: Detected KVM attempting to patch instructions on the fly");
-                        is_kvm_detected = true;
-                    }
-                }
+        if (NT_SUCCESS(status)) {
+            DWORD exception_status = 0;
+            __try {
+                const auto execute_hypercall = reinterpret_cast<void(*)()>(base_address);
+                execute_hypercall();
+                generic_hypervisor = true; // if no exception occurs then a hypervisor handled it, this is default KVM behavior
+                debug("KVM_INTERCEPTION: Detected a hypervisor intercepting hypercalls");
             }
-
-            SIZE_T free_size = 0;
-            nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
-
-            if (is_kvm_detected) {
-                return core::add(brand_enum::KVM);
-            }
-            else if (generic_hypervisor) {
-                return true;
+            __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
+                // if it's #PF instead of #UD then old KVM quirk is present
+                if (exception_status == EXCEPTION_ACCESS_VIOLATION) {
+                    debug("KVM_INTERCEPTION: Detected KVM attempting to patch instructions on the fly");
+                    is_kvm_detected = true;
+                }
             }
         }
- 
+
+        SIZE_T free_size = 0;
+        nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+
+        if (is_kvm_detected) {
+            return core::add(brand_enum::KVM);
+        }
+        else if (generic_hypervisor) {
+            return true;
+        }
+
         return false;
     #endif
     }
