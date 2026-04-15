@@ -1,3 +1,3 @@
 # frozen_string_literal: true
 
-require 'vmaware_rb.so'
+require_relative 'vmaware_rb.so'
