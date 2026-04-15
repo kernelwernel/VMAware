@@ -1,3 +1,0 @@
-gem 'vmaware-rb', path: '../../'
-
-gem 'minitest'

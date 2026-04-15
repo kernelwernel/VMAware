@@ -1,0 +1,21 @@
+name: Ruby wrapper building and tests run
+
+on:
+  push:
+    branches: ['main', 'dev']
+
+  test_api:
+    runs-on: 'registry.gitlab.ics.muni.cz:443/csirt-mu-public/threat-management/rubosaurusplusplus:latest'
+    steps:
+      - name: 'Checkout repo'
+        uses: actions/checkout@v4
+      - name: 'Build native gem'
+        run: |
+          gem build vmaware-rb.gemspec
+          gem install vmaware-rb-1.0.0.gem
+      - name: Install deps
+        run: |
+          gem install minitest -v 6.0.0
+      - name: Run ruby wrapper tests. 
+        run: |
+          minitest gem/test/unit/*
