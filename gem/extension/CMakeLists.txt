@@ -208,3 +208,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   "${CMAKE_PROJECT_NAME}-rb.cpp"
   "../../src/vmaware.hpp"
 )
+
+# -----------------------------------------------------------------------------
+# Install
+# -----------------------------------------------------------------------------
+# RubyGems invokes `make install` after `make`, expecting the extension to be
+# copied into CMAKE_INSTALL_PREFIX (the gems extensions directory).
+# DESTINATION "." installs directly into that prefix with no subdirectory.
+
+install(TARGETS ${CMAKE_PROJECT_NAME}
+  LIBRARY DESTINATION .
+)
