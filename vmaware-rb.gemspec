@@ -15,7 +15,6 @@ Gem::Specification.new do |spec|
   spec.homepage    = 'https://github.com/kernelwernel/VMAware'
 
   spec.extensions = ['gem/extension/CMakeLists.txt']
-  spec.add_dependency 'cmake_builder', '~> 1.0'
   spec.require_paths = ['gem/lib']
 
   spec.files = Dir.chdir(__dir__) { Dir[
