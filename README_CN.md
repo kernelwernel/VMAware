@@ -305,6 +305,8 @@ endif()
 - [Randark](https://github.com/Randark-JMT)
 - [Scrut1ny](https://github.com/Scrut1ny)
 - [Lorenzo Rizzotti (Dreaming-Codes)](https://github.com/Dreaming-Codes)
+- [virtfunc](https://github.com/virtfunc)
+- [Adam Ruman](https://github.com/addam128)
 
 <br>
 
