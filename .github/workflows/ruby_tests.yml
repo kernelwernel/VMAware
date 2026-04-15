@@ -4,18 +4,23 @@ on:
   push:
     branches: ['main', 'dev']
 
+jobs:
   test_api:
-    runs-on: 'registry.gitlab.ics.muni.cz:443/csirt-mu-public/threat-management/rubosaurusplusplus:latest'
+    runs-on: ubuntu-latest
     steps:
       - name: 'Checkout repo'
         uses: actions/checkout@v4
+      - name: 'Install dependencies'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y cmake ruby ruby-dev
       - name: 'Build native gem'
         run: |
           gem build vmaware-rb.gemspec
           gem install vmaware-rb-1.0.0.gem
-      - name: Install deps
+      - name: Install test deps
         run: |
           gem install minitest -v 6.0.0
-      - name: Run ruby wrapper tests. 
+      - name: Run ruby wrapper tests
         run: |
-          minitest gem/test/unit/*
+          ruby gem/test/unit/api.rb

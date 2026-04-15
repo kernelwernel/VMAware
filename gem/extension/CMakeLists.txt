@@ -7,6 +7,28 @@
 
 cmake_minimum_required(VERSION 3.26 FATAL_ERROR)
 
+if (LINUX)
+    find_program(CLANGPP_EXECUTABLE NAMES clang++)
+    find_program(GPP_EXECUTABLE NAMES g++)
+
+    # Preference for clang++
+    if(CLANGPP_EXECUTABLE)
+        set(CMAKE_CXX_COMPILER "${CLANGPP_EXECUTABLE}")
+        get_filename_component(COMPILER_NAME ${CLANGPP_EXECUTABLE} NAME)
+    elseif(GPP_EXECUTABLE)
+        set(CMAKE_CXX_COMPILER "${GPP_EXECUTABLE}")
+        get_filename_component(COMPILER_NAME ${GPP_EXECUTABLE} NAME)
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
+# Project Definition
+# -----------------------------------------------------------------------------
+# Define the project name and specify that we only need a C++ compiler.
+# The project name is used throughout via ${CMAKE_PROJECT_NAME}.
+
+project(vmaware LANGUAGES CXX)
+
 # set C++ standard
 if(NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 20)
@@ -25,27 +47,9 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION "ON")
 # compiler flags
 set(CMAKE_CXX_FLAGS "-Wextra -Wall  -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion -ftemplate-backtrace-limit=0 -fvisibility=hidden -fvisibility-inlines-hidden")
 
-if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -lstdc++ -lm")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lstdc++ -lm")
 endif()
-
-# find available compilers
-if (LINUX)
-    find_program(CLANGPP_EXECUTABLE NAMES clang++)
-    find_program(GPP_EXECUTABLE NAMES g++)
-
-    # select compiler with preference for clang++
-    if(CLANGPP_EXECUTABLE)
-        set(CMAKE_CXX_COMPILER "${CLANGPP_EXECUTABLE}")
-        get_filename_component(COMPILER_NAME ${CLANGPP_EXECUTABLE} NAME)
-    elseif(GPP_EXECUTABLE)
-        set(CMAKE_CXX_COMPILER "${GPP_EXECUTABLE}")
-        get_filename_component(COMPILER_NAME ${GPP_EXECUTABLE} NAME)
-    endif()
-endif()
-
-add_compile_definitions(__VMAWARE_RELEASE__)
-
 
 if(APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g0 -O2 -Wno-unused-private-field  -DNDEBUG")
@@ -53,22 +57,17 @@ if(APPLE)
 elseif(LINUX)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g0 -O2  -DNDEBUG")
   set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "-Wl,--exclude-libs,ALL -Wl,--strip-all")
-  if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
-  elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
+  option(VMAWARE_NATIVE_ARCH "Optimize for the build machine's CPU (non-portable binary)" OFF)
+  if(VMAWARE_NATIVE_ARCH)
+    if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
+    elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm|aarch64")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=native")
+    endif()
   endif()
 else()
   message(FATAL_ERROR "Unsupported Os & compiler combination.")
 endif()
-
-# -----------------------------------------------------------------------------
-# Project Definition
-# -----------------------------------------------------------------------------
-# Define the project name and specify that we only need a C++ compiler.
-# The project name is used throughout via ${CMAKE_PROJECT_NAME}.
-
-project(vmaware LANGUAGES CXX)
 
 # -----------------------------------------------------------------------------
 # Create the Extension Library
@@ -160,9 +159,9 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ../../src)
 # Ruby extensions have specific naming requirements that vary by platform:
 #
 # Extension Suffix (from Ruby configuration):
-#   - Linux:   .so           
-#   - macOS:   .bundle      
-#   - Windows: .so           
+#   - Linux:   .so
+#   - macOS:   .bundle
+#   - Windows: .so
 #
 # Note: Windows uses .so (not .dll) for Ruby extensions by convention.
 #
