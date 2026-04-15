@@ -11,8 +11,11 @@ Gem::Specification.new do |spec|
   spec.summary     = "A ruby wrapper around the VMAware C++ library's default functionality. "
   spec.authors = ['Adam Ruman']
   
+  spec.license     = 'MIT'
+  spec.homepage    = 'https://github.com/kernelwernel/VMAware'
+
   spec.extensions = ['gem/extension/CMakeLists.txt']
-  spec.add_dependency 'cmake_builder'
+  spec.add_dependency 'cmake_builder', '~> 1.0'
   spec.require_paths = ['gem/lib']
 
   spec.files = Dir.chdir(__dir__) { Dir[
