@@ -1,0 +1,30 @@
+name: Ruby wrapper building and tests run
+
+on:
+  push:
+    branches: ['main', 'dev']
+
+jobs:
+  test_api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout repo'
+        uses: actions/checkout@v4
+      - name: 'Set up Ruby 3.3'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: 'Install CMake'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y cmake
+      - name: 'Build native gem'
+        run: |
+          gem build vmaware-rb.gemspec
+          gem install vmaware-rb-1.0.0.gem
+      - name: Install test deps
+        run: |
+          gem install minitest -v 6.0.0
+      - name: Run ruby wrapper tests
+        run: |
+          ruby gem/test/unit/api.rb

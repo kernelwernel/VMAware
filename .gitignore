@@ -31,6 +31,9 @@
 *.app
 main
 
+# Ruby artifacts
+*.gem
+
 #Custom 
 vm
 cli
@@ -70,3 +73,6 @@ TODO.md
 auxiliary/path*
 packages/
 auxiliary/test.cpp
+.devcontainer/
+
+!gem/test/
