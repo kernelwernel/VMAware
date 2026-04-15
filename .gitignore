@@ -74,3 +74,5 @@ auxiliary/path*
 packages/
 auxiliary/test.cpp
 .devcontainer/
+
+!gem/test/
