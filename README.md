@@ -165,6 +165,7 @@ VMAware also has support for a variety of languages whether official or unoffici
 | <img src="assets/language_icons/rust-logo-512x512.png" width="20"> Rust | [link](https://github.com/TomGousseau/VmawareRust) | No | AI-generated port, very good API, has a Rust create available. | [Tom IONOS](https://github.com/TomGousseau) |
 | <img src="assets/language_icons/c-program-icon.webp" width="20"> C | [link](https://github.com/TomGousseau/VMAwarec) | No | AI-generated port, very good API, very close to the C++ version. | [Tom IONOS](https://github.com/TomGousseau) |
 | <img src="assets/language_icons/c-sharp-programming-language-icon.webp" width="20"> C# | [link](https://github.com/TomGousseau/VMAwarecsharp) | No | Good API, Single file lib. | [Tom IONOS](https://github.com/TomGousseau) |
+| <img src="assets/language_icons/js.png" width="20"> JavaScript | [link](https://github.com/Kyun-J/node-vm-detect) | Yes | Very good API, actively maintained | [Kyun-J](https://github.com/Kyun-J) |
 
 
 Although we endorse the unofficial ports, these are not tried and tested compared to our Ruby port. 
