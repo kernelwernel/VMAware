@@ -159,7 +159,7 @@ If you want to learn about the architecture and design of the library, head over
 
 VMAware also has support for a variety of languages whether official or unofficial, if C++ isn't the language you're looking for then please refer to this list:
 
-| Language | Link | Is official? | Details | Author |
+| Language | Repository link | Is official? | Details | Author |
 |----------|------|:------------:|---------|--------|
 | <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/kernelwernel/VMAware/tree/main/gem) | Yes | Official Ruby port, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
 | <img src="assets/language_icons/rust-logo-512x512.png" width="20"> Rust | [link](https://github.com/TomGousseau/VmawareRust) | No | AI-generated port, very good API, has a Rust create available. | [Tom IONOS](https://github.com/TomGousseau) |
