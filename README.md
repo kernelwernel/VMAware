@@ -168,7 +168,7 @@ VMAware also has support for a variety of languages whether official or unoffici
 | <img src="assets/language_icons/js.png" width="20"> JS | [link](https://github.com/Kyun-J/node-vm-detect) | Yes | Very good API, actively maintained | [Kyun-J](https://github.com/Kyun-J) |
 
 
-Although we endorse the unofficial ports, these are not tried and tested compared to our Ruby port. 
+Although we endorse the unofficial ports, these are not tried and tested compared to our official ones. 
 
 
 <br>
