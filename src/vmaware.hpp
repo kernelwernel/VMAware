@@ -4536,7 +4536,7 @@ public:
                     active_brands.push_back(std::make_pair(core::brand_scoreboard.at(i).name, core::brand_scoreboard.at(i).score));
                 }
             }
-    
+
             #ifdef __VMAWARE_DEBUG__
                 for (const auto brand : active_brands) {
                     debug("pre-processed scoreboard: ", int(brand.second), " : ", brands::brand_enum_to_string(brand.first));
@@ -4652,7 +4652,6 @@ public:
             merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE_GSX, brand_enum::VMWARE_HARD);
             merge(brand_enum::VMWARE_HARD, brand_enum::VMWARE_WORKSTATION, brand_enum::VMWARE_HARD);
 
-            
             if (active_brands.size() > 1) {
                 std::sort(active_brands.begin(), active_brands.begin() + static_cast<std::ptrdiff_t>(active_brands.size()), [](
                     const brand_element_t& a,
@@ -4662,15 +4661,9 @@ public:
                 });
             }
 
-            for (const auto brand : active_brands) {
-                if (brand.second > 0) {
-                    active_brands.push_back({brand.first, brand.second});
-                }
-            }
-
         #ifdef __VMAWARE_DEBUG__
             for (const auto brand : active_brands) {
-                debug("post-processed scoreboard: ", brand.second, " : ", brands::brand_enum_to_string(brand.first));
+                debug("post-processed scoreboard: ", static_cast<u32>(brand.second), " : ", brands::brand_enum_to_string(brand.first));
             }
         #endif
 
@@ -4768,7 +4761,7 @@ public:
 
             const brand_list_t& list = brands::brand_list(flags);
             const std::string& buffer = brand_multiple(list);
-    
+
             memo::multi_brand::store(buffer);
             return buffer;
         }
@@ -4785,20 +4778,20 @@ public:
             return buffer;
         }
 
-        static brand_enum brand_enum(const flagset& flags = core::generate_default()) {
+        static brand_enum brand_single(const flagset& flags = core::generate_default()) {
             if (memo::single_brand::is_cached()) {
                 return memo::single_brand::fetch();
             }
 
             const brand_list_t& list = brands::brand_list(flags);
-            const enum brand_enum brand = brand_enum(list);
+            const enum brand_enum brand = brand_single(list);
     
             memo::single_brand::store(brand);
 
             return brand;
         }
 
-        static enum brand_enum brand_enum(const brand_list_t& list) {
+        static enum brand_enum brand_single(const brand_list_t& list) {
             const brand_element_t brand = list.front();
             return brand.first;
         }
@@ -4871,7 +4864,7 @@ public:
                 if (v.size == 7  // "monitor"
                     || ((v.size == 6) && (v.data[0] == 'h'))  // "hvisor"
                     || ((v.size == 10) && (v.data[0] == 'h')) // "hypervisor" 
-                    ) {
+                ) {
                     return true;
                 }
 
@@ -12442,7 +12435,7 @@ public: // START OF PUBLIC FUNCTIONS
         if (is_multiple) {
             return brands::brand_multiple(flags);
         } else {
-            const enum brand_enum b = brands::brand_enum(flags);
+            const enum brand_enum b = brands::brand_single(flags);
             return brands::brand_enum_to_string(b);
         }
     }
@@ -12813,7 +12806,7 @@ public: // START OF PUBLIC FUNCTIONS
             }
         }
     
-        const enum brand_enum brand = brands::brand_enum(list);
+        const enum brand_enum brand = brands::brand_single(list);
 
         switch (brand) {
             case brand_enum::XEN: return "Hypervisor (type 1)";
@@ -12925,15 +12918,14 @@ public: // START OF PUBLIC FUNCTIONS
         auto make_conclusion = [&](const char* category) -> std::string {
             const brand_list_t& list = brands::brand_list(flags);
 
-            const brand_enum first_brand = brands::brand_enum(list);
-
+            const brand_enum first_brand = brands::brand_single(list);
 
             const char* hardener = "";
             
             if (has_hardener) {
                 hardener = "hardened ";
             }
-            
+
             const char* addition = " a ";
 
             // this basically just fixes the grammatical syntax
