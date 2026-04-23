@@ -598,6 +598,7 @@ public:
         MSR,
         KVM_INTERCEPTION,
         BREAKPOINT,
+        POPF,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -11953,7 +11954,105 @@ public:
         return !ermsb_trap_detected;
     #endif
     }
+
+
+    /**
+     * @brief Check whether a hypervisor delays trap flags over exiting instructions
+     * @category Windows
+     * @implements VM::POPF
+     */
+    [[nodiscard]] static bool popf() {
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = {
+            "NtAllocateVirtualMemory",
+            "NtProtectVirtualMemory",
+            "NtFlushInstructionCache",
+            "NtFreeVirtualMemory"
+        };
+
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+
+        const auto nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
+        const auto nt_flush_instruction_cache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
+        const auto nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[3]);
+
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory ||
+            !nt_flush_instruction_cache || !nt_free_virtual_memory) {
+            return false;
+        }
+
+        const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+
+        constexpr unsigned char shellcode[] = {
+            0x9C,                                     // pushfq (x64) / pushfd (x86)
+            0x81, 0x0C, 0x24, 0x00, 0x01, 0x00, 0x00, // or dword ptr [rsp/esp], 0x100 (sets TF)
+            0x9D,                                     // popfq (x64) / popfd (x86)
+            0x31, 0xC0,                               // xor eax, eax
+            0x0F, 0xA2,                               // cpuid
+            0xC7, 0xB2,                               // db 0xC7, 0xB2 (invalid opcode)
+            0xC3                                      // ret
+        };
+
+        PVOID base_address = nullptr;
+        SIZE_T region_size = sizeof(shellcode);
+        constexpr u32 STATUS_SUCCESS = 0x00000000u;
+
+        if (nt_allocate_virtual_memory(current_process, &base_address, 0, &region_size,
+            MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) != STATUS_SUCCESS) {
+            return false;
+        }
+
+        memcpy(base_address, shellcode, sizeof(shellcode));
+
+        ULONG old_protect = 0;
+        SIZE_T protect_size = sizeof(shellcode);
+        if (nt_protect_virtual_memory(current_process, &base_address, &protect_size,
+            PAGE_EXECUTE_READ, &old_protect) != STATUS_SUCCESS) {
+            SIZE_T free_size = 0; 
+            nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+            return false;
+        }
+
+        nt_flush_instruction_cache(current_process, base_address, sizeof(shellcode));
+
+        bool is_vm = false;
+        DWORD exc_code = 0;
+
+        __try {
+            using func_ptr = void(*)();
+            const auto func = reinterpret_cast<func_ptr>(base_address);
+            func();
+
+            is_vm = true;
+        }
+        __except (exc_code = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
+            if (exc_code == EXCEPTION_SINGLE_STEP) {
+                // trap flag single-step exception triggered on CPUID
+                is_vm = false;
+            }
+            else {
+                // hypervisor delayed the trap flag over cpuid, execution fell through into 
+                // the bad bytes (C7 B2) causing EXCEPTION_ILLEGAL_INSTRUCTION
+                is_vm = true;
+            }
+        }
+
+        SIZE_T free_size = 0; 
+        nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+
+        return is_vm;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
+
     #if (CLANG)
         #pragma clang diagnostic pop
     #endif
@@ -12678,6 +12777,7 @@ public: // START OF PUBLIC FUNCTIONS
             case MSR: return "MSR";
             case KVM_INTERCEPTION: return "KVM_INTERCEPTION";
             case BREAKPOINT: return "BREAKPOINT";
+            case POPF: return "POPF";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
             case ALL: return "ALL"; 
@@ -13219,6 +13319,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
+            {VM::POPF, {100, VM::popf}},
             {VM::MSR, {100, VM::msr}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::EDID, {100, VM::edid}},

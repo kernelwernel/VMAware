@@ -1003,7 +1003,7 @@ static void general(
     checker(VM::MSR, "model specific registers");
     checker(VM::KVM_INTERCEPTION, "KVM interception");
     checker(VM::BREAKPOINT, "EPT/NPT hooking");
-
+    checker(VM::POPF, "popf behavior");
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
