@@ -11498,7 +11498,7 @@ public:
                 scan_devices(guid, DIGCF_PRESENT);
             }
 
-            // if no stuff then mybe query all devices in the system?
+            // if no stuff then maybe query all devices in the system?
             if (intel_hits == 0 && amd_hits == 0) {
                 scan_devices(nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
             }
