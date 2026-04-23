@@ -598,6 +598,7 @@ public:
         MSR,
         KVM_INTERCEPTION,
         BREAKPOINT,
+        POPF,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -3836,8 +3837,8 @@ public:
                 }
             }
             else {
-                const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
-                
+                std::string brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor + 0x100);
+
                 if (util::find(brand_str, "KVM")) {
                     debug("HYPER-X: Detected Hyper-V enlightenments");
                     core::add(brand_enum::QEMU_KVM_HYPERV);
@@ -3845,48 +3846,62 @@ public:
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
-                    // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, bypassing some detections
-                #if (x86_64)
-                    u8 idtr_buffer[10] = { 0 };
+                    std::string brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor + 0x100);
 
-                    // we know we're not using SEH here, it's on purpose, and doesn't matter the CPU core
-                    #if (CLANG || GCC)
-                        __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
-                    #elif (MSVC)
-                        #pragma pack(push, 1)
-                        struct {
-                            USHORT Limit;
-                            ULONG_PTR Base;
-                        } idtr = { 0 }; 
-                        #pragma pack(pop)
-                        __sidt(&idtr);
-
-                        volatile u8* idtr_ptr = (volatile u8*)&idtr;
-                        for (size_t j = 0; j < sizeof(idtr); ++j) {
-                            idtr_buffer[j] = idtr_ptr[j];
-                        }
-                    #endif
-
-                    ULONG_PTR idt_base = 0;
-                    memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
-
-                    // if running under Hyper-V in AMD64 (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
-                    // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
-                    // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
-                    if (idt_base == 0xfffff80000001000) {
-                        debug("HYPER-X: Detected Hyper-V host machine");
-                        core::add(brand_enum::HYPERV_ROOT);
-                        state = HYPERV_ARTIFACT_VM;
+                    if (util::find(brand_str, "KVM")) {
+                        debug("HYPER-X: Detected Hyper-V enlightenments");
+                        core::add(brand_enum::QEMU_KVM_HYPERV);
+                        state = HYPERV_ENLIGHTENMENT;
                     }
                     else {
-                        debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
-                        state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
+                        // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, attempting to bypass some detections
+                        brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+
+                        bool is_hyper_v_host = false;
+
+                    #if (x86_64)
+                        u8 idtr_buffer[10] = { 0 };
+
+                        // we know we're not using SEH here, it's on purpose, and doesn't matter in what CPU core this runs on
+                        #if (CLANG || GCC)
+                            __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
+                        #elif (MSVC)
+                            #pragma pack(push, 1)
+                            struct {
+                                USHORT Limit;
+                                ULONG_PTR Base;
+                            } idtr = { 0 };
+                            #pragma pack(pop)
+                            __sidt(&idtr);
+
+                            volatile u8* idtr_ptr = (volatile u8*)&idtr;
+                            for (size_t j = 0; j < sizeof(idtr); ++j) {
+                                idtr_buffer[j] = idtr_ptr[j];
+                            }
+                        #endif
+
+                        ULONG_PTR idt_base = 0;
+                        memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
+
+                        // if running under Hyper-V in AMD64 (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
+                        // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
+                        // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
+                        // additionally, brand has to be "Microsoft Hv"
+                        is_hyper_v_host = idt_base == 0xfffff80000001000 && brand_str == "Microsoft Hv";
+                    #else
+                        is_hyper_v_host = brand_str == "Microsoft Hv";
+                    #endif
+
+                        if (is_hyper_v_host) {
+                            debug("HYPER-X: Detected Hyper-V host machine");
+                            core::add(brand_enum::HYPERV_ROOT);
+                            state = HYPERV_ARTIFACT_VM;
+                        }
+                        else {
+                            debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
+                            state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
+                        }
                     }
-                #else
-                    debug("HYPER-X: Detected Hyper-V host machine");
-                    core::add(brand_enum::HYPERV_ROOT);
-                    state = HYPERV_ARTIFACT_VM;
-                #endif                    
                 } 
             }
 
@@ -11483,7 +11498,7 @@ public:
                 scan_devices(guid, DIGCF_PRESENT);
             }
 
-            // if no stuff then mybe query all devices in the system?
+            // if no stuff then maybe query all devices in the system?
             if (intel_hits == 0 && amd_hits == 0) {
                 scan_devices(nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
             }
@@ -11953,7 +11968,105 @@ public:
         return !ermsb_trap_detected;
     #endif
     }
+
+
+    /**
+     * @brief Check whether a hypervisor delays trap flags over exiting instructions
+     * @category Windows
+     * @implements VM::POPF
+     */
+    [[nodiscard]] static bool popf() {
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = {
+            "NtAllocateVirtualMemory",
+            "NtProtectVirtualMemory",
+            "NtFlushInstructionCache",
+            "NtFreeVirtualMemory"
+        };
+
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtProtectVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using NtFlushInstructionCache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+
+        const auto nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[0]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<NtProtectVirtualMemory_t>(funcs[1]);
+        const auto nt_flush_instruction_cache = reinterpret_cast<NtFlushInstructionCache_t>(funcs[2]);
+        const auto nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[3]);
+
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory ||
+            !nt_flush_instruction_cache || !nt_free_virtual_memory) {
+            return false;
+        }
+
+        const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+
+        constexpr unsigned char shellcode[] = {
+            0x9C,                                     // pushfq (x64) / pushfd (x86)
+            0x81, 0x0C, 0x24, 0x00, 0x01, 0x00, 0x00, // or dword ptr [rsp/esp], 0x100 (sets TF)
+            0x9D,                                     // popfq (x64) / popfd (x86)
+            0x31, 0xC0,                               // xor eax, eax
+            0x0F, 0xA2,                               // cpuid
+            0xC7, 0xB2,                               // db 0xC7, 0xB2 (invalid opcode)
+            0xC3                                      // ret
+        };
+
+        PVOID base_address = nullptr;
+        SIZE_T region_size = sizeof(shellcode);
+        constexpr u32 STATUS_SUCCESS = 0x00000000u;
+
+        if (nt_allocate_virtual_memory(current_process, &base_address, 0, &region_size,
+            MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) != STATUS_SUCCESS) {
+            return false;
+        }
+
+        memcpy(base_address, shellcode, sizeof(shellcode));
+
+        ULONG old_protect = 0;
+        SIZE_T protect_size = sizeof(shellcode);
+        if (nt_protect_virtual_memory(current_process, &base_address, &protect_size,
+            PAGE_EXECUTE_READ, &old_protect) != STATUS_SUCCESS) {
+            SIZE_T free_size = 0; 
+            nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+            return false;
+        }
+
+        nt_flush_instruction_cache(current_process, base_address, sizeof(shellcode));
+
+        bool is_vm = false;
+        DWORD exc_code = 0;
+
+        __try {
+            using func_ptr = void(*)();
+            const auto func = reinterpret_cast<func_ptr>(base_address);
+            func();
+
+            is_vm = true;
+        }
+        __except (exc_code = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
+            if (exc_code == EXCEPTION_SINGLE_STEP) {
+                // trap flag single-step exception triggered on CPUID
+                is_vm = false;
+            }
+            else {
+                // hypervisor delayed the trap flag over cpuid, execution fell through into 
+                // the bad bytes (C7 B2) causing EXCEPTION_ILLEGAL_INSTRUCTION
+                is_vm = true;
+            }
+        }
+
+        SIZE_T free_size = 0; 
+        nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+
+        return is_vm;
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
+
     #if (CLANG)
         #pragma clang diagnostic pop
     #endif
@@ -12678,6 +12791,7 @@ public: // START OF PUBLIC FUNCTIONS
             case MSR: return "MSR";
             case KVM_INTERCEPTION: return "KVM_INTERCEPTION";
             case BREAKPOINT: return "BREAKPOINT";
+            case POPF: return "POPF";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
             case ALL: return "ALL"; 
@@ -13219,6 +13333,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
+            {VM::POPF, {100, VM::popf}},
             {VM::MSR, {100, VM::msr}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::EDID, {100, VM::edid}},
