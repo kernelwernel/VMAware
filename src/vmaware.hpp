@@ -3837,8 +3837,8 @@ public:
                 }
             }
             else {
-                const std::string brand_str = cpu::cpu_manufacturer(0x40000100);
-                
+                std::string brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor + 0x100);
+
                 if (util::find(brand_str, "KVM")) {
                     debug("HYPER-X: Detected Hyper-V enlightenments");
                     core::add(brand_enum::QEMU_KVM_HYPERV);
@@ -3846,48 +3846,62 @@ public:
                 }
                 else {
                     // Windows machine running under Hyper-V type 1
-                    // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, bypassing some detections
-                #if (x86_64)
-                    u8 idtr_buffer[10] = { 0 };
+                    std::string brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor + 0x100);
 
-                    // we know we're not using SEH here, it's on purpose, and doesn't matter the CPU core
-                    #if (CLANG || GCC)
-                        __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
-                    #elif (MSVC)
-                        #pragma pack(push, 1)
-                        struct {
-                            USHORT Limit;
-                            ULONG_PTR Base;
-                        } idtr = { 0 }; 
-                        #pragma pack(pop)
-                        __sidt(&idtr);
-
-                        volatile u8* idtr_ptr = (volatile u8*)&idtr;
-                        for (size_t j = 0; j < sizeof(idtr); ++j) {
-                            idtr_buffer[j] = idtr_ptr[j];
-                        }
-                    #endif
-
-                    ULONG_PTR idt_base = 0;
-                    memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
-
-                    // if running under Hyper-V in AMD64 (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
-                    // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
-                    // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
-                    if (idt_base == 0xfffff80000001000) {
-                        debug("HYPER-X: Detected Hyper-V host machine");
-                        core::add(brand_enum::HYPERV_ROOT);
-                        state = HYPERV_ARTIFACT_VM;
+                    if (util::find(brand_str, "KVM")) {
+                        debug("HYPER-X: Detected Hyper-V enlightenments");
+                        core::add(brand_enum::QEMU_KVM_HYPERV);
+                        state = HYPERV_ENLIGHTENMENT;
                     }
                     else {
-                        debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
-                        state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
+                        // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, attempting to bypass some detections
+                        brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+
+                        bool is_hyper_v_host = false;
+
+                    #if (x86_64)
+                        u8 idtr_buffer[10] = { 0 };
+
+                        // we know we're not using SEH here, it's on purpose, and doesn't matter in what CPU core this runs on
+                        #if (CLANG || GCC)
+                            __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
+                        #elif (MSVC)
+                            #pragma pack(push, 1)
+                            struct {
+                                USHORT Limit;
+                                ULONG_PTR Base;
+                            } idtr = { 0 };
+                            #pragma pack(pop)
+                            __sidt(&idtr);
+
+                            volatile u8* idtr_ptr = (volatile u8*)&idtr;
+                            for (size_t j = 0; j < sizeof(idtr); ++j) {
+                                idtr_buffer[j] = idtr_ptr[j];
+                            }
+                        #endif
+
+                        ULONG_PTR idt_base = 0;
+                        memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
+
+                        // if running under Hyper-V in AMD64 (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
+                        // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
+                        // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
+                        // additionally, brand has to be "Microsoft Hv"
+                        is_hyper_v_host = idt_base == 0xfffff80000001000 && brand_str == "Microsoft Hv";
+                    #else
+                        is_hyper_v_host = brand_str == "Microsoft Hv";
+                    #endif
+
+                        if (is_hyper_v_host) {
+                            debug("HYPER-X: Detected Hyper-V host machine");
+                            core::add(brand_enum::HYPERV_ROOT);
+                            state = HYPERV_ARTIFACT_VM;
+                        }
+                        else {
+                            debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
+                            state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
+                        }
                     }
-                #else
-                    debug("HYPER-X: Detected Hyper-V host machine");
-                    core::add(brand_enum::HYPERV_ROOT);
-                    state = HYPERV_ARTIFACT_VM;
-                #endif                    
                 } 
             }
 
