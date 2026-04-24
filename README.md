@@ -159,8 +159,8 @@ If you want to learn about the architecture and design of the library, head over
 
 VMAware also has support for a variety of languages, if C++ isn't the language you're looking for then please refer to this list below. All of these projects are officially referred to by the VMAware developers.
 
-| Language | Repository link |  Details | Author |
-|----------|------|---------|--------|
+| Language | Repository link | Details | Author |
+|:---------|:---------------:|:--------|:------:|
 | <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/kernelwernel/VMAware/tree/main/gem) | Official Ruby port embedded in the VMAware repository, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
 | <img src="assets/language_icons/js.png" width="20"> JS | [link](https://github.com/Kyun-J/node-vm-detect) | Very good API, actively maintained | [Kyun-J](https://github.com/Kyun-J) |
 
