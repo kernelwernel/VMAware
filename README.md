@@ -161,14 +161,11 @@ VMAware also has support for a variety of languages whether official or unoffici
 
 | Language | Repository link | Is official? | Details | Author |
 |----------|------|:------------:|---------|--------|
-| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/kernelwernel/VMAware/tree/main/gem) | Yes | Official Ruby port, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
-| <img src="assets/language_icons/rust-logo-512x512.png" width="20"> Rust | [link](https://github.com/TomGousseau/VmawareRust) | No | AI-generated port, very good API, has a Rust create available. | [Tom IONOS](https://github.com/TomGousseau) |
-| <img src="assets/language_icons/c-program-icon.webp" width="20"> C | [link](https://github.com/TomGousseau/VMAwarec) | No | AI-generated port, very good API. | [Tom IONOS](https://github.com/TomGousseau) |
-| <img src="assets/language_icons/c-sharp-programming-language-icon.webp" width="20"> C# | [link](https://github.com/TomGousseau/VMAwarecsharp) | No | Good API, Single file lib. | [Tom IONOS](https://github.com/TomGousseau) |
+| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/kernelwernel/VMAware/tree/main/gem) | Yes | Official Ruby port embedded in the VMAware repository, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
 | <img src="assets/language_icons/js.png" width="20"> JS | [link](https://github.com/Kyun-J/node-vm-detect) | Yes | Very good API, actively maintained | [Kyun-J](https://github.com/Kyun-J) |
 
 > [!WARNING]
-> Although we endorse the unofficial ports, these are not tried and tested compared to our official ones. Additionally, all the ports are subject to potential false positives due to the complexity of the C++ code it originates from, and AI is unable to map some of these accurately (or worse, completely fails in some techniques). Use them at your own risk. 
+> Although unofficial ports exists, these are not tried and tested compared to our official ones. Additionally, all the ports are subject to potential false positives due to the complexity of the C++ code it originates from. Outside of this list, unofficial ports that use AI is unable to map some of these accurately (or worse, completely fails in some techniques). Use them at your own risk. 
 
 
 <br>
