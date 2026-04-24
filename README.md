@@ -157,15 +157,15 @@ If you want to learn about the architecture and design of the library, head over
 
 ## Ports to other languages 🔀
 
-VMAware also has support for a variety of languages whether official or unofficial, if C++ isn't the language you're looking for then please refer to this list:
+VMAware also has support for a variety of languages, if C++ isn't the language you're looking for then please refer to this list below. All of these projects are officially referred to by the VMAware developers.
 
-| Language | Repository link | Is official? | Details | Author |
-|----------|------|:------------:|---------|--------|
-| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/kernelwernel/VMAware/tree/main/gem) | Yes | Official Ruby port embedded in the VMAware repository, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
-| <img src="assets/language_icons/js.png" width="20"> JS | [link](https://github.com/Kyun-J/node-vm-detect) | Yes | Very good API, actively maintained | [Kyun-J](https://github.com/Kyun-J) |
+| Language | Repository link |  Details | Author |
+|----------|------|---------|--------|
+| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/kernelwernel/VMAware/tree/main/gem) | Official Ruby port embedded in the VMAware repository, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
+| <img src="assets/language_icons/js.png" width="20"> JS | [link](https://github.com/Kyun-J/node-vm-detect) | Very good API, actively maintained | [Kyun-J](https://github.com/Kyun-J) |
 
 > [!WARNING]
-> Although unofficial ports exists, these are not tried and tested compared to our official ones. Additionally, all the ports are subject to potential false positives due to the complexity of the C++ code it originates from. Outside of this list, unofficial ports that use AI is unable to map some of these accurately (or worse, completely fails in some techniques). Use them at your own risk. 
+> Although unofficial ports exists, these are not tried and tested compared to our official ones. Additionally, all the ports are subject to potential false positives due to the complexity of the C++ code it originates from. Outside of this list, ports that use AI are unable to map our techniques accurately (or worse, completely fails). Use them at your own risk. 
 
 
 <br>
