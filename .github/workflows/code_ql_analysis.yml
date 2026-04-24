@@ -13,10 +13,16 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [ main ]
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ main, dev ]
+    branches: [ main ]
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
 
 
 jobs:
