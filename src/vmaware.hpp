@@ -12992,7 +12992,7 @@ public: // START OF PUBLIC FUNCTIONS
             case brand_enum::BAREVISOR: return "Hypervisor (type 1)";
             case brand_enum::HYPERPLATFORM: return "Hypervisor (type 1)";
             case brand_enum::MINIVISOR: return "Hypervisor (type 1)";
-            case brand_enum::HYPERV_ROOT: return "Host machine"; // This refers to the type 1 hypervisor where Windows normally runs under, we put "Unknown" to clarify you're not running under a VM if this is detected
+            case brand_enum::HYPERV_ROOT: return "Host machine"; // This refers to the type 1 hypervisor where Windows normally runs under, we put "Host machine" to clarify you're not running under a VM if this is detected
             case brand_enum::NULL_BRAND: return "Unknown";
             case brand_enum::INVALID: return "Invalid";
         }
