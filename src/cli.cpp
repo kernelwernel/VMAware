@@ -992,7 +992,7 @@ static void general(
     checker(VM::TRAP, "hypervisor interception");
     checker(VM::UD, "undefined exceptions");
     checker(VM::BLOCKSTEP, "single step with trap flag");
-    checker(VM::DBVM_HYPERCALL, "Dark Byte's hypervisor");
+    checker(VM::DBVM, "DBVM hypervisor");
     checker(VM::BOOT_LOGO, "boot logo");
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::KERNEL_OBJECTS, "kernel objects");

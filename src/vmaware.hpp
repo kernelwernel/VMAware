@@ -589,7 +589,7 @@ public:
         TRAP,
         UD,
         BLOCKSTEP,
-        DBVM_HYPERCALL,
+        DBVM,
         KERNEL_OBJECTS,
         NVRAM,
         EDID,
@@ -3837,6 +3837,7 @@ public:
                 }
             }
             else {
+                // Windows machine running under Hyper-V type 1
                 std::string brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor + 0x100);
 
                 if (util::find(brand_str, "KVM")) {
@@ -3845,63 +3846,53 @@ public:
                     state = HYPERV_ENLIGHTENMENT;
                 }
                 else {
-                    // Windows machine running under Hyper-V type 1
-                    std::string brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor + 0x100);
+                    // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, attempting to bypass some detections
+                    brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
 
-                    if (util::find(brand_str, "KVM")) {
-                        debug("HYPER-X: Detected Hyper-V enlightenments");
-                        core::add(brand_enum::QEMU_KVM_HYPERV);
-                        state = HYPERV_ENLIGHTENMENT;
-                    }
-                    else {
-                        // If we reach here, we do some sanity checks to ensure a hypervisor is not trying to spoof itself as Hyper-V, attempting to bypass some detections
-                        brand_str = cpu::cpu_manufacturer(cpu::leaf::hypervisor);
+                    bool is_hyper_v_host = false;
 
-                        bool is_hyper_v_host = false;
+                #if (x86_64)
+                    u8 idtr_buffer[10] = { 0 };
 
-                    #if (x86_64)
-                        u8 idtr_buffer[10] = { 0 };
+                    // we know we're not using SEH here, it's on purpose, and doesn't matter in what CPU core this runs on
+                    #if (CLANG || GCC)
+                        __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
+                    #elif (MSVC)
+                        #pragma pack(push, 1)
+                        struct {
+                            USHORT Limit;
+                            ULONG_PTR Base;
+                        } idtr = { 0 };
+                        #pragma pack(pop)       
+                        __sidt(&idtr);
 
-                        // we know we're not using SEH here, it's on purpose, and doesn't matter in what CPU core this runs on
-                        #if (CLANG || GCC)
-                            __asm__ volatile("sidt %0" : "=m"(idtr_buffer));
-                        #elif (MSVC)
-                            #pragma pack(push, 1)
-                            struct {
-                                USHORT Limit;
-                                ULONG_PTR Base;
-                            } idtr = { 0 };
-                            #pragma pack(pop)
-                            __sidt(&idtr);
-
-                            volatile u8* idtr_ptr = (volatile u8*)&idtr;
-                            for (size_t j = 0; j < sizeof(idtr); ++j) {
-                                idtr_buffer[j] = idtr_ptr[j];
-                            }
-                        #endif
-
-                        ULONG_PTR idt_base = 0;
-                        memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
-
-                        // if running under Hyper-V in AMD64 (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
-                        // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
-                        // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
-                        // additionally, brand has to be "Microsoft Hv"
-                        is_hyper_v_host = idt_base == 0xfffff80000001000 && brand_str == "Microsoft Hv";
-                    #else
-                        is_hyper_v_host = brand_str == "Microsoft Hv";
+                        volatile u8* idtr_ptr = (volatile u8*)&idtr;
+                        for (size_t j = 0; j < sizeof(idtr); ++j) {
+                            idtr_buffer[j] = idtr_ptr[j];
+                        }
                     #endif
 
-                        if (is_hyper_v_host) {
-                            debug("HYPER-X: Detected Hyper-V host machine");
-                            core::add(brand_enum::HYPERV_ROOT);
-                            state = HYPERV_ARTIFACT_VM;
-                        }
-                        else {
-                            debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
-                            state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
-                        }
+                    ULONG_PTR idt_base = 0;
+                    memcpy(&idt_base, &idtr_buffer[2], sizeof(idt_base));
+
+                    // if running under Hyper-V in AMD64 (doesnt matter the VTL/partition level), this value is hardcoded and intercepted/emulated at kernel level
+                    // specifically at KiPreprocessFault -> KiOpDecode -> KiOpLocateDecodeEntry (KiOp_SLDTSTRSMSW)
+                    // this is intercepted by the kernel before handling execution to the hypervisor, so it's a decent safeguard against basic cpuid spoofing
+                    // additionally, brand has to be "Microsoft Hv"
+                    is_hyper_v_host = idt_base == 0xfffff80000001000 && brand_str == "Microsoft Hv";
+                #else
+                    is_hyper_v_host = brand_str == "Microsoft Hv";
+                #endif
+
+                    if (is_hyper_v_host) {
+                        debug("HYPER-X: Detected Hyper-V host machine");
+                        core::add(brand_enum::HYPERV_ROOT);
+                        state = HYPERV_ARTIFACT_VM;
                     }
+                    else {
+                        debug("HYPER-X: Detected hypervisor trying to spoof itself as Hyper-V");
+                        state = HYPERV_UNKNOWN; // doing this is enough to trigger a VM detection, we dont need to mark a 100% vm score as our techniques will do the job for us
+                    } 
                 } 
             }
 
@@ -5084,7 +5075,7 @@ public:
                     unsigned total = 0;
 
                     for (WORD i = 0; i < pr.GroupCount; ++i) {
-                        total += util::popcount(static_cast<uint64_t>(pr.GroupMask[i].Mask));
+                        total += util::popcount(static_cast<u64>(pr.GroupMask[i].Mask));
                     }
 
                     return total > 1;
@@ -5461,7 +5452,7 @@ public:
                 std::mt19937 gen(std::random_device{}());
                 return 1ull << idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
             }
-            return 1ull; // Fallback
+            return 1ull; // fallback
         };
 
         // we dont use cpu::cpuid on purpose
@@ -10036,38 +10027,60 @@ public:
 
 
     /**
-     * @brief Check if a hypervisor does not properly restore the interruptibility state after a VM-exit in compatibility mode
+     * @brief Check if a hypervisor does not properly restore the interruptibility state after a VM-exit
      * @category Windows
      * @implements VM::BLOCKSTEP
      */
-    [[nodiscard]] static bool blockstep() {  
-    #if (x86_32 && MSVC && !CLANG)
+    [[nodiscard]] static bool blockstep() {
         volatile int saw_single_step = 0;
 
+    #if (x86_32)
         __try
         {
+        #if (CLANG || GCC)
+            __asm__ __volatile__(
+                // set TF in EFLAGS
+                "pushfd\n\t"
+                "orl $0x100, (%%esp)\n\t"
+                "popfd\n\t"
+
+                // because TF was set, CPUID would normally cause a #DB on the next instruction
+                // if placed after 'mov ss', it consumes the 1-instruction inhibition window so the check wouldn't work
+                "xor %%eax, %%eax\n\t"
+
+                // execute MOV SS,AX (reload SS with itself) to force the interruptible state block
+                "mov %%ss, %%ax\n\t"
+                "mov %%ax, %%ss\n\t" // this blocks any debug exception for exactly one instruction
+
+                "cpuid\n\t"
+
+                // TF's single-step now fires here on baremetal
+                "nop\n\t"
+
+                "pushfd\n\t"
+                "andl $0xFFFFFEFF, (%%esp)\n\t"
+                "popfd\n\t"
+                :
+            :
+                : "eax", "ebx", "ecx", "edx", "cc", "memory"
+            );
+        #else
             __asm
             {
-                // set TF in EFLAGS
+                // same logic as above
                 pushfd
                 or dword ptr[esp], 0x100
                 popfd
-
-                // execute MOV SS,AX (reload SS with itself) to force the interruptible state block
-                mov ax, ss
-                mov ss, ax // this blocks any debug exception for exactly one instruction
-
-                // because TF was set, CPUID would normally cause a #DB on the next instruction.
                 xor eax, eax
+                mov ax, ss
+                mov ss, ax
                 cpuid
-
-                // one extra instruction: on bare metal, TF's single-step now fires here
                 nop
-
                 pushfd
                 and dword ptr[esp], 0xFFFFFEFF
                 popfd
             }
+        #endif
         }
         __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP
             ? EXCEPTION_EXECUTE_HANDLER
@@ -10075,6 +10088,72 @@ public:
         {
             saw_single_step = 1;
         }
+        return (saw_single_step == 0) ? true : false;
+
+    #elif (x86_64)
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto nt_allocate_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
+        const auto nt_flush_instruction_cache = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
+        const auto nt_free_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
+
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_flush_instruction_cache || !nt_free_virtual_memory) {
+            return false;
+        }
+
+        static constexpr u8 blockstep_opcodes[] = {
+            0x53,                                           // push rbx (to preserve non-volatile register against cpuid)
+            0x9C,                                           // pushfq
+            0x81, 0x0C, 0x24, 0x00, 0x01, 0x00, 0x00,       // or dword ptr [rsp], 0x100
+            0x9D,                                           // popfq
+            0x31, 0xC0,                                     // xor eax, eax
+            0x8C, 0xD0,                                     // mov ax, ss
+            0x8E, 0xD0,                                     // mov ss, ax
+            0x0F, 0xA2,                                     // cpuid
+            0x90,                                           // nop
+            0x9C,                                           // pushfq
+            0x81, 0x24, 0x24, 0xFF, 0xFE, 0xFF, 0xFF,       // and dword ptr [rsp], 0xFFFFFEFF
+            0x9D,                                           // popfq
+            0x5B,                                           // pop rbx
+            0xC3                                            // ret
+        };
+
+        const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+        PVOID base = nullptr;
+        SIZE_T region_size = sizeof(blockstep_opcodes);
+        NTSTATUS st = nt_allocate_virtual_memory(current_process, &base, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!NT_SUCCESS(st) || !base) {
+            return false;
+        }
+
+        memcpy(base, blockstep_opcodes, sizeof(blockstep_opcodes));
+
+        ULONG old_protection = 0;
+        st = nt_protect_virtual_memory(current_process, &base, &region_size, PAGE_EXECUTE_READ, &old_protection);
+        if (!NT_SUCCESS(st)) {
+            region_size = 0;
+            nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
+            return false;
+        }
+
+        nt_flush_instruction_cache(current_process, base, region_size);
+
+        __try {
+            reinterpret_cast<void(*)()>(base)();
+        }
+        __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+            saw_single_step = 1;
+        }
+
+        region_size = 0;
+        nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
+
         return (saw_single_step == 0) ? true : false;
     #else
         return false;
@@ -10085,9 +10164,9 @@ public:
     /**
      * @brief Check if Dark Byte's VM is present
      * @category Windows
-     * @implements VM::DBVM_HYPERCALL
+     * @implements VM::DBVM
      */
-    [[nodiscard]] static bool dbvm_hypercall() {
+    [[nodiscard]] static bool dbvm() {
     #if (!x86_64)
         return false;
     #else
@@ -10126,10 +10205,11 @@ public:
         const bool is_amd = cpu::is_amd();
 
         const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+        const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
-        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory" };
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory", "NtGetContextThread", "NtSetContextThread" };
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
@@ -10137,8 +10217,10 @@ public:
         const auto nt_protect_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
         const auto nt_flush_instruction_cache = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
         const auto nt_free_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
+        const auto nt_get_context_thread = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PCONTEXT)>(funcs[4]);
+        const auto nt_set_context_thread = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PCONTEXT)>(funcs[5]);
 
-        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_flush_instruction_cache || !nt_free_virtual_memory) {
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_flush_instruction_cache || !nt_free_virtual_memory || !nt_get_context_thread || !nt_set_context_thread) {
             return false;
         }
 
@@ -10153,6 +10235,11 @@ public:
         else {
             memcpy(stub, intel_template, stub_size);
         }
+
+        // ICEBP stub
+        u8* icebp_stub = reinterpret_cast<u8*>(stub) + 64;
+        icebp_stub[0] = 0xF1;                                     
+        icebp_stub[1] = 0xC3;                                      
 
         // rdx imm64
         // rcx imm64
@@ -10173,8 +10260,8 @@ public:
 
         nt_flush_instruction_cache(current_process, stub, region_size);
 
-        auto tryPass = [&]() noexcept -> bool {
-            // store forwarding in modern CPUs
+        auto try_keys = [&]() noexcept -> bool {
+            // store forwarding
             vmcall_info.structsize = static_cast<u32>(sizeof(vmcall_info));
             vmcall_info.level2pass = PW2;
             vmcall_info.command = 0;
@@ -10190,12 +10277,74 @@ public:
             return (((vmcall_result >> 24) & 0xFF) == 0xCE); // the VM returns status in bits 24–31; Cheat Engine uses 0xCE here
         };
 
-        const bool found = tryPass();
+        auto try_icebp = [&]() noexcept -> bool {
+            bool detected = false;
+            CONTEXT ctx = {};
+            ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+
+            if (!NT_SUCCESS(nt_get_context_thread(current_thread, &ctx))) return false;
+
+            // save old stuff
+            const auto old_dr0 = ctx.Dr0;
+            const auto old_dr1 = ctx.Dr1;
+            const auto old_dr2 = ctx.Dr2;
+            const auto old_dr3 = ctx.Dr3;
+            const auto old_dr6 = ctx.Dr6;
+            const auto old_dr7 = ctx.Dr7;
+
+            ctx.Dr0 = reinterpret_cast<u64>(icebp_stub);
+            ctx.Dr1 = reinterpret_cast<u64>(icebp_stub);
+            ctx.Dr2 = reinterpret_cast<u64>(icebp_stub);
+            ctx.Dr3 = reinterpret_cast<u64>(icebp_stub);
+            ctx.Dr7 = 0x55; // local exact execute breakpoints for Dr0-Dr3
+
+            if (!NT_SUCCESS(nt_set_context_thread(current_thread, &ctx))) return false;
+
+            __try {
+                reinterpret_cast<void(*)()>(icebp_stub)();
+
+                // If the code makes it here without aborting to the __except block, 
+                // the exception was silently swallowed by the hypervisor.
+                detected = true;
+                debug("DBVM: INT 1 exception was not correctly handled");
+            }
+            __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP ?
+                (
+                    // check if they mess up Dr6 and Dr7
+                    detected = ((GetExceptionInformation()->ContextRecord->Dr7 & 0xFF) != 0x55 || GetExceptionInformation()->ContextRecord->Dr6 == 0),
+
+                    EXCEPTION_EXECUTE_HANDLER
+                ) : EXCEPTION_EXECUTE_HANDLER) {
+                if (_exception_code() != EXCEPTION_SINGLE_STEP) {
+                    detected = true;
+                    debug("DBVM: ICEBP exception didn't trigger #DB");
+                }
+                else if (detected) {
+                    debug("DBVM: hardware debug registers were not correctly restored");
+                }
+            }
+
+            // restore old stuff 
+            ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+            ctx.Dr0 = old_dr0;
+            ctx.Dr1 = old_dr1;
+            ctx.Dr2 = old_dr2;
+            ctx.Dr3 = old_dr3;
+            ctx.Dr6 = old_dr6;
+            ctx.Dr7 = old_dr7;
+            nt_set_context_thread(current_thread, &ctx);
+
+            return detected;
+        };
+
+        const bool found_vmcall = try_keys();
+        const bool found_icebp = try_icebp();
 
         region_size = 0;
         nt_free_virtual_memory(current_process, &stub, &region_size, MEM_RELEASE);
 
-        if (found) return core::add(brand_enum::DBVM);
+        if (found_vmcall) return core::add(brand_enum::DBVM);
+        if (found_icebp)  return true;
 
         return false;
     #endif
@@ -12780,7 +12929,7 @@ public: // START OF PUBLIC FUNCTIONS
             case TRAP: return "TRAP";
             case UD: return "UNDEFINED_INSTRUCTION";
             case BLOCKSTEP: return "BLOCKSTEP";
-            case DBVM_HYPERCALL: return "DBVM_HYPERCALL";
+            case DBVM: return "DBVM_HYPERCALL";
             case BOOT_LOGO: return "BOOT_LOGO";
             case MAC_SYS: return "MAC_SYS";
             case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
@@ -13340,7 +13489,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::BREAKPOINT, {100, VM::breakpoint}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
-            {VM::DBVM_HYPERCALL, {150, VM::dbvm_hypercall}},
+            {VM::DBVM, {150, VM::dbvm}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
             {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::DRIVERS, {100, VM::drivers}},
