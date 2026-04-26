@@ -12223,6 +12223,9 @@ public:
      * @implements VM::EIP_OVERFLOW
      */
     [[nodiscard]] static bool eip_overflow() {
+    #if (!x86_64) 
+        return false;
+    #else   
         #pragma pack(push, 1)
         struct iretq_frame {
             uint64_t ip;
@@ -12393,6 +12396,7 @@ public:
         rtl_remove_vectored_exception_handler(handler_ptr);
 
         return hypervisor_detected;
+    #endif  
     }
     // ADD NEW TECHNIQUE FUNCTION HERE
 
