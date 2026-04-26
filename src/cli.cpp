@@ -1004,6 +1004,8 @@ static void general(
     checker(VM::KVM_INTERCEPTION, "KVM interception");
     checker(VM::BREAKPOINT, "EPT/NPT hooking");
     checker(VM::POPF, "popf behavior");
+    checker(VM::EIP_OVERFLOW, "instruction behavior in compatibility mode");
+
     // ADD NEW TECHNIQUE CHECKER HERE
 
     const auto t2 = std::chrono::high_resolution_clock::now();
