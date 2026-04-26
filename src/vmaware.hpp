@@ -5075,7 +5075,7 @@ public:
                     unsigned total = 0;
 
                     for (WORD i = 0; i < pr.GroupCount; ++i) {
-                        total += util::popcount(static_cast<uint64_t>(pr.GroupMask[i].Mask));
+                        total += util::popcount(static_cast<u64>(pr.GroupMask[i].Mask));
                     }
 
                     return total > 1;
@@ -5452,7 +5452,7 @@ public:
                 std::mt19937 gen(std::random_device{}());
                 return 1ull << idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
             }
-            return 1ull; // Fallback
+            return 1ull; // fallback
         };
 
         // we dont use cpu::cpuid on purpose
@@ -10027,38 +10027,60 @@ public:
 
 
     /**
-     * @brief Check if a hypervisor does not properly restore the interruptibility state after a VM-exit in compatibility mode
+     * @brief Check if a hypervisor does not properly restore the interruptibility state after a VM-exit
      * @category Windows
      * @implements VM::BLOCKSTEP
      */
-    [[nodiscard]] static bool blockstep() {  
-    #if (x86_32 && MSVC && !CLANG)
+    [[nodiscard]] static bool blockstep() {
         volatile int saw_single_step = 0;
 
+    #if (x86_32)
         __try
         {
+        #if (CLANG || GCC)
+            __asm__ __volatile__(
+                // set TF in EFLAGS
+                "pushfd\n\t"
+                "orl $0x100, (%%esp)\n\t"
+                "popfd\n\t"
+
+                // because TF was set, CPUID would normally cause a #DB on the next instruction
+                // if placed after 'mov ss', it consumes the 1-instruction inhibition window so the check wouldn't work
+                "xor %%eax, %%eax\n\t"
+
+                // execute MOV SS,AX (reload SS with itself) to force the interruptible state block
+                "mov %%ss, %%ax\n\t"
+                "mov %%ax, %%ss\n\t" // this blocks any debug exception for exactly one instruction
+
+                "cpuid\n\t"
+
+                // TF's single-step now fires here on baremetal
+                "nop\n\t"
+
+                "pushfd\n\t"
+                "andl $0xFFFFFEFF, (%%esp)\n\t"
+                "popfd\n\t"
+                :
+            :
+                : "eax", "ebx", "ecx", "edx", "cc", "memory"
+            );
+        #else
             __asm
             {
-                // set TF in EFLAGS
+                // same logic as above
                 pushfd
                 or dword ptr[esp], 0x100
                 popfd
-
-                // execute MOV SS,AX (reload SS with itself) to force the interruptible state block
-                mov ax, ss
-                mov ss, ax // this blocks any debug exception for exactly one instruction
-
-                // because TF was set, CPUID would normally cause a #DB on the next instruction.
                 xor eax, eax
+                mov ax, ss
+                mov ss, ax
                 cpuid
-
-                // one extra instruction: on bare metal, TF's single-step now fires here
                 nop
-
                 pushfd
                 and dword ptr[esp], 0xFFFFFEFF
                 popfd
             }
+        #endif
         }
         __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP
             ? EXCEPTION_EXECUTE_HANDLER
@@ -10066,6 +10088,72 @@ public:
         {
             saw_single_step = 1;
         }
+        return (saw_single_step == 0) ? true : false;
+
+    #elif (x86_64)
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory" };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto nt_allocate_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
+        const auto nt_flush_instruction_cache = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
+        const auto nt_free_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
+
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_flush_instruction_cache || !nt_free_virtual_memory) {
+            return false;
+        }
+
+        static constexpr u8 blockstep_opcodes[] = {
+            0x53,                                           // push rbx (to preserve non-volatile register against cpuid)
+            0x9C,                                           // pushfq
+            0x81, 0x0C, 0x24, 0x00, 0x01, 0x00, 0x00,       // or dword ptr [rsp], 0x100
+            0x9D,                                           // popfq
+            0x31, 0xC0,                                     // xor eax, eax
+            0x8C, 0xD0,                                     // mov ax, ss
+            0x8E, 0xD0,                                     // mov ss, ax
+            0x0F, 0xA2,                                     // cpuid
+            0x90,                                           // nop
+            0x9C,                                           // pushfq
+            0x81, 0x24, 0x24, 0xFF, 0xFE, 0xFF, 0xFF,       // and dword ptr [rsp], 0xFFFFFEFF
+            0x9D,                                           // popfq
+            0x5B,                                           // pop rbx
+            0xC3                                            // ret
+        };
+
+        const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+        PVOID base = nullptr;
+        SIZE_T region_size = sizeof(blockstep_opcodes);
+        NTSTATUS st = nt_allocate_virtual_memory(current_process, &base, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        if (!NT_SUCCESS(st) || !base) {
+            return false;
+        }
+
+        memcpy(base, blockstep_opcodes, sizeof(blockstep_opcodes));
+
+        ULONG old_protection = 0;
+        st = nt_protect_virtual_memory(current_process, &base, &region_size, PAGE_EXECUTE_READ, &old_protection);
+        if (!NT_SUCCESS(st)) {
+            region_size = 0;
+            nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
+            return false;
+        }
+
+        nt_flush_instruction_cache(current_process, base, region_size);
+
+        __try {
+            reinterpret_cast<void(*)()>(base)();
+        }
+        __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+            saw_single_step = 1;
+        }
+
+        region_size = 0;
+        nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
+
         return (saw_single_step == 0) ? true : false;
     #else
         return false;
