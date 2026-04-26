@@ -599,6 +599,7 @@ public:
         KVM_INTERCEPTION,
         BREAKPOINT,
         POPF,
+        EIP_OVERFLOW,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -12214,6 +12215,189 @@ public:
 
         return is_vm;
     }
+
+
+    /**
+     * @brief Check whether a hypervisor does not correctly emulate instructions in compatibility mode
+     * @category Windows
+     * @implements VM::EIP_OVERFLOW
+     */
+    [[nodiscard]] static bool eip_overflow() {
+    #if (!x86_64) 
+        return false;
+    #else   
+        #pragma pack(push, 1)
+        struct iretq_frame {
+            uint64_t ip;
+            uint64_t cs;
+        };
+        #pragma pack(pop)
+
+        static bool hypervisor_detected = true;
+        static uintptr_t g_recovery_pad = 0;
+        static uint64_t g_saved_rsp = 0;
+
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return false;
+
+        const char* names[] = {
+            "NtAllocateVirtualMemory",
+            "NtProtectVirtualMemory",
+            "NtFlushInstructionCache",
+            "NtFreeVirtualMemory",
+            "RtlAddVectoredExceptionHandler",
+            "RtlRemoveVectoredExceptionHandler"
+        };
+
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using nt_flush_instruction_cache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+        using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using rtl_add_vectored_exception_handler_t = PVOID(__stdcall*)(ULONG, PVECTORED_EXCEPTION_HANDLER);
+        using rtl_remove_vectored_exception_handler_t = ULONG(__stdcall*)(PVOID);
+
+        const auto nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[1]);
+        const auto nt_flush_instruction_cache = reinterpret_cast<nt_flush_instruction_cache_t>(funcs[2]);
+        const auto nt_free_virtual_memory = reinterpret_cast<nt_free_virtual_memory_t>(funcs[3]);
+        const auto rtl_add_vectored_exception_handler = reinterpret_cast<rtl_add_vectored_exception_handler_t>(funcs[4]);
+        const auto rtl_remove_vectored_exception_handler = reinterpret_cast<rtl_remove_vectored_exception_handler_t>(funcs[5]);
+
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory ||
+            !nt_flush_instruction_cache || !nt_free_virtual_memory || 
+            !rtl_add_vectored_exception_handler || !rtl_remove_vectored_exception_handler) {
+            return false;
+        }
+
+        const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+
+        auto eip_overflow_veh = [](PEXCEPTION_POINTERS exc_info) -> LONG {
+            // check for the expected access violation
+            if (exc_info->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+                DWORD64 fault_ip = exc_info->ContextRecord->Rip;
+                DWORD cs_reg = exc_info->ContextRecord->SegCs;
+
+                // verify EIP correctly truncated and wrapped to 0x0 in 32-bit mode
+                // if hypervisor only supports x86_64, RIP will be 0x100000000
+                if (fault_ip == 0x0 && cs_reg == 0x23) {
+                    hypervisor_detected = false;
+                }
+            }
+
+            if (g_recovery_pad != 0) {
+                exc_info->ContextRecord->SegCs = 0x33;           
+                exc_info->ContextRecord->Rip = g_recovery_pad;   // cleanup shellcode
+                exc_info->ContextRecord->Rsp = g_saved_rsp;     
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+
+            return EXCEPTION_CONTINUE_SEARCH;
+        };
+
+        const PVOID handler_ptr = rtl_add_vectored_exception_handler(1, static_cast<PVECTORED_EXCEPTION_HANDLER>(eip_overflow_veh));
+        if (!handler_ptr) return false;
+
+        // shellcode byte arrays for ms x64 fastcall (rcx=frame, rdx=stack32, r8=&g_saved_rsp)
+        constexpr unsigned char switch_stub[] = {
+            0x53, 0x55, 0x57, 0x56, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, // push rbx, rbp, rdi, rsi, r12-r15
+            0x49, 0x89, 0x20,                                                       // mov qword ptr [r8], rsp
+            0x66, 0x8C, 0xD0,                                                       // mov ax, ss
+            0x50,                                                                   // push rax
+            0x52,                                                                   // push rdx
+            0x9C,                                                                   // pushfq
+            0x48, 0x8B, 0x41, 0x08,                                                 // mov rax, qword ptr [rcx + 8]
+            0x50,                                                                   // push rax
+            0x48, 0x8B, 0x01,                                                       // mov rax, qword ptr [rcx]
+            0x50,                                                                   // push rax
+            0x48, 0xCF                                                              // iretq
+        };
+
+        constexpr unsigned char recover_stub[] = {
+            0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C, 0x5E, 0x5F, 0x5D, 0x5B, // pop r15-r12, rsi, rdi, rbp, rbx
+            0xC3                                                                    // ret
+        };
+
+        // memory for execution stubs
+        PVOID shellcode_base = nullptr;
+        SIZE_T shellcode_size = sizeof(switch_stub) + sizeof(recover_stub);
+        if (nt_allocate_virtual_memory(current_process, &shellcode_base, 0, &shellcode_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) < 0) {
+            rtl_remove_vectored_exception_handler(handler_ptr);
+            return false;
+        }
+
+        // map stub bytes into allocated chunk
+        uint8_t* code_ptr = static_cast<uint8_t*>(shellcode_base);
+        for (size_t i = 0; i < sizeof(switch_stub); ++i) code_ptr[i] = switch_stub[i];
+
+        uint8_t* rec_ptr = code_ptr + sizeof(switch_stub);
+        for (size_t i = 0; i < sizeof(recover_stub); ++i) rec_ptr[i] = recover_stub[i];
+
+        // executable memory protection
+        ULONG old_protect = 0;
+        nt_protect_virtual_memory(current_process, &shellcode_base, &shellcode_size, PAGE_EXECUTE_READ, &old_protect);
+        nt_flush_instruction_cache(current_process, shellcode_base, shellcode_size);
+
+        // recovery jump target for veh
+        g_recovery_pad = reinterpret_cast<uintptr_t>(rec_ptr);
+
+        // dynamically allocate a 32-bit compatible stack (must reside below 4GB)
+        PVOID stack32_base = nullptr;
+        SIZE_T stack32_size = 0x10000;
+        for (uintptr_t addr = 0x20000000; addr < 0x80000000; addr += 0x10000000) {
+            stack32_base = reinterpret_cast<PVOID>(addr);
+            if (nt_allocate_virtual_memory(current_process, &stack32_base, 0, &stack32_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) >= 0) {
+                break;
+            }
+            stack32_base = nullptr;
+        }
+
+        if (!stack32_base) {
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &shellcode_base, &free_size, MEM_RELEASE);
+            rtl_remove_vectored_exception_handler(handler_ptr);
+            return false;
+        }
+
+        // align stack pointer
+        uintptr_t stack32_ptr = reinterpret_cast<uintptr_t>(stack32_base) + 0x10000 - 0x20;
+
+        // high-boundary 32-bit execution target
+        PVOID boundary_base = reinterpret_cast<PVOID>(0xFFFF0000ULL);
+        SIZE_T boundary_size = 0x10000ULL;
+        NTSTATUS alloc_status = nt_allocate_virtual_memory(current_process, &boundary_base, 0, &boundary_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+        if (alloc_status >= 0 && boundary_base == reinterpret_cast<PVOID>(0xFFFF0000ULL)) {
+            // inject cpuid at the strict end of the compat-mode space
+            uint8_t* execution_target = reinterpret_cast<uint8_t*>(0xFFFFFFFEULL);
+            execution_target[0] = 0x0F;
+            execution_target[1] = 0xA2;
+
+            iretq_frame frame = {};
+            frame.ip = 0xFFFFFFFEULL;
+            frame.cs = 0x23;
+
+            // dispatch hardware context switch shellcode
+            auto switch_func = reinterpret_cast<void(*)(iretq_frame*, uintptr_t, uint64_t*)>(code_ptr);
+            switch_func(&frame, stack32_ptr, &g_saved_rsp);
+
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &boundary_base, &free_size, MEM_RELEASE);
+        }
+
+        SIZE_T free_size = 0;
+        nt_free_virtual_memory(current_process, &stack32_base, &free_size, MEM_RELEASE);
+
+        free_size = 0;
+        nt_free_virtual_memory(current_process, &shellcode_base, &free_size, MEM_RELEASE);
+
+        rtl_remove_vectored_exception_handler(handler_ptr);
+
+        return hypervisor_detected;
+    #endif  
+    }
     // ADD NEW TECHNIQUE FUNCTION HERE
 
     #if (CLANG)
@@ -12941,6 +13125,7 @@ public: // START OF PUBLIC FUNCTIONS
             case KVM_INTERCEPTION: return "KVM_INTERCEPTION";
             case BREAKPOINT: return "BREAKPOINT";
             case POPF: return "POPF";
+            case EIP_OVERFLOW: return "EIP_OVERFLOW";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
             case ALL: return "ALL"; 
@@ -13482,6 +13667,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
             {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
+            {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
             {VM::POPF, {100, VM::popf}},
             {VM::MSR, {100, VM::msr}},
             {VM::BOOT_LOGO, {100, VM::boot_logo}},
