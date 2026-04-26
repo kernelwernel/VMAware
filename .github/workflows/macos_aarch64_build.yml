@@ -2,9 +2,15 @@ name: macOS aarch64 Build
 
 on:
   push:
-    branches: ["main", "dev"]
+    branches: ["main"]
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
   pull_request:
     branches: ["main"]
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
   workflow_dispatch:
 
 jobs:

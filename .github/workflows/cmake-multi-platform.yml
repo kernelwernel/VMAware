@@ -4,7 +4,10 @@ name: CMake on multiple platforms
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: [ "main" ]
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
 
 jobs:
   build:

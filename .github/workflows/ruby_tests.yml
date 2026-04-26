@@ -2,7 +2,12 @@ name: Ruby wrapper building and tests run
 
 on:
   push:
-    branches: ['main', 'dev']
+    branches: ['main']
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
+      - 'gem/**/*.cpp'
+      - 'gem/**/*.hpp'
 
 jobs:
   test_api:
