@@ -769,7 +769,7 @@ public:
 
     // for platform compatibility ranges
     static constexpr u8 WINDOWS_START = VM::GPU_CAPABILITIES;
-    static constexpr u8 WINDOWS_END = VM::AZURE;
+    static constexpr u8 WINDOWS_END = VM::DISK_SERIAL;
     static constexpr u8 LINUX_START = VM::SYSTEM_REGISTERS;
     static constexpr u8 LINUX_END = VM::THREAD_COUNT;
     static constexpr u8 MACOS_START = VM::THREAD_COUNT;
@@ -1239,11 +1239,11 @@ public:
         };
 
         struct cpu_cache {
-            u32 expected_threads;
-            bool found;
-            bool has_sse42;
-            const char* debug_tag;
-            std::string model_name;
+            u32 expected_threads = 0;
+            bool found = false;
+            bool has_sse42 = false;
+            const char* debug_tag = "";
+            std::string model_name = "";
         };
 
         enum class cpu_type {
@@ -1254,7 +1254,7 @@ public:
         };
 
         static const cpu_cache& analyze_cpu() {
-            static cpu_cache result = { 0, false, false, "", "" };
+            static cpu_cache result;
             static bool initialized = false;
 
             if (initialized) return result;
