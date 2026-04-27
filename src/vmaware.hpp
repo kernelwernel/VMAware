@@ -248,7 +248,7 @@
     #define APPLE 0
 #endif
 
-#ifdef _MSC_VER
+#if (_MSC_VER)
     #define MSVC 1
 #endif
 
@@ -595,7 +595,7 @@ public:
         CLOCK,
         MSR,
         KVM_INTERCEPTION,
-        BREAKPOINT,
+        HYPERVISOR_HOOK,
         POPF,
         EIP_OVERFLOW,
 
@@ -4810,8 +4810,8 @@ public:
 
 // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
-#ifdef _MSC_VER
-#pragma region "x86"
+#if (MSVC)
+    #pragma region "x86"
 #endif
 
 #if 1
@@ -5684,8 +5684,8 @@ public:
             state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3
             // warm-up to settle caches, scheduler and frequency boosts
             for (int i = 0; i < 1000; ++i) {
-                trigger_vmexit(dummy_res, 0x0, 0);
-                for (int j = 0; j < 8; ++j) _mm_lfence();
+                for (int j = 0; j < 2; ++j) trigger_vmexit(dummy_res, 0x0, 0);
+                for (int j = 0; j < 16; ++j) _mm_lfence(); // good candidate as a reference with cpuid because it's a serializing instruction AND can't be intercepted in VCMB/VMCS
             }
 
             while (valid < BATCH_SIZE) {
@@ -5697,8 +5697,12 @@ public:
 
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
-                // force cpuid collection here so that the hypervisor is either forced to disable interception and try to bypass latency, or intercept cpuid and try to bypass XSAVE states
+                // force cpuid here so that the hypervisor is either forced to keep interception and try to bypass latency, or disable interception and try to bypass XSAVE states
                 trigger_vmexit(dummy_res, 0x0, 0); // fastest cpuid path, on purpose for stability in the measurement
+                // scaled by 2x to negate cache invalidation ping-ponging across distant NUMA nodes, as our core randomizer will pin the threads on distant cores
+                for (int i = 0; i < 2; ++i) {
+                    trigger_vmexit(dummy_res, 0x0, 0);
+                }
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 v_post = state.counter;
 
@@ -5706,8 +5710,8 @@ public:
                 sync = state.counter; while (state.counter == sync);
 
                 r_pre = state.counter;
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                for (int i = 0; i < 8; ++i) _mm_lfence(); // 8 LFENCES is enough for the MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
+                std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
+                for (int i = 0; i < 16; ++i) _mm_lfence(); // 16 LFENCES is enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 r_post = state.counter;
 
@@ -5725,7 +5729,7 @@ public:
             const u64 ref_l = calculate_latency(ref_samples);
             const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
 
-            // VMM == Time spent in hypervisor; nVMM == Time spent in baremetal; Scheduling == Work done by threads
+            // VMM == Time spent in hypervisor; nVMM == Time spent in baremetal
             debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ",  ref_l, " | Ratio -> ", latency_ratio);
             if (latency_ratio >= threshold) hypervisor_detected = true;
 
@@ -5769,10 +5773,10 @@ public:
         t1.join();
 
         if (hypervisor_detected) {
-            return true; // 100 score
+            return true; // 100 score, 99% hypervisor likeliness
         }
         else if (bypass_detected) {
-            return core::add(brand_enum::KVM, 150); // 150 score, KVM is a guess
+            return core::add(brand_enum::KVM, 150); // 100% hypervisor likeliness; KVM is a guess
         }
 
         return hypervisor_detected;
@@ -5782,9 +5786,9 @@ public:
 
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Linux"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Linux"
 #endif
 
 #if (LINUX)
@@ -6792,9 +6796,9 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Linux and Windows"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Linux and Windows"
 #endif
 
 #if (LINUX || WINDOWS)
@@ -7843,6 +7847,7 @@ public:
         return false;
     }
 
+
     /**
      * @brief Check boot logo for known VM images
      * @category Windows, Linux, x86_64
@@ -7854,77 +7859,76 @@ public:
         __attribute__((__target__("crc32")))
     #endif
     {
-    #if (x86_64)
-        
-    #if (WINDOWS)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll)
-            return false;
+    #if (x86_64)       
+        #if (WINDOWS)
+            const HMODULE ntdll = util::get_ntdll();
+            if (!ntdll)
+                return false;
 
-        const char* function_names[] = { "NtQuerySystemInformation" };
-        void* functions[1] = { nullptr };
-        util::get_function_address(ntdll, function_names, functions, 1);
+            const char* function_names[] = { "NtQuerySystemInformation" };
+            void* functions[1] = { nullptr };
+            util::get_function_address(ntdll, function_names, functions, 1);
 
-        using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
-        NtQuerySysInfo_t nt_query = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
-        if (!nt_query)
-            return false;
+            using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+            NtQuerySysInfo_t nt_query = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
+            if (!nt_query)
+                return false;
 
-        // determine required buffer size
-        const SYSTEM_INFORMATION_CLASS sys_boot_info = static_cast<SYSTEM_INFORMATION_CLASS>(140);
-        ULONG needed = 0;
-        NTSTATUS st = nt_query(sys_boot_info, nullptr, 0, &needed);
-        if (st != static_cast<NTSTATUS>(0xC0000023) && st != static_cast<NTSTATUS>(0x80000005) && st != static_cast<NTSTATUS>(0xC0000004))
-            return false;
+            // determine required buffer size
+            const SYSTEM_INFORMATION_CLASS sys_boot_info = static_cast<SYSTEM_INFORMATION_CLASS>(140);
+            ULONG needed = 0;
+            NTSTATUS st = nt_query(sys_boot_info, nullptr, 0, &needed);
+            if (st != static_cast<NTSTATUS>(0xC0000023) && st != static_cast<NTSTATUS>(0x80000005) && st != static_cast<NTSTATUS>(0xC0000004))
+                return false;
 
-        std::vector<u8> buffer(needed);
+            std::vector<u8> buffer(needed);
 
-        // fetch the boot-logo data
-        st = nt_query(sys_boot_info, buffer.data(), needed, &needed);
-        if (!NT_SUCCESS(st))
-            return false;
+            // fetch the boot-logo data
+            st = nt_query(sys_boot_info, buffer.data(), needed, &needed);
+            if (!NT_SUCCESS(st))
+                return false;
 
-        // parse header to locate the bitmap
-        struct boot_logo_info { ULONG flags, bitmap_offset; };
-        const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
-        if (info->bitmap_offset >= needed) return false;
-        const u8* bmp = buffer.data() + info->bitmap_offset;
-        const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
-    #else
-        int fd = open("/sys/firmware/acpi/bgrt/image", O_RDONLY);
-        if (fd < 0)
-        {
-            debug("BOOT_LOGO: failed to open /sys/firmware/acpi/bgrt/image");
-            return false;
-        }
+            // parse header to locate the bitmap
+            struct boot_logo_info { ULONG flags, bitmap_offset; };
+            const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
+            if (info->bitmap_offset >= needed) return false;
+            const u8* bmp = buffer.data() + info->bitmap_offset;
+            const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
+        #else
+            int fd = open("/sys/firmware/acpi/bgrt/image", O_RDONLY);
+            if (fd < 0)
+            {
+                debug("BOOT_LOGO: failed to open /sys/firmware/acpi/bgrt/image");
+                return false;
+            }
 
-        off_t size = lseek(fd, 0, SEEK_END);
-        if (size <= 0)
-        {
-            debug("BOOT_LOGO: failed to seek to the end");
+            off_t size = lseek(fd, 0, SEEK_END);
+            if (size <= 0)
+            {
+                debug("BOOT_LOGO: failed to seek to the end");
+                close(fd);
+                return false;
+            }
+
+            lseek(fd, 0, SEEK_SET);
+
+            std::vector<u8> buffer(size);
+            ssize_t read_size = 0;
+            size_t off = 0;
+            do
+            {
+                read_size = read(fd, buffer.data() + off, size - off);
+            } while (read_size > 0);
+
             close(fd);
-            return false;
-        }
+            if (read_size < 0)
+            {
+                debug("BOOT_LOGO: read failed");
+                return false;
+            }
 
-        lseek(fd, 0, SEEK_SET);
-
-        std::vector<u8> buffer(size);
-        ssize_t read_size = 0;
-        size_t off = 0;
-        do
-        {
-            read_size = read(fd, buffer.data() + off, size - off);
-        } while (read_size > 0);
-
-        close(fd);
-        if (read_size < 0)
-        {
-            debug("BOOT_LOGO: read failed");
-            return false;
-        }
-
-        const u8* bmp = buffer.data();
-    #endif
+            const u8* bmp = buffer.data();
+        #endif
 
         // struct + function to isolate SEH from the stack frame containing std::vector and use __target__
         struct crc {
@@ -7943,7 +7947,7 @@ public:
 
                 if (info.has_sse42)
                 {
-                    // Unrolled loop
+                    // unrolled loop
                     for (; i + 3 < qwords; i += 4) {
                         crcReg = _mm_crc32_u64(crcReg, ptr[i]);
                         crcReg = _mm_crc32_u64(crcReg, ptr[i + 1]);
@@ -7971,11 +7975,11 @@ public:
 
         const u32 hash = crc::compute(bmp, size);
 
-    #if (WINDOWS)
-        debug("BOOT_LOGO: size=", needed, ", flags=", info->flags, ", offset=", info->bitmap_offset, ", crc=0x", std::hex, hash);
-    #else
-        debug("BOOT_LOGO: size=", size, ", crc=0x", std::hex, hash);
-    #endif
+        #if (WINDOWS)
+            debug("BOOT_LOGO: size=", needed, ", flags=", info->flags, ", offset=", info->bitmap_offset, ", crc=0x", std::hex, hash);
+        #else
+            debug("BOOT_LOGO: size=", size, ", crc=0x", std::hex, hash);
+        #endif
         switch (hash) {
             case 0x110350C5: return core::add(brand_enum::QEMU); // TianoCore EDK2
             case 0x87c39681: return core::add(brand_enum::HYPERV);
@@ -7987,6 +7991,7 @@ public:
     #endif
     }
 
+
     /**
      * @brief Check for serial numbers of virtual disks
      * @category Windows
@@ -7995,7 +8000,7 @@ public:
     [[nodiscard]] static bool disk_serial_number() {
         bool result = false;
 
-        // Helper to detect QEMU instances based on default hard drive serial patterns
+        // helper to detect QEMU instances based on default hard drive serial patterns
         // QEMU drives often start with "QM000" followed by digits
         auto is_qemu_serial = [](const char* str) noexcept -> bool {
             if ((str[0] & 0xDF) != 'Q') return false;
@@ -8007,7 +8012,7 @@ public:
             return str[2] == '0' && str[3] == '0' && str[4] == '0' && str[5] == '0';
         };
 
-        // Helper to detect VirtualBox instances
+        // helper to detect VirtualBox instances
         // VirtualBox uses a specific serial format "VB" followed by hex segments
         auto is_vbox_serial = [](const char* str, size_t len) noexcept -> bool {
             // format: VB12345678-12345678 (19 chars)
@@ -8286,9 +8291,9 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Linux and Apple"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Linux and Apple"
 #endif
 
 #if (LINUX || APPLE)
@@ -8314,9 +8319,9 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Apple"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Apple"
 #endif
 
 #if (APPLE) 
@@ -8594,12 +8599,12 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
+#if (MSVC)
+    #pragma endregion
 #endif
 
-#ifdef _MSC_VER
-#pragma region "Windows"
+#if (MSVC)
+    #pragma region "Windows"
 #endif
 
 #if (WINDOWS)
@@ -12137,9 +12142,9 @@ public:
     /**
      * @brief Check whether a hypervisor uses EPT/NPT hooking to intercept hardware breakpoints
      * @category Windows
-     * @implements VM::BREAKPOINT
+     * @implements VM::HYPERVISOR_HOOK
      */
-    [[nodiscard]] static bool breakpoint() {
+    [[nodiscard]] static bool hypervisor_hook() {
     #if (!x86)
         return false;
     #else
@@ -12152,7 +12157,13 @@ public:
             "NtGetContextThread",
             "NtSetContextThread",
             "RtlAddVectoredExceptionHandler",
-            "RtlRemoveVectoredExceptionHandler"
+            "RtlRemoveVectoredExceptionHandler",
+            "NtProtectVirtualMemory",
+            "NtQuerySystemInformation",
+            "NtCreateThreadEx",
+            "NtWaitForSingleObject",
+            "NtClose",
+            "NtSetInformationThread"
         };
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
@@ -12163,6 +12174,12 @@ public:
         using nt_set_context_thread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
         using rtl_add_vectored_exception_handler_t = PVOID(__stdcall*)(ULONG, PVECTORED_EXCEPTION_HANDLER);
         using rtl_remove_vectored_exception_handler_t = ULONG(__stdcall*)(PVOID);
+        using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using nt_query_system_information_t = NTSTATUS(__stdcall*)(ULONG, PVOID, ULONG, PULONG);
+        using nt_create_thread_ex_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, PVOID, HANDLE, PVOID, PVOID, ULONG, ULONG_PTR, SIZE_T, SIZE_T, PVOID);
+        using nt_wait_for_single_object_t = NTSTATUS(__stdcall*)(HANDLE, BOOLEAN, PLARGE_INTEGER);
+        using nt_close_t = NTSTATUS(__stdcall*)(HANDLE);
+        using nt_set_information_thread_t = NTSTATUS(__stdcall*)(HANDLE, ULONG, PVOID, ULONG);
 
         // volatile ensures these are loaded from stack after SEH unwind when compiled with aggressive optimizations
         nt_allocate_virtual_memory_t volatile nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
@@ -12171,9 +12188,18 @@ public:
         nt_set_context_thread_t volatile nt_set_context_thread = reinterpret_cast<nt_set_context_thread_t>(funcs[3]);
         rtl_add_vectored_exception_handler_t volatile rtl_add_vectored_exception_handler = reinterpret_cast<rtl_add_vectored_exception_handler_t>(funcs[4]);
         rtl_remove_vectored_exception_handler_t volatile rtl_remove_vectored_exception_handler = reinterpret_cast<rtl_remove_vectored_exception_handler_t>(funcs[5]);
+        nt_protect_virtual_memory_t volatile nt_protect_virtual_memory = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[6]);
+
+        nt_query_system_information_t volatile nt_query_system_information = reinterpret_cast<nt_query_system_information_t>(funcs[7]);
+        nt_create_thread_ex_t volatile nt_create_thread_ex = reinterpret_cast<nt_create_thread_ex_t>(funcs[8]);
+        nt_wait_for_single_object_t volatile nt_wait_for_single_object = reinterpret_cast<nt_wait_for_single_object_t>(funcs[9]);
+        nt_close_t volatile nt_close = reinterpret_cast<nt_close_t>(funcs[10]);
+        nt_set_information_thread_t volatile nt_set_information_thread = reinterpret_cast<nt_set_information_thread_t>(funcs[11]);
 
         if (!nt_allocate_virtual_memory || !nt_free_virtual_memory || !nt_get_context_thread ||
-            !nt_set_context_thread || !rtl_add_vectored_exception_handler || !rtl_remove_vectored_exception_handler) {
+            !nt_set_context_thread || !rtl_add_vectored_exception_handler || !rtl_remove_vectored_exception_handler ||
+            !nt_protect_virtual_memory || !nt_query_system_information || !nt_create_thread_ex ||
+            !nt_wait_for_single_object || !nt_close || !nt_set_information_thread) {
             return false;
         }
 
@@ -12189,13 +12215,13 @@ public:
         const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
         if (status_src < 0 || status_dst < 0) {
-            if (src_page) { 
-                SIZE_T free_size = 0; 
-                nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE); 
+            if (src_page) {
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
             }
-            if (dst_page) { 
-                SIZE_T free_size = 0; 
-                nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE); 
+            if (dst_page) {
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
             }
             return false;
         }
@@ -12244,7 +12270,6 @@ public:
             // veh will already detect if Dr0 fired successfully
         }
 
-        // cleanup
         rtl_remove_vectored_exception_handler(veh_handle);
 
         ctx.Dr0 = 0;
@@ -12255,7 +12280,198 @@ public:
         nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
         nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
 
-        return !ermsb_trap_detected;
+        // explicitly decay lambdas to raw function pointers to eliminate C2712 unwinding requirement errors
+        using execute_throws_t = bool(*)(void*);
+        execute_throws_t execute_throws = [](void* pointer) -> bool {
+            __try {
+                using func_t = void(*)();
+                reinterpret_cast<func_t>(pointer)(); // breakpoint hit
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                return true;
+            }
+            return false;
+        };
+
+        using find_double_cc_ntdll_t = void* (*)(HMODULE);
+        find_double_cc_ntdll_t find_double_cc_ntdll = [](HMODULE module) -> void* {
+            if (!module) return nullptr;
+
+            // parse PE headers to find executable sections
+            auto* dos_header = reinterpret_cast<PIMAGE_DOS_HEADER>(module);
+            if (dos_header->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+
+            auto* nt_headers = reinterpret_cast<PIMAGE_NT_HEADERS>(reinterpret_cast<uint8_t*>(module) + dos_header->e_lfanew);
+            if (nt_headers->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+
+            auto* section = IMAGE_FIRST_SECTION(nt_headers);
+            for (WORD i = 0; i < nt_headers->FileHeader.NumberOfSections; ++i, ++section) {
+
+                // only scan memory marked as executable
+                if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0) {
+                    uint8_t* ptr = reinterpret_cast<uint8_t*>(module) + section->VirtualAddress;
+                    size_t size = section->Misc.VirtualSize;
+
+                    for (size_t j = 0; j < size - 1; ++j) {
+                        if (ptr[j] == 0xCC && ptr[j + 1] == 0xCC) {
+                            // by returning ptr[j + 1], executing it will safely run 0xC3 (after overwrite)
+                            // if we overwrite j+1 with 0xC3 and call it, it immediately returns
+                            return &ptr[j + 1];
+                        }
+                    }
+                }
+            }
+            return nullptr;
+        };
+
+        using find_double_cc_t = void* (*)(void*);
+        find_double_cc_t find_double_cc = [](void* pointer_in_page) -> void* {
+            // align down to the start of the 4KB page
+            auto* ptr = reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(pointer_in_page) & ~0xFFF);
+
+            for (size_t i = 0; i < (0x1000 - 1); ++i) {
+                if (ptr[i] == 0xCC && ptr[i + 1] == 0xCC) {
+                    return &ptr[i + 1];
+                }
+            }
+            return nullptr;
+        };
+
+        void* pointer = find_double_cc_ntdll(ntdll);
+        if (!pointer) {
+            void* current_func_ptr = reinterpret_cast<void*>(&hypervisor_hook);
+            pointer = find_double_cc(current_func_ptr);
+            if (!pointer) return false; 
+        }
+
+        // executing CC natively should throw
+        if (!execute_throws(pointer)) {
+            return false; // SEH is broken or code isn't actually CC
+        }
+
+        // overwrite CC with C3 (RET)
+        PVOID base_address = pointer;
+        SIZE_T prot_region_size = 1;
+        ULONG old_protect = 0;
+
+        // NtProtectVirtualMemory modifies BaseAddress and RegionSize to page boundaries,
+        // so we must reset them on subsequent calls
+        NTSTATUS status = nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, PAGE_EXECUTE_READWRITE, &old_protect);
+        if (status < 0) return false;
+
+        *static_cast<volatile uint8_t*>(pointer) = 0xC3;
+
+        base_address = pointer;
+        prot_region_size = 1;
+        ULONG dummy_protect = 0;
+        nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, old_protect, &dummy_protect);
+
+        bool hook_detected = false;
+
+        // test if write was swallowed by the hypervisor on the current core
+        if (execute_throws(pointer)) {
+            hook_detected = true;
+        }
+        else {
+            // total hardware processors
+            struct SYSTEM_BASIC_INFORMATION_LOCAL {
+                ULONG Reserved;
+                ULONG TimerResolution;
+                ULONG PageSize;
+                ULONG NumberOfPhysicalPages;
+                ULONG LowestPhysicalPageNumber;
+                ULONG HighestPhysicalPageNumber;
+                ULONG AllocationGranularity;
+                ULONG_PTR MinimumUserModeAddress;
+                ULONG_PTR MaximumUserModeAddress;
+                ULONG_PTR ActiveProcessorsAffinityMask;
+                CCHAR NumberOfProcessors;
+            };
+
+            SYSTEM_BASIC_INFORMATION_LOCAL sys_info = { 0 };
+            ULONG ret_len = 0;
+            ULONG num_processors = 1;
+
+            // 0 = SystemBasicInformation
+            if (nt_query_system_information(0, &sys_info, sizeof(sys_info), &ret_len) >= 0) {
+                num_processors = sys_info.NumberOfProcessors;
+            }
+
+            // plain struct to pass memory pointers (no destructors)
+            struct thread_context {
+                void* pointer;
+                volatile LONG* did_anyone_throw;
+            };
+
+            volatile LONG did_anyone_throw = 0;
+
+            thread_context t_ctx{};
+            t_ctx.pointer = pointer;
+            t_ctx.did_anyone_throw = &did_anyone_throw;
+
+            struct thread_proc_thunk {
+                static DWORD __stdcall proc(PVOID param) {
+                    auto* c = static_cast<thread_context*>(param);
+
+                    __try {
+                        using func_t = void(*)();
+                        reinterpret_cast<func_t>(c->pointer)();
+                    }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        _InterlockedExchange(c->did_anyone_throw, 1);
+                    }
+
+                    return 0;
+                }
+            };
+
+            using thread_routine_t = DWORD(__stdcall*)(PVOID);
+            thread_routine_t thread_proc = &thread_proc_thunk::proc;
+
+            HANDLE thread_handles[256] = {};
+            ULONG active_threads = 0;
+
+            // spawn threads across physical cores natively
+            for (ULONG i = 0; i < num_processors && i < 256; ++i) {
+                HANDLE h_thread = nullptr;
+                // 0x1FFFFF = THREAD_ALL_ACCESS
+                NTSTATUS t_status = nt_create_thread_ex(&h_thread, THREAD_ALL_ACCESS, nullptr, current_process,
+                    reinterpret_cast<PVOID>(thread_proc), &t_ctx,
+                    0, 0, 0, 0, nullptr);
+
+                if (t_status >= 0 && h_thread) {
+                    // ebind the created thread to physical core i
+                    ULONG_PTR affinity = (ULONG_PTR)1 << i;
+                    nt_set_information_thread(h_thread, 4 /* ThreadAffinityMask */, &affinity, sizeof(affinity));
+
+                    thread_handles[active_threads++] = h_thread;
+                }
+            }
+
+            // wait natively for completion on all cores
+            for (ULONG i = 0; i < active_threads; ++i) {
+                nt_wait_for_single_object(thread_handles[i], FALSE, nullptr);
+                nt_close(thread_handles[i]);
+            }
+
+            if (did_anyone_throw != 0) {
+                hook_detected = true;
+            }
+        }
+
+        // restore the original 0xCC operand
+        base_address = pointer;
+        prot_region_size = 1;
+        status = nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, PAGE_EXECUTE_READWRITE, &old_protect);
+        if (status >= 0) {
+            *static_cast<volatile uint8_t*>(pointer) = 0xCC;
+
+            base_address = pointer;
+            prot_region_size = 1;
+            nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, old_protect, &dummy_protect);
+        }
+
+        return hook_detected || !ermsb_trap_detected;
     #endif
     }
 
@@ -12368,14 +12584,14 @@ public:
     #else   
         #pragma pack(push, 1)
         struct iretq_frame {
-            uint64_t ip;
-            uint64_t cs;
+            u64 ip;
+            u64 cs;
         };
         #pragma pack(pop)
 
         static bool hypervisor_detected = true;
         static uintptr_t g_recovery_pad = 0;
-        static uint64_t g_saved_rsp = 0;
+        static u64 g_saved_rsp = 0;
 
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
@@ -12545,8 +12761,8 @@ public:
     #endif
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
+#if (MSVC)
+    #pragma endregion
 #endif
 
     /* ============================================================================================== *
@@ -13266,7 +13482,7 @@ public: // START OF PUBLIC FUNCTIONS
             case CLOCK: return "CLOCK";
             case MSR: return "MSR";
             case KVM_INTERCEPTION: return "KVM_INTERCEPTION";
-            case BREAKPOINT: return "BREAKPOINT";
+            case HYPERVISOR_HOOK: return "BREAKPOINT";
             case POPF: return "POPF";
             case EIP_OVERFLOW: return "EIP_OVERFLOW";
             // END OF TECHNIQUE LIST
@@ -13814,7 +14030,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::POPF, {100, VM::popf}},
             {VM::MSR, {100, VM::msr}},
             {VM::EDID, {100, VM::edid}},
-            {VM::BREAKPOINT, {100, VM::breakpoint}},
+            {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
             {VM::DBVM, {150, VM::dbvm}},

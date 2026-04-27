@@ -1002,7 +1002,7 @@ static void general(
     checker(VM::CLOCK, "system timers");
     checker(VM::MSR, "model specific registers");
     checker(VM::KVM_INTERCEPTION, "KVM interception");
-    checker(VM::BREAKPOINT, "EPT/NPT hooking");
+    checker(VM::HYPERVISOR_HOOK, "EPT/NPT hooking");
     checker(VM::POPF, "popf behavior");
     checker(VM::EIP_OVERFLOW, "instruction behavior in compatibility mode");
 
