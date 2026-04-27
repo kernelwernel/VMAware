@@ -12297,7 +12297,7 @@ public:
         find_double_cc_ntdll_t find_double_cc_ntdll = [](HMODULE module) -> void* {
             if (!module) return nullptr;
 
-            // Parse PE headers to find executable sections safely
+            // parse PE headers to find executable sections
             auto* dos_header = reinterpret_cast<PIMAGE_DOS_HEADER>(module);
             if (dos_header->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
 
@@ -12307,7 +12307,7 @@ public:
             auto* section = IMAGE_FIRST_SECTION(nt_headers);
             for (WORD i = 0; i < nt_headers->FileHeader.NumberOfSections; ++i, ++section) {
 
-                // Only scan memory marked as Executable (Prevents DEP false-positives)
+                // only scan memory marked as executable
                 if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0) {
                     uint8_t* ptr = reinterpret_cast<uint8_t*>(module) + section->VirtualAddress;
                     size_t size = section->Misc.VirtualSize;
@@ -12397,38 +12397,36 @@ public:
                 num_processors = sys_info.NumberOfProcessors;
             }
 
-            // lightweight plain struct to pass memory pointers natively (no destructors)
+            // plain struct to pass memory pointers (no destructors)
             struct thread_context {
                 void* pointer;
-                volatile bool* did_anyone_throw;
+                volatile LONG* did_anyone_throw;
             };
 
-            volatile bool did_anyone_throw = false;
+            volatile LONG did_anyone_throw = 0;
+
             thread_context t_ctx{};
             t_ctx.pointer = pointer;
             t_ctx.did_anyone_throw = &did_anyone_throw;
 
-            using thread_routine_t = DWORD(__stdcall*)(PVOID);
+            struct thread_proc_thunk {
+                static DWORD __stdcall proc(PVOID param) {
+                    auto* c = static_cast<thread_context*>(param);
 
-            thread_routine_t thread_proc = +[](PVOID param) -> DWORD {
-                using exec_t = bool(*)(void*);
-                exec_t exec = [](void* ptr) -> bool {
                     __try {
                         using func_t = void(*)();
-                        reinterpret_cast<func_t>(ptr)();
+                        reinterpret_cast<func_t>(c->pointer)();
                     }
                     __except (EXCEPTION_EXECUTE_HANDLER) {
-                        return true;
+                        _InterlockedExchange(c->did_anyone_throw, 1);
                     }
-                    return false;
-                };
 
-                auto* c = static_cast<thread_context*>(param);
-                if (exec(c->pointer)) {
-                    *c->did_anyone_throw = true;
+                    return 0;
                 }
-                return 0;
             };
+
+            using thread_routine_t = DWORD(__stdcall*)(PVOID);
+            thread_routine_t thread_proc = &thread_proc_thunk::proc;
 
             HANDLE thread_handles[256] = {};
             ULONG active_threads = 0;
@@ -12456,7 +12454,7 @@ public:
                 nt_close(thread_handles[i]);
             }
 
-            if (did_anyone_throw) {
+            if (did_anyone_throw != 0) {
                 hook_detected = true;
             }
         }
