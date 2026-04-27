@@ -566,7 +566,6 @@ public:
         GPU_CAPABILITIES = 0,
         ACPI_SIGNATURE,
         POWER_CAPABILITIES,
-        DISK_SERIAL,
         IVSHMEM,
         DRIVERS,
         HANDLES,
@@ -585,7 +584,6 @@ public:
         GAMARUE,
         CUCKOO_DIR,
         CUCKOO_PIPE,
-        BOOT_LOGO,
         TRAP,
         UD,
         BLOCKSTEP,
@@ -606,7 +604,9 @@ public:
         FIRMWARE,
         DEVICES,
         AZURE,
-        
+        BOOT_LOGO,
+        DISK_SERIAL,
+
         // Linux
         SMBIOS_VM_BIT,
         KMSG,
@@ -1241,6 +1241,7 @@ public:
         struct cpu_cache {
             u32 expected_threads;
             bool found;
+            bool has_sse42;
             const char* debug_tag;
             std::string model_name;
         };
@@ -1253,10 +1254,16 @@ public:
         };
 
         static const cpu_cache& analyze_cpu() {
-            static cpu_cache result = { 0, false, "", "" };
+            static cpu_cache result = { 0, false, false, "", "" };
             static bool initialized = false;
 
             if (initialized) return result;
+
+            {
+                i32 regs[4];
+                cpu::cpuid(regs, 1);
+                result.has_sse42 = (regs[2] & (1 << 20)) != 0;
+            }
 
             // to save a few cycles
             struct hasher {
@@ -1270,10 +1277,7 @@ public:
                 using hashfc = u32(*)(u32, char);
 
                 static hashfc get() {
-                    i32 regs[4];
-                    cpu::cpuid(regs, 1);
-                    const bool has_sse42 = (regs[2] & (1 << 20)) != 0;
-                    return has_sse42 ? util::crc32 : crc32_sw;
+                    return result.has_sse42 ? util::crc32 : crc32_sw;
                 }
             };
 
@@ -4805,6 +4809,12 @@ public:
     };
 
 // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
+
+#ifdef _MSC_VER
+#pragma region "x86"
+#endif
+
+#if 1
     /**
      * @brief Check CPUID output of manufacturer ID for known VMs/hypervisors at leaf 0 and 0x40000000-0x40000100
      * @category x86
@@ -5769,6 +5779,13 @@ public:
     #endif
         return false;
     }
+
+#endif
+
+#ifdef _MSC_VER
+#pragma endregion
+#pragma region "Linux"
+#endif
 
 #if (LINUX)
     /**
@@ -6773,6 +6790,11 @@ public:
 
         return false;
     }
+#endif
+
+#ifdef _MSC_VER
+#pragma endregion
+#pragma region "Linux and Windows"
 #endif
 
 #if (LINUX || WINDOWS)
@@ -7820,6 +7842,453 @@ public:
         
         return false;
     }
+
+    /**
+     * @brief Check boot logo for known VM images
+     * @category Windows, Linux, x86_64
+     * @author Teselka (https://github.com/Teselka)
+     * @implements VM::BOOT_LOGO
+     */
+    [[nodiscard]] static bool boot_logo()
+    #if (x86 && (CLANG || GCC))
+        __attribute__((__target__("crc32")))
+    #endif
+    {
+    #if (x86_64)
+        
+    #if (WINDOWS)
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll)
+            return false;
+
+        const char* function_names[] = { "NtQuerySystemInformation" };
+        void* functions[1] = { nullptr };
+        util::get_function_address(ntdll, function_names, functions, 1);
+
+        using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+        NtQuerySysInfo_t nt_query = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
+        if (!nt_query)
+            return false;
+
+        // determine required buffer size
+        const SYSTEM_INFORMATION_CLASS sys_boot_info = static_cast<SYSTEM_INFORMATION_CLASS>(140);
+        ULONG needed = 0;
+        NTSTATUS st = nt_query(sys_boot_info, nullptr, 0, &needed);
+        if (st != static_cast<NTSTATUS>(0xC0000023) && st != static_cast<NTSTATUS>(0x80000005) && st != static_cast<NTSTATUS>(0xC0000004))
+            return false;
+
+        std::vector<u8> buffer(needed);
+
+        // fetch the boot-logo data
+        st = nt_query(sys_boot_info, buffer.data(), needed, &needed);
+        if (!NT_SUCCESS(st))
+            return false;
+
+        // parse header to locate the bitmap
+        struct boot_logo_info { ULONG flags, bitmap_offset; };
+        const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
+        if (info->bitmap_offset >= needed) return false;
+        const u8* bmp = buffer.data() + info->bitmap_offset;
+        const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
+    #else
+        int fd = open("/sys/firmware/acpi/bgrt/image", O_RDONLY);
+        if (fd < 0)
+        {
+            debug("BOOT_LOGO: failed to open /sys/firmware/acpi/bgrt/image");
+            return false;
+        }
+
+        off_t size = lseek(fd, 0, SEEK_END);
+        if (size <= 0)
+        {
+            debug("BOOT_LOGO: failed to seek to the end");
+            close(fd);
+            return false;
+        }
+
+        lseek(fd, 0, SEEK_SET);
+
+        std::vector<u8> buffer(size);
+        ssize_t read_size = 0;
+        size_t off = 0;
+        do
+        {
+            read_size = read(fd, buffer.data() + off, size - off);
+        } while (read_size > 0);
+
+        close(fd);
+        if (read_size < 0)
+        {
+            debug("BOOT_LOGO: read failed");
+            return false;
+        }
+
+        const u8* bmp = buffer.data();
+    #endif
+
+        // struct + function to isolate SEH from the stack frame containing std::vector and use __target__
+        struct crc {
+        #if (GCC || CLANG)
+            __attribute__((__target__("sse4.2")))
+        #endif
+            static u32 compute(const u8* data, size_t len) {
+                // 8 byte chunks
+                u64 crcReg = 0xFFFFFFFFull;
+                const size_t qwords = len >> 3;
+                const auto* ptr = reinterpret_cast<const u64*>(data);
+
+                size_t i = 0;
+
+                const auto& info = cpu::analyze_cpu();
+
+                if (info.has_sse42)
+                {
+                    // Unrolled loop
+                    for (; i + 3 < qwords; i += 4) {
+                        crcReg = _mm_crc32_u64(crcReg, ptr[i]);
+                        crcReg = _mm_crc32_u64(crcReg, ptr[i + 1]);
+                        crcReg = _mm_crc32_u64(crcReg, ptr[i + 2]);
+                        crcReg = _mm_crc32_u64(crcReg, ptr[i + 3]);
+                    }
+
+                    for (; i < qwords; ++i) {
+                        crcReg = _mm_crc32_u64(crcReg, ptr[i]);
+                    }
+
+                    u32 crc = static_cast<u32>(crcReg);
+                    const auto* tail = reinterpret_cast<const u8*>(ptr + qwords);
+
+                    for (size_t j = 0, r = len & 7; j < r; ++j) {
+                        crc = _mm_crc32_u8(crc, tail[j]);
+                    }
+                    crc ^= 0xFFFFFFFFu;
+                    return crc;
+                }
+
+                return 0;
+            }
+        };
+
+        const u32 hash = crc::compute(bmp, size);
+
+    #if (WINDOWS)
+        debug("BOOT_LOGO: size=", needed, ", flags=", info->flags, ", offset=", info->bitmap_offset, ", crc=0x", std::hex, hash);
+    #else
+        debug("BOOT_LOGO: size=", size, ", crc=0x", std::hex, hash);
+    #endif
+        switch (hash) {
+            case 0x110350C5: return core::add(brand_enum::QEMU); // TianoCore EDK2
+            case 0x87c39681: return core::add(brand_enum::HYPERV);
+            // case 0x9502cb33: return core::add(brand_enum::VBOX); // conflicts with some MSI logo images
+            default:         return false;
+        }
+    #else
+        return false;
+    #endif
+    }
+
+    /**
+     * @brief Check for serial numbers of virtual disks
+     * @category Windows
+     * @implements VM::DISK_SERIAL
+     */
+    [[nodiscard]] static bool disk_serial_number() {
+        bool result = false;
+
+        // Helper to detect QEMU instances based on default hard drive serial patterns
+        // QEMU drives often start with "QM000" followed by digits
+        auto is_qemu_serial = [](const char* str) noexcept -> bool {
+            if ((str[0] & 0xDF) != 'Q') return false;
+            if ((str[1] & 0xDF) != 'M') return false;
+
+            // we check byte-by-byte to be safe regarding alignment,
+            // though a 32-bit integer check (0x30303030) could be used if alignment is guaranteed
+            // we also essentially check for null termination safety here because '\0' != '0'
+            return str[2] == '0' && str[3] == '0' && str[4] == '0' && str[5] == '0';
+        };
+
+        // Helper to detect VirtualBox instances
+        // VirtualBox uses a specific serial format "VB" followed by hex segments
+        auto is_vbox_serial = [](const char* str, size_t len) noexcept -> bool {
+            // format: VB12345678-12345678 (19 chars)
+            if (len != 19) return false;
+
+            if ((str[0] & 0xDF) != 'V' || (str[1] & 0xDF) != 'B') {
+                return false;
+            }
+            if (str[10] != '-') return false;
+
+            auto is_hex = [](char c) noexcept -> bool {
+                const char lower = c | 0x20;
+                return (c >= '0' && c <= '9') 
+                    || (lower >= 'a' && lower <= 'f');
+            };
+
+            for (size_t i = 2; i < 10; ++i) {
+                if (!is_hex(str[i])) return false;
+            }
+
+            for (size_t i = 11; i < 19; ++i) {
+                if (!is_hex(str[i])) return false;
+            }
+
+            return true;
+        };
+
+    #if (WINDOWS)
+        auto strnlen = [](const char* s, size_t max) noexcept -> size_t {
+            const void* p = memchr(s, 0, max);
+            if (!p) return max;
+            return static_cast<size_t>(static_cast<const char*>(p) - s);
+        };
+
+        using NtOpenFile_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK, ULONG, ULONG);
+        using NtDeviceIoControlFile_t = NTSTATUS(__stdcall*)(HANDLE, HANDLE, PVOID, PVOID, PIO_STATUS_BLOCK, ULONG, PVOID, ULONG, PVOID, ULONG);
+        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
+        using RtlInitUnicodeString_t = void(__stdcall*)(PUNICODE_STRING, PCWSTR);
+
+        constexpr u8 MAX_PHYSICAL_DRIVES = 4;
+        constexpr size_t MAX_DESCRIPTOR_SIZE = 64 * 1024;
+        u8 successful_opens = 0;
+
+        const HMODULE ntdll = util::get_ntdll();
+        if (!ntdll) return result;
+
+        const char* names[] = {
+            "RtlInitUnicodeString",
+            "NtOpenFile",
+            "NtDeviceIoControlFile",
+            "NtAllocateVirtualMemory",
+            "NtFreeVirtualMemory",
+            "NtFlushInstructionCache",
+            "NtClose"
+        };
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto rtl_init_unicode_string = reinterpret_cast<RtlInitUnicodeString_t>(funcs[0]);
+        const auto nt_open_file = reinterpret_cast<NtOpenFile_t>(funcs[1]);
+        const auto nt_device_io_control_file = reinterpret_cast<NtDeviceIoControlFile_t>(funcs[2]);
+        const auto nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[3]);
+        const auto nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[4]);
+        const auto nt_close = reinterpret_cast<NtClose_t>(funcs[6]);
+
+        if (!rtl_init_unicode_string || !nt_open_file || !nt_device_io_control_file ||
+            !nt_allocate_virtual_memory || !nt_free_virtual_memory || !nt_close) {
+            return result;
+        }
+
+        // Iterate through the first few physical drives (PhysicalDrive0 to PhysicalDrive3)
+        // Most systems boot from 0, and VMs rarely emulate more than 1 or 2 drives by default
+        for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; ++drive) {
+            wchar_t path[32];
+            swprintf_s(path, L"\\??\\PhysicalDrive%u", drive);
+
+            UNICODE_STRING unicode_path;
+            rtl_init_unicode_string(&unicode_path, path);
+
+            OBJECT_ATTRIBUTES object_attributes;
+            RtlZeroMemory(&object_attributes, sizeof(object_attributes));
+            object_attributes.Length = sizeof(object_attributes);
+            object_attributes.ObjectName = &unicode_path;
+            object_attributes.Attributes = OBJ_CASE_INSENSITIVE;
+            object_attributes.RootDirectory = nullptr;
+
+            IO_STATUS_BLOCK iosb;
+            HANDLE device = nullptr;
+
+            constexpr ACCESS_MASK desired_access = SYNCHRONIZE | FILE_READ_ATTRIBUTES;
+            constexpr ULONG share_access = FILE_SHARE_READ | FILE_SHARE_WRITE;
+            constexpr ULONG open_options = FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT;
+
+            // Attempt to open the physical drive directly using Native API
+            NTSTATUS st = nt_open_file(&device, desired_access, &object_attributes, &iosb, share_access, open_options);
+            if (!NT_SUCCESS(st) || device == nullptr) {
+                continue;
+            }
+            ++successful_opens;
+
+            // stack buffer attempt
+            // We first try to read the storage properties into a small stack buffer to avoid heap
+            BYTE stackBuf[512] = { 0 };
+            const STORAGE_DEVICE_DESCRIPTOR* descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
+
+            STORAGE_PROPERTY_QUERY query{};
+            query.PropertyId = StorageDeviceProperty;
+            query.QueryType = PropertyStandardQuery;
+
+            const ULONG ioctl = IOCTL_STORAGE_QUERY_PROPERTY;
+
+            st = nt_device_io_control_file(device, nullptr, nullptr, nullptr, &iosb,
+                ioctl,
+                &query, sizeof(query),
+                stackBuf, sizeof(stackBuf));
+
+            BYTE* allocated_buffer = nullptr;
+            SIZE_T allocated_size = 0;
+            const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+
+            // If the stack buffer was too small (NtDeviceIoControlFile failed), we fall back 
+            // to allocating memory dynamically using NtAllocateVirtualMemory
+            if (!NT_SUCCESS(st)) {
+                DWORD reported_size = 0;
+                if (descriptor && descriptor->Size > 0) {
+                    reported_size = descriptor->Size;
+                }
+
+                // This branch just ensures the requested size is reasonable before allocating
+                if (reported_size > 0 && reported_size < static_cast<DWORD>(MAX_DESCRIPTOR_SIZE) && reported_size >= sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
+                    allocated_size = static_cast<SIZE_T>(reported_size);
+                    PVOID allocation_base = nullptr;
+                    SIZE_T region_size = allocated_size;
+                    st = nt_allocate_virtual_memory(current_process, &allocation_base, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                    if (!NT_SUCCESS(st) || allocation_base == nullptr) {
+                        nt_close(device);
+                        continue;
+                    }
+                    allocated_buffer = reinterpret_cast<BYTE*>(allocation_base);
+
+                    // Retry the query with the larger allocated buffer
+                    st = nt_device_io_control_file(device, nullptr, nullptr, nullptr, &iosb,
+                        ioctl,
+                        &query, sizeof(query),
+                        allocated_buffer, static_cast<ULONG>(allocated_size));
+                    if (!NT_SUCCESS(st)) {
+                        PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
+                        SIZE_T free_size = 0;
+                        nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
+                        nt_close(device);
+                        continue;
+                    }
+                    descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(allocated_buffer);
+                }
+                else {
+                    nt_close(device);
+                    continue;
+                }
+            }
+
+            // This part is just to validate the structure size returned by the driver to prevent out-of-bounds reads
+            {
+                const DWORD reported_size = descriptor->Size;
+                if (reported_size < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reported_size) > MAX_DESCRIPTOR_SIZE) {
+                    if (allocated_buffer) {
+                        PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
+                        SIZE_T free_size = 0;
+                        nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
+                        allocated_buffer = nullptr;
+                    }
+                    nt_close(device);
+                    continue;
+                }
+            }
+
+            // Serial number string within the descriptor structure
+            const u32 serial_offset = descriptor->SerialNumberOffset;
+            if (serial_offset > 0 && serial_offset < descriptor->Size) {
+                const char* serial = reinterpret_cast<const char*>(descriptor) + serial_offset;
+                const size_t max_avail = static_cast<size_t>(descriptor->Size) - static_cast<size_t>(serial_offset);
+                const size_t serialLen = strnlen(serial, max_avail);
+
+                debug("DISK_SERIAL: ", serial);
+
+                // Check the retrieved serial number against known VM artifacts
+                if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
+                    if (allocated_buffer) {
+                        PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
+                        SIZE_T free_size = 0;
+                        nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
+                        allocated_buffer = nullptr;
+                    }
+                    nt_close(device);
+                    return true;
+                }
+            }
+
+            // Cleanup for the current iteration if no VM was detected on this drive
+            if (allocated_buffer) {
+                PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
+                allocated_buffer = nullptr;
+            }
+            nt_close(device);
+        }
+    #else
+        DIR* dir = opendir("/sys/block");
+        if (!dir)
+            return false;
+
+        struct dirent* ent;
+        while ((ent = readdir(dir))) {
+            const char* name = ent->d_name;
+            if (name[0] == '.')
+                continue;
+
+            if (!strncmp(name, "nvme", 4)
+                || !strncmp(name, "sd", 2)
+                || !strncmp(name, "sg", 2)
+                || !strncmp(name, "nvme", 4)
+                || !strncmp(name, "hd", 2)
+                || !strncmp(name, "vd", 2))
+            {
+                size_t len = strlen(name);
+
+                const char sys_block_str[] = "/sys/block/";
+                const char device_serial_str[] = "/device/serial";
+
+                // /sys/block/%s/device/serial
+                char buf[sizeof(dirent::d_name) + sizeof(sys_block_str) + sizeof(device_serial_str)];
+
+                size_t off = 0;
+                memcpy(buf + off, sys_block_str, sizeof(sys_block_str)-1); 
+                off += sizeof(sys_block_str)-1;
+
+                memcpy(buf + off, name, len);
+                off += len;
+
+                memcpy(buf + off, device_serial_str, sizeof(device_serial_str)); 
+
+                int fd = open(buf, O_RDONLY);
+                if (fd < 0)
+                    continue;
+
+                char serial[1024];
+                ssize_t rsize = read(fd, serial, sizeof(serial)-1);
+                serial[rsize] = '\0';
+                close(fd);
+                if (rsize < 0)
+                    continue;
+
+                debug("DISK_SERIAL: ", (const char*)serial);
+                if (is_qemu_serial(serial) || is_vbox_serial(serial, rsize))
+                {
+                    closedir(dir);
+                    return true;
+                }
+            }
+        }
+
+        closedir(dir);
+    #endif
+
+    #if (WINDOWS)
+		// If we couldn't open any physical drives (not even read permissions) it's weird so we flag it.
+        if (successful_opens == 0) {
+            debug("DISK_SERIAL: No physical drives detected");
+            return true;
+        }
+    #endif
+
+        return result;
+    }
+#endif
+
+#ifdef _MSC_VER
+#pragma endregion
+#pragma region "Linux and Apple"
 #endif
 
 #if (LINUX || APPLE)
@@ -7843,6 +8312,11 @@ public:
         return false;
     #endif
     }
+#endif
+
+#ifdef _MSC_VER
+#pragma endregion
+#pragma region "Apple"
 #endif
 
 #if (APPLE) 
@@ -8120,6 +8594,13 @@ public:
     }
 #endif
 
+#ifdef _MSC_VER
+#pragma endregion
+#endif
+
+#ifdef _MSC_VER
+#pragma region "Windows"
+#endif
 
 #if (WINDOWS)
     /**
@@ -8821,243 +9302,6 @@ public:
         return false;
     }
 
-
-    /**
-     * @brief Check for serial numbers of virtual disks
-     * @category Windows
-     * @implements VM::DISK_SERIAL
-     */
-    [[nodiscard]] static bool disk_serial_number() {
-        using NtOpenFile_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK, ULONG, ULONG);
-        using NtDeviceIoControlFile_t = NTSTATUS(__stdcall*)(HANDLE, HANDLE, PVOID, PVOID, PIO_STATUS_BLOCK, ULONG, PVOID, ULONG, PVOID, ULONG);
-        using NtAllocateVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
-        using NtFreeVirtualMemory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
-        using NtClose_t = NTSTATUS(__stdcall*)(HANDLE);
-        using RtlInitUnicodeString_t = void(__stdcall*)(PUNICODE_STRING, PCWSTR);
-
-        bool result = false;
-        constexpr u8 MAX_PHYSICAL_DRIVES = 4;
-        constexpr SIZE_T MAX_DESCRIPTOR_SIZE = 64 * 1024;
-        u8 successful_opens = 0;
-
-        // Helper to detect QEMU instances based on default hard drive serial patterns
-        // QEMU drives often start with "QM000" followed by digits
-        auto is_qemu_serial = [](const char* str) noexcept -> bool {
-            if ((str[0] & 0xDF) != 'Q') return false;
-            if ((str[1] & 0xDF) != 'M') return false;
-
-            // we check byte-by-byte to be safe regarding alignment,
-            // though a 32-bit integer check (0x30303030) could be used if alignment is guaranteed
-            // we also essentially check for null termination safety here because '\0' != '0'
-            return str[2] == '0' && str[3] == '0' && str[4] == '0' && str[5] == '0';
-        };
-
-        // Helper to detect VirtualBox instances
-        // VirtualBox uses a specific serial format "VB" followed by hex segments
-        auto is_vbox_serial = [](const char* str, size_t len) noexcept -> bool {
-            // format: VB12345678-12345678 (19 chars)
-            if (len != 19) return false;
-
-            if ((str[0] & 0xDF) != 'V' || (str[1] & 0xDF) != 'B') {
-                return false;
-            }
-            if (str[10] != '-') return false;
-
-            auto is_hex = [](char c) noexcept -> bool {
-                const char lower = c | 0x20;
-                return (c >= '0' && c <= '9') 
-                    || (lower >= 'a' && lower <= 'f');
-            };
-
-            for (size_t i = 2; i < 10; ++i) {
-                if (!is_hex(str[i])) return false;
-            }
-
-            for (size_t i = 11; i < 19; ++i) {
-                if (!is_hex(str[i])) return false;
-            }
-
-            return true;
-        };
-
-        auto strnlen = [](const char* s, size_t max) noexcept -> size_t {
-            const void* p = memchr(s, 0, max);
-            if (!p) return max;
-            return static_cast<size_t>(static_cast<const char*>(p) - s);
-        };
-
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll) return result;
-
-        const char* names[] = {
-            "RtlInitUnicodeString",
-            "NtOpenFile",
-            "NtDeviceIoControlFile",
-            "NtAllocateVirtualMemory",
-            "NtFreeVirtualMemory",
-            "NtFlushInstructionCache",
-            "NtClose"
-        };
-        void* funcs[ARRAYSIZE(names)] = {};
-        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
-
-        const auto rtl_init_unicode_string = reinterpret_cast<RtlInitUnicodeString_t>(funcs[0]);
-        const auto nt_open_file = reinterpret_cast<NtOpenFile_t>(funcs[1]);
-        const auto nt_device_io_control_file = reinterpret_cast<NtDeviceIoControlFile_t>(funcs[2]);
-        const auto nt_allocate_virtual_memory = reinterpret_cast<NtAllocateVirtualMemory_t>(funcs[3]);
-        const auto nt_free_virtual_memory = reinterpret_cast<NtFreeVirtualMemory_t>(funcs[4]);
-        const auto nt_close = reinterpret_cast<NtClose_t>(funcs[6]);
-
-        if (!rtl_init_unicode_string || !nt_open_file || !nt_device_io_control_file ||
-            !nt_allocate_virtual_memory || !nt_free_virtual_memory || !nt_close) {
-            return result;
-        }
-
-        // Iterate through the first few physical drives (PhysicalDrive0 to PhysicalDrive3)
-        // Most systems boot from 0, and VMs rarely emulate more than 1 or 2 drives by default
-        for (u8 drive = 0; drive < MAX_PHYSICAL_DRIVES; ++drive) {
-            wchar_t path[32];
-            swprintf_s(path, L"\\??\\PhysicalDrive%u", drive);
-
-            UNICODE_STRING unicode_path;
-            rtl_init_unicode_string(&unicode_path, path);
-
-            OBJECT_ATTRIBUTES object_attributes;
-            RtlZeroMemory(&object_attributes, sizeof(object_attributes));
-            object_attributes.Length = sizeof(object_attributes);
-            object_attributes.ObjectName = &unicode_path;
-            object_attributes.Attributes = OBJ_CASE_INSENSITIVE;
-            object_attributes.RootDirectory = nullptr;
-
-            IO_STATUS_BLOCK iosb;
-            HANDLE device = nullptr;
-
-            constexpr ACCESS_MASK desired_access = SYNCHRONIZE | FILE_READ_ATTRIBUTES;
-            constexpr ULONG share_access = FILE_SHARE_READ | FILE_SHARE_WRITE;
-            constexpr ULONG open_options = FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT;
-
-            // Attempt to open the physical drive directly using Native API
-            NTSTATUS st = nt_open_file(&device, desired_access, &object_attributes, &iosb, share_access, open_options);
-            if (!NT_SUCCESS(st) || device == nullptr) {
-                continue;
-            }
-            ++successful_opens;
-
-            // stack buffer attempt
-            // We first try to read the storage properties into a small stack buffer to avoid heap
-            BYTE stackBuf[512] = { 0 };
-            const STORAGE_DEVICE_DESCRIPTOR* descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(stackBuf);
-
-            STORAGE_PROPERTY_QUERY query{};
-            query.PropertyId = StorageDeviceProperty;
-            query.QueryType = PropertyStandardQuery;
-
-            const ULONG ioctl = IOCTL_STORAGE_QUERY_PROPERTY;
-
-            st = nt_device_io_control_file(device, nullptr, nullptr, nullptr, &iosb,
-                ioctl,
-                &query, sizeof(query),
-                stackBuf, sizeof(stackBuf));
-
-            BYTE* allocated_buffer = nullptr;
-            SIZE_T allocated_size = 0;
-            const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
-
-            // If the stack buffer was too small (NtDeviceIoControlFile failed), we fall back 
-            // to allocating memory dynamically using NtAllocateVirtualMemory
-            if (!NT_SUCCESS(st)) {
-                DWORD reported_size = 0;
-                if (descriptor && descriptor->Size > 0) {
-                    reported_size = descriptor->Size;
-                }
-
-                // This branch just ensures the requested size is reasonable before allocating
-                if (reported_size > 0 && reported_size < static_cast<DWORD>(MAX_DESCRIPTOR_SIZE) && reported_size >= sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
-                    allocated_size = static_cast<SIZE_T>(reported_size);
-                    PVOID allocation_base = nullptr;
-                    SIZE_T region_size = allocated_size;
-                    st = nt_allocate_virtual_memory(current_process, &allocation_base, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-                    if (!NT_SUCCESS(st) || allocation_base == nullptr) {
-                        nt_close(device);
-                        continue;
-                    }
-                    allocated_buffer = reinterpret_cast<BYTE*>(allocation_base);
-
-                    // Retry the query with the larger allocated buffer
-                    st = nt_device_io_control_file(device, nullptr, nullptr, nullptr, &iosb,
-                        ioctl,
-                        &query, sizeof(query),
-                        allocated_buffer, static_cast<ULONG>(allocated_size));
-                    if (!NT_SUCCESS(st)) {
-                        PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                        SIZE_T free_size = 0;
-                        nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
-                        nt_close(device);
-                        continue;
-                    }
-                    descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR*>(allocated_buffer);
-                }
-                else {
-                    nt_close(device);
-                    continue;
-                }
-            }
-
-            // This part is just to validate the structure size returned by the driver to prevent out-of-bounds reads
-            {
-                const DWORD reported_size = descriptor->Size;
-                if (reported_size < sizeof(STORAGE_DEVICE_DESCRIPTOR) || static_cast<SIZE_T>(reported_size) > MAX_DESCRIPTOR_SIZE) {
-                    if (allocated_buffer) {
-                        PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                        SIZE_T free_size = 0;
-                        nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
-                        allocated_buffer = nullptr;
-                    }
-                    nt_close(device);
-                    continue;
-                }
-            }
-
-            // Serial number string within the descriptor structure
-            const u32 serial_offset = descriptor->SerialNumberOffset;
-            if (serial_offset > 0 && serial_offset < descriptor->Size) {
-                const char* serial = reinterpret_cast<const char*>(descriptor) + serial_offset;
-                const size_t max_avail = static_cast<size_t>(descriptor->Size) - static_cast<size_t>(serial_offset);
-                const size_t serialLen = strnlen(serial, max_avail);
-
-                debug("DISK_SERIAL: ", serial);
-
-                // Check the retrieved serial number against known VM artifacts
-                if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
-                    if (allocated_buffer) {
-                        PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                        SIZE_T free_size = 0;
-                        nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
-                        allocated_buffer = nullptr;
-                    }
-                    nt_close(device);
-                    return true;
-                }
-            }
-
-            // Cleanup for the current iteration if no VM was detected on this drive
-            if (allocated_buffer) {
-                PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
-                SIZE_T free_size = 0;
-                nt_free_virtual_memory(current_process, &free_base, &free_size, MEM_RELEASE);
-                allocated_buffer = nullptr;
-            }
-            nt_close(device);
-        }
-
-		// If we couldn't open any physical drives (not even read permissions) it's weird so we flag it.
-        if (successful_opens == 0) {
-            debug("DISK_SERIAL: No physical drives detected");
-            return true;
-        }
-
-        return result;
-    }
 
 
     /**
@@ -10350,110 +10594,6 @@ public:
         return false;
     #endif
     }
-
-
-    /**
-     * @brief Check boot logo for known VM images
-     * @category Windows, x86_64
-     * @author Teselka (https://github.com/Teselka)
-     * @implements VM::BOOT_LOGO
-     */
-    [[nodiscard]] static bool boot_logo()
-    #if (x86 && (CLANG || GCC))
-        __attribute__((__target__("crc32")))
-    #endif
-    {
-    #if (x86_64)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll)
-            return false;
-
-        const char* function_names[] = { "NtQuerySystemInformation" };
-        void* functions[1] = { nullptr };
-        util::get_function_address(ntdll, function_names, functions, 1);
-
-        using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
-        NtQuerySysInfo_t nt_query = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
-        if (!nt_query)
-            return false;
-
-        // determine required buffer size
-        const SYSTEM_INFORMATION_CLASS sys_boot_info = static_cast<SYSTEM_INFORMATION_CLASS>(140);
-        ULONG needed = 0;
-        NTSTATUS st = nt_query(sys_boot_info, nullptr, 0, &needed);
-        if (st != static_cast<NTSTATUS>(0xC0000023) && st != static_cast<NTSTATUS>(0x80000005) && st != static_cast<NTSTATUS>(0xC0000004))
-            return false;
-
-        std::vector<u8> buffer(needed);
-
-        // fetch the boot-logo data
-        st = nt_query(sys_boot_info, buffer.data(), needed, &needed);
-        if (!NT_SUCCESS(st))
-            return false;
-
-        // parse header to locate the bitmap
-        struct boot_logo_info { ULONG flags, bitmap_offset; };
-        const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
-        if (info->bitmap_offset >= needed) return false;
-        const u8* bmp = buffer.data() + info->bitmap_offset;
-        const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
-
-        // struct + function to isolate SEH from the stack frame containing std::vector and use __target__
-        struct crc {
-            #if (GCC || CLANG)
-                __attribute__((__target__("sse4.2")))
-            #endif
-                static u32 compute(const u8* data, size_t len) {
-                // 8 byte chunks
-                u64 crcReg = 0xFFFFFFFFull;
-                const size_t qwords = len >> 3;
-                const auto* ptr = reinterpret_cast<const u64*>(data);
-
-                size_t i = 0;
-
-                __try {
-                    // Unrolled loop
-                    for (; i + 3 < qwords; i += 4) {
-                        crcReg = _mm_crc32_u64(crcReg, ptr[i]);
-                        crcReg = _mm_crc32_u64(crcReg, ptr[i + 1]);
-                        crcReg = _mm_crc32_u64(crcReg, ptr[i + 2]);
-                        crcReg = _mm_crc32_u64(crcReg, ptr[i + 3]);
-                    }
-
-                    for (; i < qwords; ++i) {
-                        crcReg = _mm_crc32_u64(crcReg, ptr[i]);
-                    }
-
-                    u32 crc = static_cast<u32>(crcReg);
-                    const auto* tail = reinterpret_cast<const u8*>(ptr + qwords);
-
-                    for (size_t j = 0, r = len & 7; j < r; ++j) {
-                        crc = _mm_crc32_u8(crc, tail[j]);
-                    }
-                    crc ^= 0xFFFFFFFFu;
-                    return crc;
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER) {
-                    return 0;
-                }
-            }
-        };
-
-        const u32 hash = crc::compute(bmp, size);
-
-        debug("BOOT_LOGO: size=", needed, ", flags=", info->flags, ", offset=", info->bitmap_offset, ", crc=0x", std::hex, hash);
-
-        switch (hash) {
-            case 0x110350C5: return core::add(brand_enum::QEMU); // TianoCore EDK2
-            case 0x87c39681: return core::add(brand_enum::HYPERV);
-            // case 0x9502cb33: return core::add(brand_enum::VBOX); // conflicts with some MSI logo images
-            default:         return false;
-        }
-    #else
-        return false;
-    #endif
-    }
-
 
     /**
      * @brief Check for any signs of VMs in Windows kernel object entities 
@@ -12404,7 +12544,10 @@ public:
         #pragma clang diagnostic pop
     #endif
 #endif
- 
+
+#ifdef _MSC_VER
+#pragma endregion
+#endif
 
     /* ============================================================================================== *
      *                                                                                                *                                                                                               *
@@ -13670,14 +13813,12 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
             {VM::POPF, {100, VM::popf}},
             {VM::MSR, {100, VM::msr}},
-            {VM::BOOT_LOGO, {100, VM::boot_logo}},
             {VM::EDID, {100, VM::edid}},
             {VM::BREAKPOINT, {100, VM::breakpoint}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
             {VM::DBVM, {150, VM::dbvm}},
             {VM::IVSHMEM, {100, VM::ivshmem}},
-            {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
             {VM::DRIVERS, {100, VM::drivers}},
             {VM::HANDLES, {100, VM::device_handles}},
             {VM::KERNEL_OBJECTS, {100, VM::kernel_objects}},
@@ -13702,6 +13843,8 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::DEVICES, {95, VM::pci_devices}},
             {VM::SYSTEM_REGISTERS, {50, VM::system_registers}},
             {VM::AZURE, {30, VM::azure}},
+            {VM::BOOT_LOGO, {100, VM::boot_logo}},
+            {VM::DISK_SERIAL, {100, VM::disk_serial_number}},
         #endif
 
         #if (LINUX)
