@@ -7843,6 +7843,7 @@ public:
         return false;
     }
 
+
     /**
      * @brief Check boot logo for known VM images
      * @category Windows, Linux, x86_64
@@ -7854,77 +7855,76 @@ public:
         __attribute__((__target__("crc32")))
     #endif
     {
-    #if (x86_64)
-        
-    #if (WINDOWS)
-        const HMODULE ntdll = util::get_ntdll();
-        if (!ntdll)
-            return false;
+    #if (x86_64)       
+        #if (WINDOWS)
+            const HMODULE ntdll = util::get_ntdll();
+            if (!ntdll)
+                return false;
 
-        const char* function_names[] = { "NtQuerySystemInformation" };
-        void* functions[1] = { nullptr };
-        util::get_function_address(ntdll, function_names, functions, 1);
+            const char* function_names[] = { "NtQuerySystemInformation" };
+            void* functions[1] = { nullptr };
+            util::get_function_address(ntdll, function_names, functions, 1);
 
-        using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
-        NtQuerySysInfo_t nt_query = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
-        if (!nt_query)
-            return false;
+            using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+            NtQuerySysInfo_t nt_query = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
+            if (!nt_query)
+                return false;
 
-        // determine required buffer size
-        const SYSTEM_INFORMATION_CLASS sys_boot_info = static_cast<SYSTEM_INFORMATION_CLASS>(140);
-        ULONG needed = 0;
-        NTSTATUS st = nt_query(sys_boot_info, nullptr, 0, &needed);
-        if (st != static_cast<NTSTATUS>(0xC0000023) && st != static_cast<NTSTATUS>(0x80000005) && st != static_cast<NTSTATUS>(0xC0000004))
-            return false;
+            // determine required buffer size
+            const SYSTEM_INFORMATION_CLASS sys_boot_info = static_cast<SYSTEM_INFORMATION_CLASS>(140);
+            ULONG needed = 0;
+            NTSTATUS st = nt_query(sys_boot_info, nullptr, 0, &needed);
+            if (st != static_cast<NTSTATUS>(0xC0000023) && st != static_cast<NTSTATUS>(0x80000005) && st != static_cast<NTSTATUS>(0xC0000004))
+                return false;
 
-        std::vector<u8> buffer(needed);
+            std::vector<u8> buffer(needed);
 
-        // fetch the boot-logo data
-        st = nt_query(sys_boot_info, buffer.data(), needed, &needed);
-        if (!NT_SUCCESS(st))
-            return false;
+            // fetch the boot-logo data
+            st = nt_query(sys_boot_info, buffer.data(), needed, &needed);
+            if (!NT_SUCCESS(st))
+                return false;
 
-        // parse header to locate the bitmap
-        struct boot_logo_info { ULONG flags, bitmap_offset; };
-        const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
-        if (info->bitmap_offset >= needed) return false;
-        const u8* bmp = buffer.data() + info->bitmap_offset;
-        const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
-    #else
-        int fd = open("/sys/firmware/acpi/bgrt/image", O_RDONLY);
-        if (fd < 0)
-        {
-            debug("BOOT_LOGO: failed to open /sys/firmware/acpi/bgrt/image");
-            return false;
-        }
+            // parse header to locate the bitmap
+            struct boot_logo_info { ULONG flags, bitmap_offset; };
+            const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
+            if (info->bitmap_offset >= needed) return false;
+            const u8* bmp = buffer.data() + info->bitmap_offset;
+            const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
+        #else
+            int fd = open("/sys/firmware/acpi/bgrt/image", O_RDONLY);
+            if (fd < 0)
+            {
+                debug("BOOT_LOGO: failed to open /sys/firmware/acpi/bgrt/image");
+                return false;
+            }
 
-        off_t size = lseek(fd, 0, SEEK_END);
-        if (size <= 0)
-        {
-            debug("BOOT_LOGO: failed to seek to the end");
+            off_t size = lseek(fd, 0, SEEK_END);
+            if (size <= 0)
+            {
+                debug("BOOT_LOGO: failed to seek to the end");
+                close(fd);
+                return false;
+            }
+
+            lseek(fd, 0, SEEK_SET);
+
+            std::vector<u8> buffer(size);
+            ssize_t read_size = 0;
+            size_t off = 0;
+            do
+            {
+                read_size = read(fd, buffer.data() + off, size - off);
+            } while (read_size > 0);
+
             close(fd);
-            return false;
-        }
+            if (read_size < 0)
+            {
+                debug("BOOT_LOGO: read failed");
+                return false;
+            }
 
-        lseek(fd, 0, SEEK_SET);
-
-        std::vector<u8> buffer(size);
-        ssize_t read_size = 0;
-        size_t off = 0;
-        do
-        {
-            read_size = read(fd, buffer.data() + off, size - off);
-        } while (read_size > 0);
-
-        close(fd);
-        if (read_size < 0)
-        {
-            debug("BOOT_LOGO: read failed");
-            return false;
-        }
-
-        const u8* bmp = buffer.data();
-    #endif
+            const u8* bmp = buffer.data();
+        #endif
 
         // struct + function to isolate SEH from the stack frame containing std::vector and use __target__
         struct crc {
@@ -7943,7 +7943,7 @@ public:
 
                 if (info.has_sse42)
                 {
-                    // Unrolled loop
+                    // unrolled loop
                     for (; i + 3 < qwords; i += 4) {
                         crcReg = _mm_crc32_u64(crcReg, ptr[i]);
                         crcReg = _mm_crc32_u64(crcReg, ptr[i + 1]);
@@ -7971,11 +7971,11 @@ public:
 
         const u32 hash = crc::compute(bmp, size);
 
-    #if (WINDOWS)
-        debug("BOOT_LOGO: size=", needed, ", flags=", info->flags, ", offset=", info->bitmap_offset, ", crc=0x", std::hex, hash);
-    #else
-        debug("BOOT_LOGO: size=", size, ", crc=0x", std::hex, hash);
-    #endif
+        #if (WINDOWS)
+            debug("BOOT_LOGO: size=", needed, ", flags=", info->flags, ", offset=", info->bitmap_offset, ", crc=0x", std::hex, hash);
+        #else
+            debug("BOOT_LOGO: size=", size, ", crc=0x", std::hex, hash);
+        #endif
         switch (hash) {
             case 0x110350C5: return core::add(brand_enum::QEMU); // TianoCore EDK2
             case 0x87c39681: return core::add(brand_enum::HYPERV);
@@ -7987,6 +7987,7 @@ public:
     #endif
     }
 
+
     /**
      * @brief Check for serial numbers of virtual disks
      * @category Windows
@@ -7995,7 +7996,7 @@ public:
     [[nodiscard]] static bool disk_serial_number() {
         bool result = false;
 
-        // Helper to detect QEMU instances based on default hard drive serial patterns
+        // helper to detect QEMU instances based on default hard drive serial patterns
         // QEMU drives often start with "QM000" followed by digits
         auto is_qemu_serial = [](const char* str) noexcept -> bool {
             if ((str[0] & 0xDF) != 'Q') return false;
@@ -8007,7 +8008,7 @@ public:
             return str[2] == '0' && str[3] == '0' && str[4] == '0' && str[5] == '0';
         };
 
-        // Helper to detect VirtualBox instances
+        // helper to detect VirtualBox instances
         // VirtualBox uses a specific serial format "VB" followed by hex segments
         auto is_vbox_serial = [](const char* str, size_t len) noexcept -> bool {
             // format: VB12345678-12345678 (19 chars)
