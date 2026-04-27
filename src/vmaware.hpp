@@ -5684,8 +5684,8 @@ public:
             state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3
             // warm-up to settle caches, scheduler and frequency boosts
             for (int i = 0; i < 1000; ++i) {
-                trigger_vmexit(dummy_res, 0x0, 0);
-                for (int j = 0; j < 8; ++j) _mm_lfence();
+                for (int j = 0; j < 2; ++j) trigger_vmexit(dummy_res, 0x0, 0);
+                for (int j = 0; j < 16; ++j) _mm_lfence(); // good candidate as a reference with cpuid because it's a serializing instruction AND can't be intercepted in VCMB/VMCS
             }
 
             while (valid < BATCH_SIZE) {
@@ -5697,8 +5697,12 @@ public:
 
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
-                // force cpuid collection here so that the hypervisor is either forced to disable interception and try to bypass latency, or intercept cpuid and try to bypass XSAVE states
+                // force cpuid here so that the hypervisor is either forced to keep interception and try to bypass latency, or disable interception and try to bypass XSAVE states
                 trigger_vmexit(dummy_res, 0x0, 0); // fastest cpuid path, on purpose for stability in the measurement
+                // scaled by 2x to negate cache invalidation ping-ponging across distant NUMA nodes, as our core randomizer will pin the threads on distant cores
+                for (int i = 0; i < 2; ++i) {
+                    trigger_vmexit(dummy_res, 0x0, 0);
+                }
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 v_post = state.counter;
 
@@ -5706,8 +5710,8 @@ public:
                 sync = state.counter; while (state.counter == sync);
 
                 r_pre = state.counter;
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                for (int i = 0; i < 8; ++i) _mm_lfence(); // 8 LFENCES is enough for the MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
+                std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
+                for (int i = 0; i < 16; ++i) _mm_lfence(); // 16 LFENCES is enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 r_post = state.counter;
 
@@ -5725,7 +5729,7 @@ public:
             const u64 ref_l = calculate_latency(ref_samples);
             const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
 
-            // VMM == Time spent in hypervisor; nVMM == Time spent in baremetal; Scheduling == Work done by threads
+            // VMM == Time spent in hypervisor; nVMM == Time spent in baremetal
             debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ",  ref_l, " | Ratio -> ", latency_ratio);
             if (latency_ratio >= threshold) hypervisor_detected = true;
 
@@ -5769,10 +5773,10 @@ public:
         t1.join();
 
         if (hypervisor_detected) {
-            return true; // 100 score
+            return true; // 100 score, 99% hypervisor likeliness
         }
         else if (bypass_detected) {
-            return core::add(brand_enum::KVM, 150); // 150 score, KVM is a guess
+            return core::add(brand_enum::KVM, 150); // 100% hypervisor likeliness; KVM is a guess
         }
 
         return hypervisor_detected;
