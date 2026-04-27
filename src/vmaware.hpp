@@ -248,7 +248,7 @@
     #define APPLE 0
 #endif
 
-#ifdef _MSC_VER
+#if (_MSC_VER)
     #define MSVC 1
 #endif
 
@@ -4810,8 +4810,8 @@ public:
 
 // START OF PRIVATE VM DETECTION TECHNIQUE DEFINITIONS
 
-#ifdef _MSC_VER
-#pragma region "x86"
+#if (MSVC)
+    #pragma region "x86"
 #endif
 
 #if 1
@@ -5782,9 +5782,9 @@ public:
 
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Linux"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Linux"
 #endif
 
 #if (LINUX)
@@ -6792,9 +6792,9 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Linux and Windows"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Linux and Windows"
 #endif
 
 #if (LINUX || WINDOWS)
@@ -8286,9 +8286,9 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Linux and Apple"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Linux and Apple"
 #endif
 
 #if (LINUX || APPLE)
@@ -8314,9 +8314,9 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
-#pragma region "Apple"
+#if (MSVC)
+    #pragma endregion
+    #pragma region "Apple"
 #endif
 
 #if (APPLE) 
@@ -8594,12 +8594,12 @@ public:
     }
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
+#if (MSVC)
+    #pragma endregion
 #endif
 
-#ifdef _MSC_VER
-#pragma region "Windows"
+#if (MSVC)
+    #pragma region "Windows"
 #endif
 
 #if (WINDOWS)
@@ -12545,8 +12545,8 @@ public:
     #endif
 #endif
 
-#ifdef _MSC_VER
-#pragma endregion
+#if (MSVC)
+    #pragma endregion
 #endif
 
     /* ============================================================================================== *
