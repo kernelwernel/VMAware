@@ -595,7 +595,7 @@ public:
         CLOCK,
         MSR,
         KVM_INTERCEPTION,
-        BREAKPOINT,
+        HYPERVISOR_HOOK,
         POPF,
         EIP_OVERFLOW,
 
@@ -12138,9 +12138,9 @@ public:
     /**
      * @brief Check whether a hypervisor uses EPT/NPT hooking to intercept hardware breakpoints
      * @category Windows
-     * @implements VM::BREAKPOINT
+     * @implements VM::HYPERVISOR_HOOK
      */
-    [[nodiscard]] static bool breakpoint() {
+    [[nodiscard]] static bool hypervisor_hook() {
     #if (!x86)
         return false;
     #else
@@ -12153,7 +12153,13 @@ public:
             "NtGetContextThread",
             "NtSetContextThread",
             "RtlAddVectoredExceptionHandler",
-            "RtlRemoveVectoredExceptionHandler"
+            "RtlRemoveVectoredExceptionHandler",
+            "NtProtectVirtualMemory",
+            "NtQuerySystemInformation",
+            "NtCreateThreadEx",
+            "NtWaitForSingleObject",
+            "NtClose",
+            "NtSetInformationThread"
         };
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
@@ -12164,6 +12170,12 @@ public:
         using nt_set_context_thread_t = NTSTATUS(__stdcall*)(HANDLE, PCONTEXT);
         using rtl_add_vectored_exception_handler_t = PVOID(__stdcall*)(ULONG, PVECTORED_EXCEPTION_HANDLER);
         using rtl_remove_vectored_exception_handler_t = ULONG(__stdcall*)(PVOID);
+        using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using nt_query_system_information_t = NTSTATUS(__stdcall*)(ULONG, PVOID, ULONG, PULONG);
+        using nt_create_thread_ex_t = NTSTATUS(__stdcall*)(PHANDLE, ACCESS_MASK, PVOID, HANDLE, PVOID, PVOID, ULONG, ULONG_PTR, SIZE_T, SIZE_T, PVOID);
+        using nt_wait_for_single_object_t = NTSTATUS(__stdcall*)(HANDLE, BOOLEAN, PLARGE_INTEGER);
+        using nt_close_t = NTSTATUS(__stdcall*)(HANDLE);
+        using nt_set_information_thread_t = NTSTATUS(__stdcall*)(HANDLE, ULONG, PVOID, ULONG);
 
         // volatile ensures these are loaded from stack after SEH unwind when compiled with aggressive optimizations
         nt_allocate_virtual_memory_t volatile nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
@@ -12172,9 +12184,18 @@ public:
         nt_set_context_thread_t volatile nt_set_context_thread = reinterpret_cast<nt_set_context_thread_t>(funcs[3]);
         rtl_add_vectored_exception_handler_t volatile rtl_add_vectored_exception_handler = reinterpret_cast<rtl_add_vectored_exception_handler_t>(funcs[4]);
         rtl_remove_vectored_exception_handler_t volatile rtl_remove_vectored_exception_handler = reinterpret_cast<rtl_remove_vectored_exception_handler_t>(funcs[5]);
+        nt_protect_virtual_memory_t volatile nt_protect_virtual_memory = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[6]);
+
+        nt_query_system_information_t volatile nt_query_system_information = reinterpret_cast<nt_query_system_information_t>(funcs[7]);
+        nt_create_thread_ex_t volatile nt_create_thread_ex = reinterpret_cast<nt_create_thread_ex_t>(funcs[8]);
+        nt_wait_for_single_object_t volatile nt_wait_for_single_object = reinterpret_cast<nt_wait_for_single_object_t>(funcs[9]);
+        nt_close_t volatile nt_close = reinterpret_cast<nt_close_t>(funcs[10]);
+        nt_set_information_thread_t volatile nt_set_information_thread = reinterpret_cast<nt_set_information_thread_t>(funcs[11]);
 
         if (!nt_allocate_virtual_memory || !nt_free_virtual_memory || !nt_get_context_thread ||
-            !nt_set_context_thread || !rtl_add_vectored_exception_handler || !rtl_remove_vectored_exception_handler) {
+            !nt_set_context_thread || !rtl_add_vectored_exception_handler || !rtl_remove_vectored_exception_handler ||
+            !nt_protect_virtual_memory || !nt_query_system_information || !nt_create_thread_ex ||
+            !nt_wait_for_single_object || !nt_close || !nt_set_information_thread) {
             return false;
         }
 
@@ -12190,13 +12211,13 @@ public:
         const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
         if (status_src < 0 || status_dst < 0) {
-            if (src_page) { 
-                SIZE_T free_size = 0; 
-                nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE); 
+            if (src_page) {
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
             }
-            if (dst_page) { 
-                SIZE_T free_size = 0; 
-                nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE); 
+            if (dst_page) {
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
             }
             return false;
         }
@@ -12245,7 +12266,6 @@ public:
             // veh will already detect if Dr0 fired successfully
         }
 
-        // cleanup
         rtl_remove_vectored_exception_handler(veh_handle);
 
         ctx.Dr0 = 0;
@@ -12256,7 +12276,200 @@ public:
         nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
         nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
 
-        return !ermsb_trap_detected;
+        // explicitly decay lambdas to raw function pointers to eliminate C2712 unwinding requirement errors
+        using execute_throws_t = bool(*)(void*);
+        execute_throws_t execute_throws = [](void* pointer) -> bool {
+            __try {
+                using func_t = void(*)();
+                reinterpret_cast<func_t>(pointer)(); // breakpoint hit
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                return true;
+            }
+            return false;
+        };
+
+        using find_double_cc_ntdll_t = void* (*)(HMODULE);
+        find_double_cc_ntdll_t find_double_cc_ntdll = [](HMODULE module) -> void* {
+            if (!module) return nullptr;
+
+            // Parse PE headers to find executable sections safely
+            auto* dos_header = reinterpret_cast<PIMAGE_DOS_HEADER>(module);
+            if (dos_header->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+
+            auto* nt_headers = reinterpret_cast<PIMAGE_NT_HEADERS>(reinterpret_cast<uint8_t*>(module) + dos_header->e_lfanew);
+            if (nt_headers->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+
+            auto* section = IMAGE_FIRST_SECTION(nt_headers);
+            for (WORD i = 0; i < nt_headers->FileHeader.NumberOfSections; ++i, ++section) {
+
+                // Only scan memory marked as Executable (Prevents DEP false-positives)
+                if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0) {
+                    uint8_t* ptr = reinterpret_cast<uint8_t*>(module) + section->VirtualAddress;
+                    size_t size = section->Misc.VirtualSize;
+
+                    for (size_t j = 0; j < size - 1; ++j) {
+                        if (ptr[j] == 0xCC && ptr[j + 1] == 0xCC) {
+                            // by returning ptr[j + 1], executing it will safely run 0xC3 (after overwrite)
+                            // if we overwrite j+1 with 0xC3 and call it, it immediately returns
+                            return &ptr[j + 1];
+                        }
+                    }
+                }
+            }
+            return nullptr;
+        };
+
+        using find_double_cc_t = void* (*)(void*);
+        find_double_cc_t find_double_cc = [](void* pointer_in_page) -> void* {
+            // align down to the start of the 4KB page
+            auto* ptr = reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(pointer_in_page) & ~0xFFF);
+
+            for (size_t i = 0; i < (0x1000 - 1); ++i) {
+                if (ptr[i] == 0xCC && ptr[i + 1] == 0xCC) {
+                    return &ptr[i + 1];
+                }
+            }
+            return nullptr;
+        };
+
+        void* pointer = find_double_cc_ntdll(ntdll);
+        if (!pointer) {
+            void* current_func_ptr = reinterpret_cast<void*>(&hypervisor_hook);
+            pointer = find_double_cc(current_func_ptr);
+            if (!pointer) return false; 
+        }
+
+        // executing CC natively should throw
+        if (!execute_throws(pointer)) {
+            return false; // SEH is broken or code isn't actually CC
+        }
+
+        // overwrite CC with C3 (RET)
+        PVOID base_address = pointer;
+        SIZE_T prot_region_size = 1;
+        ULONG old_protect = 0;
+
+        // NtProtectVirtualMemory modifies BaseAddress and RegionSize to page boundaries,
+        // so we must reset them on subsequent calls
+        NTSTATUS status = nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, PAGE_EXECUTE_READWRITE, &old_protect);
+        if (status < 0) return false;
+
+        *static_cast<volatile uint8_t*>(pointer) = 0xC3;
+
+        base_address = pointer;
+        prot_region_size = 1;
+        ULONG dummy_protect = 0;
+        nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, old_protect, &dummy_protect);
+
+        bool hook_detected = false;
+
+        // test if write was swallowed by the hypervisor on the current core
+        if (execute_throws(pointer)) {
+            hook_detected = true;
+        }
+        else {
+            // total hardware processors
+            struct SYSTEM_BASIC_INFORMATION_LOCAL {
+                ULONG Reserved;
+                ULONG TimerResolution;
+                ULONG PageSize;
+                ULONG NumberOfPhysicalPages;
+                ULONG LowestPhysicalPageNumber;
+                ULONG HighestPhysicalPageNumber;
+                ULONG AllocationGranularity;
+                ULONG_PTR MinimumUserModeAddress;
+                ULONG_PTR MaximumUserModeAddress;
+                ULONG_PTR ActiveProcessorsAffinityMask;
+                CCHAR NumberOfProcessors;
+            };
+
+            SYSTEM_BASIC_INFORMATION_LOCAL sys_info = { 0 };
+            ULONG ret_len = 0;
+            ULONG num_processors = 1;
+
+            // 0 = SystemBasicInformation
+            if (nt_query_system_information(0, &sys_info, sizeof(sys_info), &ret_len) >= 0) {
+                num_processors = sys_info.NumberOfProcessors;
+            }
+
+            // lightweight plain struct to pass memory pointers natively (no destructors)
+            struct thread_context {
+                void* pointer;
+                volatile bool* did_anyone_throw;
+            };
+
+            volatile bool did_anyone_throw = false;
+            thread_context t_ctx{};
+            t_ctx.pointer = pointer;
+            t_ctx.did_anyone_throw = &did_anyone_throw;
+
+            using thread_routine_t = DWORD(__stdcall*)(PVOID);
+
+            thread_routine_t thread_proc = +[](PVOID param) -> DWORD {
+                using exec_t = bool(*)(void*);
+                exec_t exec = [](void* ptr) -> bool {
+                    __try {
+                        using func_t = void(*)();
+                        reinterpret_cast<func_t>(ptr)();
+                    }
+                    __except (EXCEPTION_EXECUTE_HANDLER) {
+                        return true;
+                    }
+                    return false;
+                };
+
+                auto* c = static_cast<thread_context*>(param);
+                if (exec(c->pointer)) {
+                    *c->did_anyone_throw = true;
+                }
+                return 0;
+            };
+
+            HANDLE thread_handles[256] = {};
+            ULONG active_threads = 0;
+
+            // spawn threads across physical cores natively
+            for (ULONG i = 0; i < num_processors && i < 256; ++i) {
+                HANDLE h_thread = nullptr;
+                // 0x1FFFFF = THREAD_ALL_ACCESS
+                NTSTATUS t_status = nt_create_thread_ex(&h_thread, THREAD_ALL_ACCESS, nullptr, current_process,
+                    reinterpret_cast<PVOID>(thread_proc), &t_ctx,
+                    0, 0, 0, 0, nullptr);
+
+                if (t_status >= 0 && h_thread) {
+                    // ebind the created thread to physical core i
+                    ULONG_PTR affinity = (ULONG_PTR)1 << i;
+                    nt_set_information_thread(h_thread, 4 /* ThreadAffinityMask */, &affinity, sizeof(affinity));
+
+                    thread_handles[active_threads++] = h_thread;
+                }
+            }
+
+            // wait natively for completion on all cores
+            for (ULONG i = 0; i < active_threads; ++i) {
+                nt_wait_for_single_object(thread_handles[i], FALSE, nullptr);
+                nt_close(thread_handles[i]);
+            }
+
+            if (did_anyone_throw) {
+                hook_detected = true;
+            }
+        }
+
+        // restore the original 0xCC operand
+        base_address = pointer;
+        prot_region_size = 1;
+        status = nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, PAGE_EXECUTE_READWRITE, &old_protect);
+        if (status >= 0) {
+            *static_cast<volatile uint8_t*>(pointer) = 0xCC;
+
+            base_address = pointer;
+            prot_region_size = 1;
+            nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, old_protect, &dummy_protect);
+        }
+
+        return hook_detected || !ermsb_trap_detected;
     #endif
     }
 
@@ -13267,7 +13480,7 @@ public: // START OF PUBLIC FUNCTIONS
             case CLOCK: return "CLOCK";
             case MSR: return "MSR";
             case KVM_INTERCEPTION: return "KVM_INTERCEPTION";
-            case BREAKPOINT: return "BREAKPOINT";
+            case HYPERVISOR_HOOK: return "BREAKPOINT";
             case POPF: return "POPF";
             case EIP_OVERFLOW: return "EIP_OVERFLOW";
             // END OF TECHNIQUE LIST
@@ -13815,7 +14028,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::POPF, {100, VM::popf}},
             {VM::MSR, {100, VM::msr}},
             {VM::EDID, {100, VM::edid}},
-            {VM::BREAKPOINT, {100, VM::breakpoint}},
+            {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
             {VM::DBVM, {150, VM::dbvm}},
