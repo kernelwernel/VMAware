@@ -12228,14 +12228,14 @@ public:
     #else   
         #pragma pack(push, 1)
         struct iretq_frame {
-            uint64_t ip;
-            uint64_t cs;
+            u64 ip;
+            u64 cs;
         };
         #pragma pack(pop)
 
         static bool hypervisor_detected = true;
         static uintptr_t g_recovery_pad = 0;
-        static uint64_t g_saved_rsp = 0;
+        static u64 g_saved_rsp = 0;
 
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
