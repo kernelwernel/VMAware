@@ -8714,7 +8714,7 @@ public:
             return true;
         }
 
-        // could check for HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PlatformAoAcOverride
+        // could check for HKLM\SYSTEM\CurrentControlSet\Control\Power\PlatformAoAcOverride
         const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported && !s4_supported && !hiber_file_present;
         if (no_sleep_states) {
             debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3||S4||H) pattern");
@@ -12097,6 +12097,8 @@ public:
             // copy stuff to page
             memcpy(base_address, opcodes[i], sizeof(opcodes[i]));
 
+            nt_flush_instruction_cache(current_process, base_address, sizeof(opcodes[i]));
+
             ULONG old_protect = 0;
             PVOID protect_address = base_address;
             SIZE_T protect_size = region_size;
@@ -12107,7 +12109,9 @@ public:
                 PAGE_EXECUTE_READ, &old_protect);
 
             if (NT_SUCCESS(status)) {
+                nt_flush_instruction_cache(current_process, base_address, sizeof(opcodes[i]));
                 DWORD exception_status = 0;
+
                 __try {
                     const auto execute_hypercall = reinterpret_cast<void(*)()>(base_address);
                     execute_hypercall();
@@ -12206,80 +12210,6 @@ public:
         HANDLE current_process = reinterpret_cast<HANDLE>(-1);
         HANDLE current_thread = reinterpret_cast<HANDLE>(-2);
 
-        PVOID src_page = nullptr;
-        PVOID dst_page = nullptr;
-        SIZE_T region_size = 0x2000;
-
-        // allocate source and destination pages
-        const NTSTATUS status_src = nt_allocate_virtual_memory(current_process, &src_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
-        if (status_src < 0 || status_dst < 0) {
-            if (src_page) {
-                SIZE_T free_size = 0;
-                nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
-            }
-            if (dst_page) {
-                SIZE_T free_size = 0;
-                nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
-            }
-            return false;
-        }
-
-        // initialize src memory
-        __stosb(static_cast<PBYTE>(src_page), 0xAB, 0x2000);
-
-        thread_local static volatile bool ermsb_trap_detected = false;
-        ermsb_trap_detected = false;
-
-        // capture-less local lambda decays to PVECTORED_EXCEPTION_HANDLER function pointer
-        auto veh_handler = [](PEXCEPTION_POINTERS ctx) -> LONG {
-            if (ctx->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
-                ermsb_trap_detected = true;
-                return EXCEPTION_CONTINUE_EXECUTION;
-            }
-            return EXCEPTION_CONTINUE_SEARCH;
-        };
-
-        const PVOID veh_handle = rtl_add_vectored_exception_handler(1, static_cast<PVECTORED_EXCEPTION_HANDLER>(veh_handler));
-        if (!veh_handle) {
-            SIZE_T free_size = 0;
-            nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
-            nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
-            return false;
-        }
-
-        CONTEXT ctx{};
-        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-        nt_get_context_thread(current_thread, &ctx);
-
-        // set hw breakpoint inside the source page
-        ctx.Dr0 = reinterpret_cast<DWORD64>(src_page) + 0x1000;
-
-        // Dr7 = 0x30001
-        // bit 0      = 1
-        // bits 17:16 = 11b
-        // bits 19:18 = 00b
-        ctx.Dr7 = 0x30001;
-        nt_set_context_thread(current_thread, &ctx);
-
-        __try {
-            __movsb(static_cast<PBYTE>(dst_page), static_cast<PBYTE>(src_page), 0x2000);
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            // veh will already detect if Dr0 fired successfully
-        }
-
-        rtl_remove_vectored_exception_handler(veh_handle);
-
-        ctx.Dr0 = 0;
-        ctx.Dr7 = 0;
-        nt_set_context_thread(current_thread, &ctx);
-
-        SIZE_T free_size = 0;
-        nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
-        nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
-
         // explicitly decay lambdas to raw function pointers to eliminate C2712 unwinding requirement errors
         using execute_throws_t = bool(*)(void*);
         execute_throws_t execute_throws = [](void* pointer) -> bool {
@@ -12312,6 +12242,10 @@ public:
                     uint8_t* ptr = reinterpret_cast<uint8_t*>(module) + section->VirtualAddress;
                     size_t size = section->Misc.VirtualSize;
 
+                    if (size < 2) {
+                        continue;
+                    }
+
                     for (size_t j = 0; j < size - 1; ++j) {
                         if (ptr[j] == 0xCC && ptr[j + 1] == 0xCC) {
                             // by returning ptr[j + 1], executing it will safely run 0xC3 (after overwrite)
@@ -12341,7 +12275,7 @@ public:
         if (!pointer) {
             void* current_func_ptr = reinterpret_cast<void*>(&hypervisor_hook);
             pointer = find_double_cc(current_func_ptr);
-            if (!pointer) return false; 
+            if (!pointer) return false;
         }
 
         // executing CC natively should throw
@@ -12364,7 +12298,8 @@ public:
         base_address = pointer;
         prot_region_size = 1;
         ULONG dummy_protect = 0;
-        nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, old_protect, &dummy_protect);
+        status = nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, old_protect, &dummy_protect);
+        if (status < 0) return false;
 
         bool hook_detected = false;
 
@@ -12393,9 +12328,11 @@ public:
             ULONG num_processors = 1;
 
             // 0 = SystemBasicInformation
-            if (nt_query_system_information(0, &sys_info, sizeof(sys_info), &ret_len) >= 0) {
-                num_processors = sys_info.NumberOfProcessors;
+            status = nt_query_system_information(0, &sys_info, sizeof(sys_info), &ret_len);
+            if (status < 0) {
+                return false;
             }
+            num_processors = sys_info.NumberOfProcessors;
 
             // plain struct to pass memory pointers (no destructors)
             struct thread_context {
@@ -12431,7 +12368,117 @@ public:
             HANDLE thread_handles[256] = {};
             ULONG active_threads = 0;
 
-            // spawn threads across physical cores natively
+            PVOID src_page = nullptr;
+            PVOID dst_page = nullptr;
+            SIZE_T region_size = 0x2000;
+            PVOID veh_handle = nullptr;
+
+            // allocate source and destination pages
+            const NTSTATUS status_src = nt_allocate_virtual_memory(current_process, &src_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+            const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+            if (status_src < 0 || status_dst < 0) {
+                if (src_page) {
+                    SIZE_T free_size = 0;
+                    nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+                }
+                if (dst_page) {
+                    SIZE_T free_size = 0;
+                    nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+                }
+                return false;
+            }
+
+            auto cleanup_pages = [&]() -> bool {
+                bool ok = true;
+
+                if (veh_handle) {
+                    rtl_remove_vectored_exception_handler(veh_handle);
+                    veh_handle = nullptr;
+                }
+
+                for (ULONG i = 0; i < active_threads; ++i) {
+                    if (thread_handles[i]) {
+                        ok = NT_SUCCESS(nt_close(thread_handles[i])) && ok;
+                        thread_handles[i] = nullptr;
+                    }
+                }
+
+                if (src_page) {
+                    SIZE_T free_size = 0;
+                    ok = NT_SUCCESS(nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE)) && ok;
+                }
+                if (dst_page) {
+                    SIZE_T free_size = 0;
+                    ok = NT_SUCCESS(nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE)) && ok;
+                }
+
+                return ok;
+            };
+
+            if (util::is_running_under_translator())
+                return cleanup_pages() ? hook_detected : false;
+
+            // initialize src memory
+            __stosb(static_cast<PBYTE>(src_page), 0xAB, 0x2000);
+
+            thread_local static volatile bool ermsb_trap_detected = false;
+            ermsb_trap_detected = false;
+
+            // capture-less local lambda decays to PVECTORED_EXCEPTION_HANDLER function pointer
+            auto veh_handler = [](PEXCEPTION_POINTERS ctx) -> LONG {
+                if (ctx->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
+                    ermsb_trap_detected = true;
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                }
+                return EXCEPTION_CONTINUE_SEARCH;
+            };
+
+            veh_handle = rtl_add_vectored_exception_handler(1, static_cast<PVECTORED_EXCEPTION_HANDLER>(veh_handler));
+            if (!veh_handle) {
+                cleanup_pages();
+                return false;
+            }
+
+            CONTEXT ctx{};
+            ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+            status = nt_get_context_thread(current_thread, &ctx);
+            if (status < 0) {
+                cleanup_pages();
+                return false;
+            }
+
+            // set hw breakpoint inside the source page
+            ctx.Dr0 = reinterpret_cast<DWORD64>(src_page) + 0x1000;
+
+            // Dr7 = 0x30001
+            // bit 0      = 1
+            // bits 17:16 = 11b
+            // bits 19:18 = 00b
+            status = nt_set_context_thread(current_thread, &ctx);
+            if (status < 0) {
+                cleanup_pages();
+                return false;
+            }
+
+            __try {
+                __movsb(static_cast<PBYTE>(dst_page), static_cast<PBYTE>(src_page), 0x2000);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                // veh will already detect if Dr0 fired successfully
+            }
+
+            rtl_remove_vectored_exception_handler(veh_handle);
+            veh_handle = nullptr;
+
+            ctx.Dr0 = 0;
+            ctx.Dr7 = 0;
+            status = nt_set_context_thread(current_thread, &ctx);
+            if (status < 0) {
+                cleanup_pages();
+                return false;
+            }
+
             for (ULONG i = 0; i < num_processors && i < 256; ++i) {
                 HANDLE h_thread = nullptr;
                 // 0x1FFFFF = THREAD_ALL_ACCESS
@@ -12439,37 +12486,149 @@ public:
                     reinterpret_cast<PVOID>(thread_proc), &t_ctx,
                     0, 0, 0, 0, nullptr);
 
-                if (t_status >= 0 && h_thread) {
-                    // ebind the created thread to physical core i
-                    ULONG_PTR affinity = (ULONG_PTR)1 << i;
-                    nt_set_information_thread(h_thread, 4 /* ThreadAffinityMask */, &affinity, sizeof(affinity));
-
-                    thread_handles[active_threads++] = h_thread;
+                if (t_status < 0 || !h_thread) {
+                    if (h_thread && nt_close(h_thread) < 0) {
+                        cleanup_pages();
+                        return false;
+                    }
+                    cleanup_pages();
+                    return false;
                 }
+
+                // ebind the created thread to physical core i
+                ULONG_PTR affinity = (ULONG_PTR)1 << i;
+                status = nt_set_information_thread(h_thread, 4 /* ThreadAffinityMask */, &affinity, sizeof(affinity));
+                if (status < 0) {
+                    if (nt_close(h_thread) < 0) {
+                        cleanup_pages();
+                        return false;
+                    }
+                    cleanup_pages();
+                    return false;
+                }
+
+                thread_handles[active_threads++] = h_thread;
             }
 
-            // wait natively for completion on all cores
+            // wait for completion on all cores
             for (ULONG i = 0; i < active_threads; ++i) {
-                nt_wait_for_single_object(thread_handles[i], FALSE, nullptr);
-                nt_close(thread_handles[i]);
+                status = nt_wait_for_single_object(thread_handles[i], FALSE, nullptr);
+                if (status < 0) {
+                    cleanup_pages();
+                    return false;
+                }
+
+                status = nt_close(thread_handles[i]);
+                if (status < 0) {
+                    cleanup_pages();
+                    return false;
+                }
+                thread_handles[i] = nullptr;
             }
 
             if (did_anyone_throw != 0) {
                 hook_detected = true;
             }
+
+            cleanup_pages();
         }
 
-        // restore the original 0xCC operand
-        base_address = pointer;
-        prot_region_size = 1;
-        status = nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, PAGE_EXECUTE_READWRITE, &old_protect);
-        if (status >= 0) {
-            *static_cast<volatile uint8_t*>(pointer) = 0xCC;
+        PVOID src_page = nullptr;
+        PVOID dst_page = nullptr;
+        SIZE_T region_size = 0x2000;
 
-            base_address = pointer;
-            prot_region_size = 1;
-            nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, old_protect, &dummy_protect);
+        // allocate source and destination pages
+        const NTSTATUS status_src = nt_allocate_virtual_memory(current_process, &src_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+        if (status_src < 0 || status_dst < 0) {
+            if (src_page) {
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+            }
+            if (dst_page) {
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+            }
+            return false;
         }
+
+        if (util::is_running_under_translator())
+            return hook_detected;
+
+        // initialize src memory
+        __stosb(static_cast<PBYTE>(src_page), 0xAB, 0x2000);
+
+        thread_local static volatile bool ermsb_trap_detected = false;
+        ermsb_trap_detected = false;
+
+        // capture-less local lambda decays to PVECTORED_EXCEPTION_HANDLER function pointer
+        auto veh_handler = [](PEXCEPTION_POINTERS ctx) -> LONG {
+            if (ctx->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
+                ermsb_trap_detected = true;
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+            return EXCEPTION_CONTINUE_SEARCH;
+        };
+
+        const PVOID veh_handle = rtl_add_vectored_exception_handler(1, static_cast<PVECTORED_EXCEPTION_HANDLER>(veh_handler));
+        if (!veh_handle) {
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+            nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+            return false;
+        }
+
+        CONTEXT ctx{};
+        ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+        status = nt_get_context_thread(current_thread, &ctx);
+
+        if (status < 0) {
+            rtl_remove_vectored_exception_handler(veh_handle);
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+            nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+            return false;
+        }
+
+        // set hw breakpoint inside the source page
+        ctx.Dr0 = reinterpret_cast<DWORD64>(src_page) + 0x1000;
+
+        // Dr7 = 0x30001
+        // bit 0      = 1
+        // bits 17:16 = 11b
+        // bits 19:18 = 00b
+        status = nt_set_context_thread(current_thread, &ctx);
+        if (status < 0) {
+            rtl_remove_vectored_exception_handler(veh_handle);
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+            nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+            return false;
+        }
+
+        __try {
+            __movsb(static_cast<PBYTE>(dst_page), static_cast<PBYTE>(src_page), 0x2000);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            // veh will already detect if Dr0 fired successfully
+        }
+
+        rtl_remove_vectored_exception_handler(veh_handle);
+
+        ctx.Dr0 = 0;
+        ctx.Dr7 = 0;
+        status = nt_set_context_thread(current_thread, &ctx);
+        if (status < 0) {
+            SIZE_T free_size = 0;
+            nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+            nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
+            return false;
+        }
+
+        SIZE_T free_size = 0;
+        nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
+        nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
 
         return hook_detected || !ermsb_trap_detected;
     #endif
@@ -14023,14 +14182,14 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::ACPI_SIGNATURE, {100, VM::acpi_signature}},
             {VM::CPU_HEURISTIC, {90, VM::cpu_heuristic}},
             {VM::CLOCK, {45, VM::clock}},
-            {VM::POWER_CAPABILITIES, {45, VM::power_capabilities}},
-            {VM::GPU_CAPABILITIES, {45, VM::gpu_capabilities}},
+            {VM::POWER_CAPABILITIES, {25, VM::power_capabilities}},
+            {VM::GPU_CAPABILITIES, {25, VM::gpu_capabilities}},
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
+            {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::POPF, {100, VM::popf}},
             {VM::MSR, {100, VM::msr}},
             {VM::EDID, {100, VM::edid}},
-            {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
             {VM::DBVM, {150, VM::dbvm}},
@@ -14110,7 +14269,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::MAC_SYS, {100, VM::mac_sys}},
         #endif
 
-        {VM::TIMER, {100, VM::timer}},
+        {VM::TIMER, {95, VM::timer}},
         {VM::THREAD_MISMATCH, {50, VM::thread_mismatch}},
         {VM::VMID, {100, VM::vmid}},
         {VM::CPU_BRAND, {95, VM::cpu_brand}},
