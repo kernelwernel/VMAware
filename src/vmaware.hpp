@@ -8714,7 +8714,7 @@ public:
             return true;
         }
 
-        // could check for HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\PlatformAoAcOverride
+        // could check for HKLM\SYSTEM\CurrentControlSet\Control\Power\PlatformAoAcOverride
         const bool no_sleep_states = !s0_supported && !s1_supported && !s2_supported && !s3_supported && !s4_supported && !hiber_file_present;
         if (no_sleep_states) {
             debug("POWER_CAPABILITIES: Detected !(S0||S1||S2||S3||S4||H) pattern");
@@ -14265,7 +14265,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::MAC_SYS, {100, VM::mac_sys}},
         #endif
 
-        {VM::TIMER, {100, VM::timer}},
+        {VM::TIMER, {95, VM::timer}},
         {VM::THREAD_MISMATCH, {50, VM::thread_mismatch}},
         {VM::VMID, {100, VM::vmid}},
         {VM::CPU_BRAND, {95, VM::cpu_brand}},
