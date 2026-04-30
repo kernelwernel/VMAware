@@ -12097,6 +12097,8 @@ public:
             // copy stuff to page
             memcpy(base_address, opcodes[i], sizeof(opcodes[i]));
 
+            nt_flush_instruction_cache(current_process, base_address, sizeof(opcodes[i]));
+
             ULONG old_protect = 0;
             PVOID protect_address = base_address;
             SIZE_T protect_size = region_size;
@@ -12107,7 +12109,9 @@ public:
                 PAGE_EXECUTE_READ, &old_protect);
 
             if (NT_SUCCESS(status)) {
+                nt_flush_instruction_cache(current_process, base_address, sizeof(opcodes[i]));
                 DWORD exception_status = 0;
+
                 __try {
                     const auto execute_hypercall = reinterpret_cast<void(*)()>(base_address);
                     execute_hypercall();
