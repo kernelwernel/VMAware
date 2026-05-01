@@ -32,10 +32,10 @@ endif()
 
 # compiler flags
 if (MSVC)
-    set(CMAKE_CXX_FLAGS "/W4 /EHsc")
+    set(CMAKE_CXX_FLAGS "/W4 /WX /EHsc")
 else()
     # Linux and Apple
-    set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion")
+    set(CMAKE_CXX_FLAGS "-Wextra -Wall -Wextra -Wconversion -Wdouble-promotion -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion -Werror")
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
