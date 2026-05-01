@@ -1,0 +1,62 @@
+name: Linux Multi-Architecture Build
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
+      - '.github/workflows/linux_multiarch_build.yml'
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'src/**/*.cpp'
+      - 'src/**/*.hpp'
+      - '.github/workflows/linux_multiarch_build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+          - arch: armhf
+            platform: linux/arm/v7
+          - arch: armel
+            platform: linux/arm/v6
+          - arch: i386
+            platform: linux/386
+          - arch: mips64el
+            platform: linux/mips64le
+          - arch: ppc64el
+            platform: linux/ppc64le
+          - arch: riscv64
+            platform: linux/riscv64
+          - arch: s390x
+            platform: linux/s390x
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build (${{ matrix.arch }})
+        run: |
+          docker run --rm \
+            --platform ${{ matrix.platform }} \
+            -v ${{ github.workspace }}:/src \
+            -w /src \
+            debian:bookworm \
+            bash -c "
+              apt-get update -q &&
+              apt-get install -y --no-install-recommends cmake g++ build-essential &&
+              cmake -B build -DCMAKE_BUILD_TYPE=Release &&
+              cmake --build build --config Release
+            "
