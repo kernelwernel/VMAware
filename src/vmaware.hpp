@@ -4598,7 +4598,7 @@ public:
             // just check the presence of the brand itself so we can merge them. 
             std::bitset<MAX_BRANDS> brand_hits = {};
 
-            for (const auto brand : active_brands) {
+            for (const auto& brand : active_brands) {
                 brand_hits.set(static_cast<u8>(brand.first));
             }
 

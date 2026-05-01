@@ -24,22 +24,31 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
+            image: debian:bookworm
           - arch: arm64
             platform: linux/arm64
+            image: debian:bookworm
           - arch: armhf
             platform: linux/arm/v7
+            image: debian:bookworm
           - arch: armel
             platform: linux/arm/v6
+            image: debian:bookworm
           - arch: i386
             platform: linux/386
+            image: debian:bookworm
           - arch: mips64el
             platform: linux/mips64le
+            image: debian:bookworm
           - arch: ppc64el
             platform: linux/ppc64le
+            image: debian:bookworm
           - arch: riscv64
             platform: linux/riscv64
+            image: debian:sid
           - arch: s390x
             platform: linux/s390x
+            image: debian:bookworm
 
     steps:
       - uses: actions/checkout@v4
@@ -53,10 +62,19 @@ jobs:
             --platform ${{ matrix.platform }} \
             -v ${{ github.workspace }}:/src \
             -w /src \
-            debian:bookworm \
+            ${{ matrix.image }} \
             bash -c "
               apt-get update -q &&
               apt-get install -y --no-install-recommends cmake g++ build-essential &&
               cmake -B build -DCMAKE_BUILD_TYPE=Release &&
               cmake --build build --config Release
             "
+
+      - name: Run binary (${{ matrix.arch }})
+        run: |
+          docker run --rm \
+            --platform ${{ matrix.platform }} \
+            -v ${{ github.workspace }}:/src \
+            -w /src \
+            ${{ matrix.image }} \
+            ./build/vmaware
