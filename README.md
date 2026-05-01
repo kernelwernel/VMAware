@@ -22,11 +22,11 @@
 The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
+- Multi-architecture support (amd64, arm64, armhf, armel, i386, mips64el, ppc64el, riscv64, s390x)
 - Features around 90 unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Features the most cutting-edge techniques
 - Able to detect around 70 VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
 - Able to beat VM hardeners
-- Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
 - Available with C++11 and above
