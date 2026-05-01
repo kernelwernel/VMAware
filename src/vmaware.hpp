@@ -3493,7 +3493,7 @@ public:
             return static_cast<int>(
                 __popcnt(static_cast<unsigned int>(v)) +
                 __popcnt(static_cast<unsigned int>(v >> 32))
-                );
+            );
         #else
             return static_cast<int>(__popcnt64(static_cast<unsigned long long>(v)));
         #endif
@@ -3510,7 +3510,7 @@ public:
             std::string result;
             result.reserve(ws.size());
             for (wchar_t wc : ws) {
-                result.push_back((wc >= 0 && wc < 128)
+                result.push_back((static_cast<uint32_t>(wc) < 128)
                     ? static_cast<char>(wc)
                     : '?');
             }
@@ -6208,7 +6208,7 @@ public:
         if (
             util::exists("/mnt/windows/BstSharedFolder") ||
             util::exists("/sdcard/windows/BstSharedFolder")
-            ) {
+        ) {
             return core::add(brand_enum::BLUESTACKS);
         }
 
