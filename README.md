@@ -1,7 +1,7 @@
 <p align="center">
    <img src="assets/banner.jpg" align="center" width="500" title="VMAware">
    <br>
-   <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
+   <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cross-platform-build.yml">
    <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
    <img align="center" src="https://img.shields.io/badge/License-MIT-yellow.svg">
    <a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
