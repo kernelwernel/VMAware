@@ -8,6 +8,7 @@ on:
       - 'src/**/*.hpp'
       - 'gem/**/*.cpp'
       - 'gem/**/*.hpp'
+      - '.github/workflows/ruby_tests.yml'
 
 jobs:
   test_api:

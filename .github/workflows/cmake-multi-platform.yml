@@ -8,6 +8,7 @@ on:
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
+      - '.github/workflows/cmake-multi-platform.yml'
 
 jobs:
   build:

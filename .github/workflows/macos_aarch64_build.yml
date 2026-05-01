@@ -6,11 +6,13 @@ on:
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
+      - '.github/workflows/macos_aarch64_build.yml'
   pull_request:
     branches: ["main"]
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
+      - '.github/workflows/macos_aarch64_build.yml'
   workflow_dispatch:
 
 jobs:
