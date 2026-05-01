@@ -5575,7 +5575,7 @@ public:
                 // the robust center: median M and MAD -> approximate sigma
                 const u64 M = median_of_sorted(s, 0, s.size());
 
-                // Faster MAD: select the median deviation in linear time instead of sorting all deviations.
+                // select the median deviation in linear time instead of sorting all deviations
                 std::vector<u64> absdev;
                 absdev.resize(N);
                 for (size_t i = 0; i < N; ++i) {
@@ -5741,7 +5741,9 @@ public:
             std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
             const size_t BATCH_SIZE = batch_dist(gen);
             i32 dummy_res[4]{};
-            size_t valid = 0; // end of setup phase
+            size_t valid = 0; 
+            size_t invalid = 0;
+            bool apply_multiplier = false; // end of setup phase
 
             SleepEx(0, FALSE); // try to get fresh quantum before starting warm-up phase, give time to kernel to set up priorities
 
@@ -5765,10 +5767,13 @@ public:
 
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
-                // force cpuid here so that the hypervisor is either forced to keep interception and try to bypass latency, or disable interception and try to bypass XSAVE states
-                trigger_vmexit(dummy_res, 0x0, 0); // fastest cpuid path, on purpose for stability in the measurement
-                // scaled by 2x to negate cache invalidation ping-ponging across distant NUMA nodes, as our core randomizer will pin the threads on distant cores
-                for (int i = 0; i < 2; ++i) {
+                // vmexit here so that the hypervisor is either forced to keep interception and try to bypass latency, or disable interception and try to bypass XSAVE states
+                if (!apply_multiplier) {
+                    trigger_vmexit(dummy_res, 0x0, 0);
+                }
+                else {
+                    // scaled by 2x if we dynamically detect cache invalidation ping-ponging across distant NUMA nodes, as our core randomizer pin our threads on different CPUs
+                    trigger_vmexit(dummy_res, 0x0, 0);
                     trigger_vmexit(dummy_res, 0x0, 0);
                 }
                 std::atomic_signal_fence(std::memory_order_seq_cst);
@@ -5779,7 +5784,13 @@ public:
 
                 r_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
-                for (int i = 0; i < 16; ++i) _mm_lfence(); // 16 LFENCES is enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
+                if (!apply_multiplier) {
+                    for (int i = 0; i < 8; ++i) _mm_lfence(); // 8 LFENCES is enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
+                }
+                else {
+                    // scaled if counter thread is not able to increment in time due to CPUID being too fast
+                    for (int i = 0; i < 16; ++i) _mm_lfence();
+                }
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 r_post = state.counter;
 
@@ -5788,6 +5799,10 @@ public:
                     vm_samples[valid] = v_post - v_pre;
                     ref_samples[valid] = r_post - r_pre;
                     valid++;
+                }
+                else if (v_post <= v_pre && !apply_multiplier) {
+                    invalid++;
+                    if (invalid >= 1000) apply_multiplier = true;
                 }
             }
 
