@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  workflow_run:
+    workflows:
+      - "Linux Multi-Architecture Build"
+      - "macOS aarch64 Build"
+      - ".github/workflows/windows.yml"
+    types: [completed]
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        run: |
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "${{ github.event.workflow_run.name }} did not succeed (conclusion: ${{ github.event.workflow_run.conclusion }})"
+            exit 1
+          fi

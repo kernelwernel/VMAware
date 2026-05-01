@@ -5731,9 +5731,9 @@ public:
             seed ^= seed >> 33;
 
             std::seed_seq seq{
-                static_cast<std::uint32_t>(seed),
-                static_cast<std::uint32_t>(seed >> 32),
-                static_cast<std::uint32_t>(seed ^ 0x9e3779b9u),
+                static_cast<u32>(seed),
+                static_cast<u32>(seed >> 32),
+                static_cast<u32>(seed ^ 0x9e3779b9u),
                 ct_seed
             };
 
