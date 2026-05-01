@@ -5742,7 +5742,7 @@ public:
             const size_t BATCH_SIZE = batch_dist(gen);
             i32 dummy_res[4]{};
             size_t valid = 0; 
-            size_t invalid = 0;
+            i16 invalid = 0;
             bool apply_multiplier = false; // end of setup phase
 
             SleepEx(0, FALSE); // try to get fresh quantum before starting warm-up phase, give time to kernel to set up priorities
@@ -12228,6 +12228,7 @@ public:
 
     /**
      * @brief Check whether a hypervisor uses EPT/NPT hooking to intercept hardware breakpoints
+     * @note This hypervisor detection also affects debuggers
      * @category Windows
      * @implements VM::HYPERVISOR_HOOK
      */
@@ -12538,6 +12539,7 @@ public:
             // bit 0      = 1
             // bits 17:16 = 11b
             // bits 19:18 = 00b
+            ctx.Dr7 = 0x30001;
             status = nt_set_context_thread(current_thread, &ctx);
             if (status < 0) {
                 cleanup_pages();
@@ -12681,6 +12683,7 @@ public:
         // bit 0      = 1
         // bits 17:16 = 11b
         // bits 19:18 = 00b
+        ctx.Dr7 = 0x30001;
         status = nt_set_context_thread(current_thread, &ctx);
         if (status < 0) {
             rtl_remove_vectored_exception_handler(veh_handle);
@@ -12716,7 +12719,6 @@ public:
         return hook_detected || !ermsb_trap_detected;
     #endif
     }
-
 
     /**
      * @brief Check whether a hypervisor delays trap flags over exiting instructions
