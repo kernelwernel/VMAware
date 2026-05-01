@@ -5477,7 +5477,7 @@ public:
                 // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
                 // we use our own compile-time seed that cannot be taken by examining PE/Linux binary properties and would need static/dynamic analysis
                 // this changes per build and per process session due to hardware ASLR
-                std::uint64_t seed = 0;
+                u64 seed = 0;
                 seed ^= static_cast<u64>(ct_seed);
                 seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&current_process));
                 seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&procMask)) << 1;
@@ -5711,12 +5711,12 @@ public:
 
             // so that hypervisor can't predict how many samples we will collect
             // stack-only / ASLR-derived component (no APIs, no rdtsc)
-            std::uint64_t seed = 0;
-            seed ^= static_cast<std::uint64_t>(ct_seed);
+            u64 seed = 0;
+            seed ^= static_cast<u64>(ct_seed);
 
-            std::uint64_t local1 = 0;
-            std::uint64_t local2 = 0;
-            std::uint64_t local3 = 0;
+            u64 local1 = 0;
+            u64 local2 = 0;
+            u64 local3 = 0;
 
             seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
             seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&local1)) << 1;
