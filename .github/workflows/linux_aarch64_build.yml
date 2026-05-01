@@ -23,7 +23,7 @@ jobs:
       - name: Install cross-compilation toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++-aarch64-linux-gnu
+          sudo apt-get install -y cmake g++-aarch64-linux-gnu qemu-user-static
 
       - name: Configure CMake
         run: |
@@ -36,6 +36,9 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release
+
+      - name: Run binary
+        run: qemu-aarch64-static -L /usr/aarch64-linux-gnu build/vmaware
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
