@@ -5477,15 +5477,15 @@ public:
                 // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
                 // we use our own compile-time seed that cannot be taken by examining PE/Linux binary properties and would need static/dynamic analysis
                 // this changes per build and per process session due to hardware ASLR
-                std::uintptr_t seed = 0;
-                seed ^= static_cast<std::uintptr_t>(ct_seed);
-                seed ^= reinterpret_cast<std::uintptr_t>(&current_process);
-                seed ^= reinterpret_cast<std::uintptr_t>(&procMask) << 1;
-                seed ^= reinterpret_cast<std::uintptr_t>(&sysMask) << 2;
-                seed ^= reinterpret_cast<std::uintptr_t>(&len) << 3;
-                seed ^= reinterpret_cast<std::uintptr_t>(&stackBuf[0]) << 4;
-                seed ^= reinterpret_cast<std::uintptr_t>(&heapBuf) << 5;
-                seed ^= reinterpret_cast<std::uintptr_t>(&buf) << 6;
+                std::uint64_t seed = 0;
+                seed ^= static_cast<u64>(ct_seed);
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&current_process));
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&procMask)) << 1;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&sysMask)) << 2;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&len)) << 3;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&stackBuf[0])) << 4;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&heapBuf)) << 5;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&buf)) << 6;
 
                 seed ^= seed >> 33;
                 seed *= 0xff51afd7ed558ccdULL;
@@ -5711,17 +5711,17 @@ public:
 
             // so that hypervisor can't predict how many samples we will collect
             // stack-only / ASLR-derived component (no APIs, no rdtsc)
-            std::uintptr_t seed = 0;
-            seed ^= static_cast<std::uintptr_t>(ct_seed);
+            std::uint64_t seed = 0;
+            seed ^= static_cast<std::uint64_t>(ct_seed);
 
             std::uint64_t local1 = 0;
             std::uint64_t local2 = 0;
             std::uint64_t local3 = 0;
 
-            seed ^= reinterpret_cast<std::uintptr_t>(&seed);
-            seed ^= reinterpret_cast<std::uintptr_t>(&local1) << 1;
-            seed ^= reinterpret_cast<std::uintptr_t>(&local2) << 2;
-            seed ^= reinterpret_cast<std::uintptr_t>(&local3) << 3;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&local1)) << 1;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&local2)) << 2;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&local3)) << 3;
 
             // splitmix64
             seed ^= seed >> 33;
