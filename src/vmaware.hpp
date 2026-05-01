@@ -5416,6 +5416,20 @@ public:
         bool hypervisor_detected = false;
         bool bypass_detected = false;
 
+        #define VMAWARE_STR2(x) #x
+        #define VMAWARE_STR(x) VMAWARE_STR2(x)
+
+        const u32 ct_seed = []() constexpr -> u32 {
+            constexpr char s[] = __DATE__ " " __TIME__ " " __FILE__ " " VMAWARE_STR(__LINE__);
+            u32 h = 2166136261u;
+            for (char c : s) {
+                if (!c) break;
+                h ^= static_cast<unsigned char>(c);
+                h *= 16777619u;
+            }
+            return h;
+        }();
+
         // search for the physical sibling of CPU 0, then pick a random CPU excluding it to avoid SMT locks
         auto get_target_mask = []() -> DWORD_PTR {
             const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
@@ -5460,10 +5474,36 @@ public:
             // this will affect latency if cache lines from trigger_thread and counter_thread are separated
             // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
             if (n) {
-                std::mt19937 gen(std::random_device{}());
+                // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
+                // we use our own compile-time seed that cannot be taken by examining PE/Linux binary properties and would need static/dynamic analysis
+                // this changes per build and per process session due to hardware ASLR
+                std::uintptr_t seed = 0;
+                seed ^= static_cast<std::uintptr_t>(ct_seed);
+                seed ^= reinterpret_cast<std::uintptr_t>(&current_process);
+                seed ^= reinterpret_cast<std::uintptr_t>(&procMask) << 1;
+                seed ^= reinterpret_cast<std::uintptr_t>(&sysMask) << 2;
+                seed ^= reinterpret_cast<std::uintptr_t>(&len) << 3;
+                seed ^= reinterpret_cast<std::uintptr_t>(&stackBuf[0]) << 4;
+                seed ^= reinterpret_cast<std::uintptr_t>(&heapBuf) << 5;
+                seed ^= reinterpret_cast<std::uintptr_t>(&buf) << 6;
+
+                seed ^= seed >> 33;
+                seed *= 0xff51afd7ed558ccdULL;
+                seed ^= seed >> 33;
+                seed *= 0xc4ceb9fe1a85ec53ULL;
+                seed ^= seed >> 33;
+
+                std::seed_seq seq{
+                    static_cast<u32>(seed),
+                    static_cast<u32>(seed >> 32),
+                    static_cast<u32>(seed ^ 0x9e3779b9u),
+                    ct_seed
+                };
+
+                std::mt19937 gen(seq);
                 return 1ull << idxs[std::uniform_int_distribution<u32>(0, n - 1)(gen)];
             }
-            return 1ull; // fallback
+            return 1ull;
         };
 
         // we dont use cpu::cpuid on purpose
@@ -5670,11 +5710,39 @@ public:
             SetThreadPriorityBoost(current_thread, TRUE); // disable dynamic boosts
 
             // so that hypervisor can't predict how many samples we will collect
-            std::mt19937 gen(std::random_device{}());
+            // stack-only / ASLR-derived component (no APIs, no rdtsc)
+            std::uintptr_t seed = 0;
+            seed ^= static_cast<std::uintptr_t>(ct_seed);
+
+            std::uint64_t local1 = 0;
+            std::uint64_t local2 = 0;
+            std::uint64_t local3 = 0;
+
+            seed ^= reinterpret_cast<std::uintptr_t>(&seed);
+            seed ^= reinterpret_cast<std::uintptr_t>(&local1) << 1;
+            seed ^= reinterpret_cast<std::uintptr_t>(&local2) << 2;
+            seed ^= reinterpret_cast<std::uintptr_t>(&local3) << 3;
+
+            // splitmix64
+            seed ^= seed >> 33;
+            seed *= 0xff51afd7ed558ccdULL;
+            seed ^= seed >> 33;
+            seed *= 0xc4ceb9fe1a85ec53ULL;
+            seed ^= seed >> 33;
+
+            std::seed_seq seq{
+                static_cast<std::uint32_t>(seed),
+                static_cast<std::uint32_t>(seed >> 32),
+                static_cast<std::uint32_t>(seed ^ 0x9e3779b9u),
+                ct_seed
+            };
+
+            std::mt19937 gen(seq);
             std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
             const size_t BATCH_SIZE = batch_dist(gen);
             i32 dummy_res[4]{};
             size_t valid = 0; // end of setup phase
+
             SleepEx(0, FALSE); // try to get fresh quantum before starting warm-up phase, give time to kernel to set up priorities
 
             std::vector<u64> vm_samples(BATCH_SIZE), ref_samples(BATCH_SIZE); // pre page-fault MMU, wwe wont warm-up cpuid samples for the P-states intentionally
