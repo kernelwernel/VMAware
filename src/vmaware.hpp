@@ -3564,7 +3564,7 @@ public:
             std::string msg_content = ss.str();
 
             if (printed_messages.find(msg_content) == printed_messages.end()) {
-#if (LINUX || APPLE)
+            #if (LINUX || APPLE)
                 constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
                 constexpr const char* bold = "\033[1m";
                 constexpr const char* blue = "\x1B[38;2;00;59;193m";
@@ -3578,9 +3578,9 @@ public:
                     << blue << "DEBUG"
                     << ansiexit << bold << black_bg << "]"
                     << ansiexit << " ";
-#else
+            #else
                 std::cout << "[DEBUG] ";
-#endif
+            #endif
                 std::cout << msg_content;
                 std::cout << std::dec << "\n";
 
