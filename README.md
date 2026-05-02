@@ -1,7 +1,7 @@
 <p align="center">
    <img src="assets/banner.jpg" align="center" width="500" title="VMAware">
    <br>
-   <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cmake-multi-platform.yml">
+   <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cross-platform-build.yml">
    <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
    <img align="center" src="https://img.shields.io/badge/License-MIT-yellow.svg">
    <a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
@@ -22,11 +22,11 @@
 The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
+- Multi-architecture support (amd64, arm64, armhf, armel, i386, mips64el, ppc64el, riscv64, s390x)
 - Features around 90 unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Features the most cutting-edge techniques
 - Able to detect around 70 VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
 - Able to beat VM hardeners
-- Compatible with x86 and ARM, with backwards compatibility for 32-bit systems
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
 - Available with C++11 and above

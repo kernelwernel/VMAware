@@ -6,11 +6,13 @@ on:
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
+      - '.github/workflows/macos_aarch64_build.yml'
   pull_request:
     branches: ["main"]
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
+      - '.github/workflows/macos_aarch64_build.yml'
   workflow_dispatch:
 
 jobs:
@@ -29,6 +31,9 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release
+
+      - name: Run binary
+        run: build/vmaware
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
