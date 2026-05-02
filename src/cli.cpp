@@ -1160,7 +1160,7 @@ static void general(
                     if (char_count <= 60) {
                         continue;
                     } else {
-                        if ((char_count - 1) >= (static_cast<unsigned long long>(max_line_length) + 3)) {
+                        if ((static_cast<unsigned long long>(char_count) - 1) >= (static_cast<unsigned long long>(max_line_length) + 3)) {
                             it = divided_description.insert(it + 1, "\n");
                             char_count = it->length() + 1;
                         } else {

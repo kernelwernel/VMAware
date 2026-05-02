@@ -3563,8 +3563,13 @@ public:
             print_to_stream(ss, std::forward<Args>(message)...);
             std::string msg_content = ss.str();
 
+            constexpr const char* prefix = "VM::";
+            if (msg_content.rfind(prefix, 0) != 0) {
+                msg_content.insert(0, prefix);
+            }
+
             if (printed_messages.find(msg_content) == printed_messages.end()) {
-        #if (LINUX || APPLE)
+#if (LINUX || APPLE)
                 constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
                 constexpr const char* bold = "\033[1m";
                 constexpr const char* blue = "\x1B[38;2;00;59;193m";
@@ -3578,9 +3583,9 @@ public:
                     << blue << "DEBUG"
                     << ansiexit << bold << black_bg << "]"
                     << ansiexit << " ";
-        #else
+#else
                 std::cout << "[DEBUG] ";
-        #endif
+#endif
                 std::cout << msg_content;
                 std::cout << std::dec << "\n";
 
@@ -5477,15 +5482,15 @@ public:
                 // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
                 // we use our own compile-time seed that cannot be taken by examining PE/Linux binary properties and would need static/dynamic analysis
                 // this changes per build and per process session due to hardware ASLR
-                std::uintptr_t seed = 0;
-                seed ^= static_cast<std::uintptr_t>(ct_seed);
-                seed ^= reinterpret_cast<std::uintptr_t>(&current_process);
-                seed ^= reinterpret_cast<std::uintptr_t>(&procMask) << 1;
-                seed ^= reinterpret_cast<std::uintptr_t>(&sysMask) << 2;
-                seed ^= reinterpret_cast<std::uintptr_t>(&len) << 3;
-                seed ^= reinterpret_cast<std::uintptr_t>(&stackBuf[0]) << 4;
-                seed ^= reinterpret_cast<std::uintptr_t>(&heapBuf) << 5;
-                seed ^= reinterpret_cast<std::uintptr_t>(&buf) << 6;
+                u64 seed = 0;
+                seed ^= static_cast<u64>(ct_seed);
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&current_process));
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&procMask)) << 1;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&sysMask)) << 2;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&len)) << 3;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&stackBuf[0])) << 4;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&heapBuf)) << 5;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&buf)) << 6;
 
                 seed ^= seed >> 33;
                 seed *= 0xff51afd7ed558ccdULL;
@@ -5507,17 +5512,51 @@ public:
         };
 
         // we dont use cpu::cpuid on purpose
-        auto trigger_vmexit = [](i32* info, i32 leaf, i32 sub) {
+        auto trigger_vmexit = []() {
+        #if (GCC || CLANG)
+            u32 a = 0, c = 0, d;
+            #if (x86_64)
+                __asm__ volatile (
+                    "pushq %%rbx\n\t" // better than doing something like xchgq %%rbx, %%rdi\n\t to swap rbx to rdi avoiding GCC pushing/popping rbx on the stack
+                    "cpuid\n\t"
+                    "popq %%rbx\n\t"
+                    : "+a"(a), "+c"(c), "=d"(d) // + mapping forces compiler to use registers, avoids stack spills
+                    :
+                    : "cc"
+                    );
+            #else
+                __asm__ volatile (
+                    "pushl %%ebx\n\t"
+                    "cpuid\n\t"
+                    "popl %%ebx\n\t"
+                    : "+a"(a), "+c"(c), "=d"(d)
+                    :
+                    : "cc"
+                    );
+            #endif
+        #else
+            i32 dummy[4];
+            __cpuidex(dummy, 0x0, 0);
+        #endif
+        };
+
+        auto execute_lfence_8 = []() {
+        // hard-unrolled to prevent GCC from inserting cmp/jl loop validations inside the timed window
         #if (GCC || CLANG)
             __asm__ volatile (
-                "cpuid"
-                : "=a"(info[0]), "=b"(info[1]), "=c"(info[2]), "=d"(info[3])
-                : "a"(leaf), "c"(sub)
-                : "cc", "memory"
+                "lfence\n\t lfence\n\t lfence\n\t lfence\n\t"
+                "lfence\n\t lfence\n\t lfence\n\t lfence\n\t"
+                ::: "memory"
                 );
         #else
-            __cpuidex(info, leaf, sub);
+            _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence();
+            _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence();
         #endif
+        };
+
+        auto execute_lfence_16 = [&]() {
+            execute_lfence_8();
+            execute_lfence_8();
         };
 
         const DWORD_PTR target_affinity = get_target_mask();
@@ -5532,23 +5571,17 @@ public:
             while (!state.start_test.load(std::memory_order_acquire)) {}
 
             while (!state.test_done.load(std::memory_order_relaxed)) {
+                const u64 current = state.counter; // to silence warnings about incrementing volatile stuff
+                state.counter = current + 1; // better than calling incq in inline assembly, standard increment forces the correct cache behavior we want
+
             #if (GCC || CLANG)
-                #if (x86_64)
-                // A single incq is enough. Unrolling for example 8 times on a volatile memory address 
-                // creates unpredictable store-buffer behavior and we want it stable, latency is aprox 1 cycle in all microarchs
-                    __asm__ volatile ("incq %0\n\t" : "+m" (state.counter) : : "cc", "memory");
-                #else
-                    __asm__ volatile (
-                        "addl $1, %0; adcl $0, %1\n\t"
-                        : "+m" (((u32*)&state.counter)[0]), "+m" (((u32*)&state.counter)[1])
-                        : : "cc", "memory");
-                #endif
-            #else
-                state.counter++;
+                // prevents aggressive loop unrolling/batching of volatile stores
+                __asm__ volatile("" ::: "memory"); 
             #endif
             }
         };
 
+        // it will execute cpuid and lfence, and compare its latency
         auto trigger_thread = [&]() {
             auto calculate_latency = [&](const std::vector<u64>& samples_in) -> u64 {
                 if (samples_in.empty()) return 0;
@@ -5711,19 +5744,18 @@ public:
 
             // so that hypervisor can't predict how many samples we will collect
             // stack-only / ASLR-derived component (no APIs, no rdtsc)
-            std::uintptr_t seed = 0;
-            seed ^= static_cast<std::uintptr_t>(ct_seed);
+            u64 seed = 0;
+            seed ^= static_cast<u64>(ct_seed);
 
-            std::uint64_t local1 = 0;
-            std::uint64_t local2 = 0;
-            std::uint64_t local3 = 0;
+            u64 local1 = 0;
+            u64 local2 = 0;
+            u64 local3 = 0;
 
-            seed ^= reinterpret_cast<std::uintptr_t>(&seed);
-            seed ^= reinterpret_cast<std::uintptr_t>(&local1) << 1;
-            seed ^= reinterpret_cast<std::uintptr_t>(&local2) << 2;
-            seed ^= reinterpret_cast<std::uintptr_t>(&local3) << 3;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&local1)) << 1;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&local2)) << 2;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&local3)) << 3;
 
-            // splitmix64
             seed ^= seed >> 33;
             seed *= 0xff51afd7ed558ccdULL;
             seed ^= seed >> 33;
@@ -5731,16 +5763,15 @@ public:
             seed ^= seed >> 33;
 
             std::seed_seq seq{
-                static_cast<std::uint32_t>(seed),
-                static_cast<std::uint32_t>(seed >> 32),
-                static_cast<std::uint32_t>(seed ^ 0x9e3779b9u),
+                static_cast<u32>(seed),
+                static_cast<u32>(seed >> 32),
+                static_cast<u32>(seed ^ 0x9e3779b9u),
                 ct_seed
             };
 
             std::mt19937 gen(seq);
             std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
             const size_t BATCH_SIZE = batch_dist(gen);
-            i32 dummy_res[4]{};
             size_t valid = 0; 
             i16 invalid = 0;
             bool apply_multiplier = false; // end of setup phase
@@ -5754,47 +5785,65 @@ public:
             state.start_test.store(true, std::memory_order_release); // _mm_pause can be exited conditionally, spam hit L3
             // warm-up to settle caches, scheduler and frequency boosts
             for (int i = 0; i < 1000; ++i) {
-                for (int j = 0; j < 2; ++j) trigger_vmexit(dummy_res, 0x0, 0);
+                for (int j = 0; j < 2; ++j) trigger_vmexit();
                 for (int j = 0; j < 16; ++j) _mm_lfence(); // good candidate as a reference with cpuid because it's a serializing instruction AND can't be intercepted in VCMB/VMCS
             }
 
+            // inside the timing windows, there must be zero memory uutpu (no stack arrays can be written to), zero conditional branches and zero stack spilling (no register push/pops)
             while (valid < BATCH_SIZE) {
-                // interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
+                // cpuid and lfence interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
                 u64 v_pre, v_post, r_pre, r_post, sync;
 
                 sync = state.counter; while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
                 sync = state.counter; while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
 
-                v_pre = state.counter;
-                std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
-                // vmexit here so that the hypervisor is either forced to keep interception and try to bypass latency, or disable interception and try to bypass XSAVE states
+                // tick variables (v_pre, v_post, r_pre and r_post) are repeated inside loops on purpose
                 if (!apply_multiplier) {
-                    trigger_vmexit(dummy_res, 0x0, 0);
+                    v_pre = state.counter; 
+                    std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
+
+                    trigger_vmexit(); // this forces the hypervisor to keep interception and try to bypass latency, or disable interception and try to bypass XSAVE states
+
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+                    v_post = state.counter;
                 }
                 else {
                     // scaled by 2x if we dynamically detect cache invalidation ping-ponging across distant NUMA nodes, as our core randomizer pin our threads on different CPUs
-                    trigger_vmexit(dummy_res, 0x0, 0);
-                    trigger_vmexit(dummy_res, 0x0, 0);
+                    v_pre = state.counter;
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+
+                    trigger_vmexit();
+                    trigger_vmexit();
+
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+                    v_post = state.counter;
                 }
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                v_post = state.counter;
 
                 sync = state.counter; while (state.counter == sync); // sync to our counter tick again
                 sync = state.counter; while (state.counter == sync);
 
-                r_pre = state.counter;
-                std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
                 if (!apply_multiplier) {
-                    for (int i = 0; i < 8; ++i) _mm_lfence(); // 8 LFENCES is enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
+                    r_pre = state.counter;
+                    std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
+
+                    // 8 LFENCES is enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race (so that the counter thread sees an increment)
+                    execute_lfence_8();
+
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+                    r_post = state.counter;
                 }
                 else {
-                    // scaled if counter thread is not able to increment in time due to CPUID being too fast
-                    for (int i = 0; i < 16; ++i) _mm_lfence();
-                }
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                r_post = state.counter;
+                    r_pre = state.counter;
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
 
-                // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not let either the kernel or this app handle a TSC read
+                    // scaled if counter thread is not able to increment in time due to CPUID being too fast
+                    execute_lfence_16();
+
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+                    r_post = state.counter;
+                }
+
+                // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not use TSC or any other clock
                 if (v_post > v_pre && r_post > r_pre) {
                     vm_samples[valid] = v_post - v_pre;
                     ref_samples[valid] = r_post - r_pre;
@@ -5802,17 +5851,20 @@ public:
                 }
                 else if (v_post <= v_pre && !apply_multiplier) {
                     invalid++;
-                    if (invalid >= 1000) apply_multiplier = true;
+                    if (invalid >= 250) {
+                        debug("TIMER: Detected trigger thread monopolizing cache ownership; unstable path was activated to increase performance");
+                        apply_multiplier = true;
+                    }
                 }
             }
 
             state.test_done.store(true, std::memory_order_release);
 
-            const u64 cpuid_l = calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can detect (SMIs, etc)
+            const u64 cpuid_l = calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can't detect (SMIs, NMIs, etc)
             const u64 ref_l = calculate_latency(ref_samples);
             const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
 
-            // VMM == Time spent in hypervisor; nVMM == Time spent in baremetal
+            // VMM = Time spent in hypervisor; nVMM = Time spent in baremetal
             debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ",  ref_l, " | Ratio -> ", latency_ratio);
             if (latency_ratio >= threshold) hypervisor_detected = true;
 
@@ -5822,10 +5874,10 @@ public:
             // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying Intel-specific behavior)
             if (cpu::is_amd() && !hypervisor_detected) {
                 i32 res_d0[4], res_d1[4], res_d12[4], res_ext[4];
-                trigger_vmexit(res_d0, 0xD, 0);    // XCR0 features
-                trigger_vmexit(res_d1, 0xD, 1);    // XCR0 + XSS features
-                trigger_vmexit(res_d12, 0xD, 12);  // CET State details
-                trigger_vmexit(res_ext, 0x80000008, 0);
+                cpu::cpuid(res_d0, 0xD, 0);    // XCR0 features
+                cpu::cpuid(res_d1, 0xD, 1);    // XCR0 + XSS features
+                cpu::cpuid(res_d12, 0xD, 12);  // CET State details
+                cpu::cpuid(res_ext, 0x80000008, 0);
 
                 const bool hardware_supports_cet = (res_d12[0] > 0);
                 const u32 active_xcr0_size = (u32)res_d0[1];  // size for features enabled in XCR0
@@ -10367,127 +10419,90 @@ public:
     [[nodiscard]] static bool blockstep() {
         volatile int saw_single_step = 0;
 
-    #if (x86_32)
-        __try
-        {
-        #if (CLANG || GCC)
-            __asm__ __volatile__(
-                // set TF in EFLAGS
-                "pushfd\n\t"
-                "orl $0x100, (%%esp)\n\t"
-                "popfd\n\t"
-
-                // because TF was set, CPUID would normally cause a #DB on the next instruction
-                // if placed after 'mov ss', it consumes the 1-instruction inhibition window so the check wouldn't work
-                "xor %%eax, %%eax\n\t"
-
-                // execute MOV SS,AX (reload SS with itself) to force the interruptible state block
-                "mov %%ss, %%ax\n\t"
-                "mov %%ax, %%ss\n\t" // this blocks any debug exception for exactly one instruction
-
-                "cpuid\n\t"
-
-                // TF's single-step now fires here on baremetal
-                "nop\n\t"
-
-                "pushfd\n\t"
-                "andl $0xFFFFFEFF, (%%esp)\n\t"
-                "popfd\n\t"
-                :
-            :
-                : "eax", "ebx", "ecx", "edx", "cc", "memory"
-            );
-        #else
-            __asm
-            {
-                // same logic as above
+    #if (x86_32) && !(CLANG || GCC)
+        __try {
+            __asm {
                 pushfd
-                or dword ptr[esp], 0x100
+                or dword ptr[esp], 0x100 // set TF
                 popfd
                 xor eax, eax
-                mov ax, ss
-                mov ss, ax
+                mov ax, ss 
+                mov ss, ax // this blocks any debug exception for exactly one instruction
                 cpuid
-                nop
+                nop // TF's single-step should fire here on baremetal except on a few buggy processors
                 pushfd
                 and dword ptr[esp], 0xFFFFFEFF
                 popfd
             }
-        #endif
         }
-        __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP
-            ? EXCEPTION_EXECUTE_HANDLER
-            : EXCEPTION_CONTINUE_SEARCH)
-        {
+        __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
             saw_single_step = 1;
         }
-        return (saw_single_step == 0) ? true : false;
-
-    #elif (x86_64)
+        return (saw_single_step == 0);
+    #elif (x86_64) || ((x86_32) && (CLANG || GCC))
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
-        const char* names[] = { "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtFlushInstructionCache", "NtFreeVirtualMemory" };
+        const char* names[] = {
+            "NtAllocateVirtualMemory", "NtProtectVirtualMemory",
+            "NtFlushInstructionCache", "NtFreeVirtualMemory"
+        };
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        const auto nt_allocate_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
-        const auto nt_protect_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
-        const auto nt_flush_instruction_cache = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
-        const auto nt_free_virtual_memory = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
+        const auto nt_alloc = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
+        const auto nt_protect = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
+        const auto nt_flush = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
+        const auto nt_free = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
 
-        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_flush_instruction_cache || !nt_free_virtual_memory) {
-            return false;
-        }
+        if (!nt_alloc || !nt_protect || !nt_flush || !nt_free) return false;
 
+        // these opcodes are byte-for-byte identical for both x86_32 and x86_64 architectures 
+        // like, 0x53 maps to push ebx in 32-bit and push rbx in 64-bit
         static constexpr u8 blockstep_opcodes[] = {
-            0x53,                                           // push rbx (to preserve non-volatile register against cpuid)
-            0x9C,                                           // pushfq
-            0x81, 0x0C, 0x24, 0x00, 0x01, 0x00, 0x00,       // or dword ptr [rsp], 0x100
-            0x9D,                                           // popfq
-            0x31, 0xC0,                                     // xor eax, eax
-            0x8C, 0xD0,                                     // mov ax, ss
-            0x8E, 0xD0,                                     // mov ss, ax
-            0x0F, 0xA2,                                     // cpuid
-            0x90,                                           // nop
-            0x9C,                                           // pushfq
-            0x81, 0x24, 0x24, 0xFF, 0xFE, 0xFF, 0xFF,       // and dword ptr [rsp], 0xFFFFFEFF
-            0x9D,                                           // popfq
-            0x5B,                                           // pop rbx
-            0xC3                                            // ret
+            0x53,                                     // push rbx/ebx (preserve non-volatile register against cpuid)
+            0x9C,                                     // pushfq/pushfd
+            0x81, 0x0C, 0x24, 0x00, 0x01, 0x00, 0x00, // or dword ptr [rsp/esp], 0x100
+            0x9D,                                     // popfq/popfd
+            0x31, 0xC0,                               // xor eax, eax
+            0x8C, 0xD0,                               // mov ax, ss
+            0x8E, 0xD0,                               // mov ss, ax
+            0x0F, 0xA2,                               // cpuid
+            0x90,                                     // nop
+            0x9C,                                     // pushfq/pushfd
+            0x81, 0x24, 0x24, 0xFF, 0xFE, 0xFF, 0xFF, // and dword ptr [rsp/esp], 0xFFFFFEFF
+            0x9D,                                     // popfq/popfd
+            0x5B,                                     // pop rbx/ebx
+            0xC3                                      // ret
         };
 
         const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
         PVOID base = nullptr;
         SIZE_T region_size = sizeof(blockstep_opcodes);
-        NTSTATUS st = nt_allocate_virtual_memory(current_process, &base, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        if (!NT_SUCCESS(st) || !base) {
+
+        if (!NT_SUCCESS(nt_alloc(current_process, &base, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)) || !base) {
             return false;
         }
 
         memcpy(base, blockstep_opcodes, sizeof(blockstep_opcodes));
 
         ULONG old_protection = 0;
-        st = nt_protect_virtual_memory(current_process, &base, &region_size, PAGE_EXECUTE_READ, &old_protection);
-        if (!NT_SUCCESS(st)) {
-            region_size = 0;
-            nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
-            return false;
-        }
+        NTSTATUS st = nt_protect(current_process, &base, &region_size, PAGE_EXECUTE_READ, &old_protection);
 
-        nt_flush_instruction_cache(current_process, base, region_size);
-
-        __try {
-            reinterpret_cast<void(*)()>(base)();
-        }
-        __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
-            saw_single_step = 1;
+        if (NT_SUCCESS(st)) {
+            nt_flush(current_process, base, region_size);
+            __try {
+                reinterpret_cast<void(*)()>(base)();
+            }
+            __except (GetExceptionCode() == EXCEPTION_SINGLE_STEP ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+                saw_single_step = 1;
+            }
         }
 
         region_size = 0;
-        nt_free_virtual_memory(current_process, &base, &region_size, MEM_RELEASE);
+        nt_free(current_process, &base, &region_size, MEM_RELEASE);
 
-        return (saw_single_step == 0) ? true : false;
+        return NT_SUCCESS(st) && (saw_single_step == 0);
     #else
         return false;
     #endif
@@ -11443,7 +11458,7 @@ public:
 
     /**
      * @brief Check whether the CPU is genuine and its reported instruction capabilities are not masked
-     * @category Windows
+     * @category Windows, x86
      * @implements VM::CPU_HEURISTIC
      */
     [[nodiscard]] static bool cpu_heuristic() {
@@ -11918,7 +11933,7 @@ public:
     [[nodiscard]] static bool clock() {
     #if (ARM)
 		return false; // ARM systems do not have the classic x86 timers
-    #endif
+    #else   
 		if (util::is_running_under_translator()) {
             debug("CLOCK: Running inside an ARM CPU");
             return false;
@@ -12056,12 +12071,13 @@ public:
 		SetupDiDestroyDeviceInfoList(devs);
 		
 		return !found;
+    #endif  
     }
 
 
     /**
      * @brief Check whether the hypervisor correctly handles MSR behavior
-     * @category Windows
+     * @category Windows, x86
      * @implements VM::MSR
      */
     [[nodiscard]] static bool msr() {
@@ -12126,7 +12142,7 @@ public:
     /**
      * @brief Check whether KVM attempts to patch a mismatched hypercall instruction
      * @link https://lists.nongnu.org/archive/html/qemu-devel/2025-07/msg05044.html
-     * @category Windows
+     * @category Windows, x86
      * @implements VM::KVM_INTERCEPTION
      */
     [[nodiscard]] static bool kvm_interception() {
@@ -12229,13 +12245,14 @@ public:
     /**
      * @brief Check whether a hypervisor uses EPT/NPT hooking to intercept hardware breakpoints
      * @note This hypervisor detection also affects debuggers
-     * @category Windows
+     * @category Windows, x86
      * @implements VM::HYPERVISOR_HOOK
      */
     [[nodiscard]] static bool hypervisor_hook() {
     #if (!x86)
         return false;
     #else
+        if (util::is_running_under_translator()) return false;
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -12315,7 +12332,7 @@ public:
             auto* dos_header = reinterpret_cast<PIMAGE_DOS_HEADER>(module);
             if (dos_header->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
 
-            auto* nt_headers = reinterpret_cast<PIMAGE_NT_HEADERS>(reinterpret_cast<uint8_t*>(module) + dos_header->e_lfanew);
+            auto* nt_headers = reinterpret_cast<PIMAGE_NT_HEADERS>(reinterpret_cast<u8*>(module) + dos_header->e_lfanew);
             if (nt_headers->Signature != IMAGE_NT_SIGNATURE) return nullptr;
 
             auto* section = IMAGE_FIRST_SECTION(nt_headers);
@@ -12323,7 +12340,7 @@ public:
 
                 // only scan memory marked as executable
                 if ((section->Characteristics & IMAGE_SCN_MEM_EXECUTE) != 0) {
-                    uint8_t* ptr = reinterpret_cast<uint8_t*>(module) + section->VirtualAddress;
+                    u8* ptr = reinterpret_cast<u8*>(module) + section->VirtualAddress;
                     size_t size = section->Misc.VirtualSize;
 
                     if (size < 2) {
@@ -12345,7 +12362,7 @@ public:
         using find_double_cc_t = void* (*)(void*);
         find_double_cc_t find_double_cc = [](void* pointer_in_page) -> void* {
             // align down to the start of the 4KB page
-            auto* ptr = reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(pointer_in_page) & ~0xFFF);
+            auto* ptr = reinterpret_cast<u8*>(reinterpret_cast<uintptr_t>(pointer_in_page) & ~0xFFF);
 
             for (size_t i = 0; i < (0x1000 - 1); ++i) {
                 if (ptr[i] == 0xCC && ptr[i + 1] == 0xCC) {
@@ -12377,7 +12394,7 @@ public:
         NTSTATUS status = nt_protect_virtual_memory(current_process, &base_address, &prot_region_size, PAGE_EXECUTE_READWRITE, &old_protect);
         if (status < 0) return false;
 
-        *static_cast<volatile uint8_t*>(pointer) = 0xC3;
+        *static_cast<volatile u8*>(pointer) = 0xC3;
 
         base_address = pointer;
         prot_region_size = 1;
@@ -12392,7 +12409,7 @@ public:
             hook_detected = true;
         }
         else {
-            // total hardware processors
+            // now try on all cores, total hardware processors
             struct SYSTEM_BASIC_INFORMATION_LOCAL {
                 ULONG Reserved;
                 ULONG TimerResolution;
@@ -12407,7 +12424,7 @@ public:
                 CCHAR NumberOfProcessors;
             };
 
-            SYSTEM_BASIC_INFORMATION_LOCAL sys_info = { 0 };
+            SYSTEM_BASIC_INFORMATION_LOCAL sys_info{};
             ULONG ret_len = 0;
             ULONG num_processors = 1;
 
@@ -12418,204 +12435,28 @@ public:
             }
             num_processors = sys_info.NumberOfProcessors;
 
-            // plain struct to pass memory pointers (no destructors)
-            struct thread_context {
-                void* pointer;
-                volatile LONG* did_anyone_throw;
-            };
-
             volatile LONG did_anyone_throw = 0;
 
-            thread_context t_ctx{};
-            t_ctx.pointer = pointer;
-            t_ctx.did_anyone_throw = &did_anyone_throw;
-
-            struct thread_proc_thunk {
-                static DWORD __stdcall proc(PVOID param) {
-                    auto* c = static_cast<thread_context*>(param);
-
-                    __try {
-                        using func_t = void(*)();
-                        reinterpret_cast<func_t>(c->pointer)();
-                    }
-                    __except (EXCEPTION_EXECUTE_HANDLER) {
-                        _InterlockedExchange(c->did_anyone_throw, 1);
-                    }
-
-                    return 0;
-                }
-            };
-
-            using thread_routine_t = DWORD(__stdcall*)(PVOID);
-            thread_routine_t thread_proc = &thread_proc_thunk::proc;
-
-            HANDLE thread_handles[256] = {};
-            ULONG active_threads = 0;
-
-            PVOID src_page = nullptr;
-            PVOID dst_page = nullptr;
-            SIZE_T region_size = 0x2000;
-            PVOID veh_handle = nullptr;
-
-            // allocate source and destination pages
-            const NTSTATUS status_src = nt_allocate_virtual_memory(current_process, &src_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-            const NTSTATUS status_dst = nt_allocate_virtual_memory(current_process, &dst_page, 0, &region_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
-            if (status_src < 0 || status_dst < 0) {
-                if (src_page) {
-                    SIZE_T free_size = 0;
-                    nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE);
-                }
-                if (dst_page) {
-                    SIZE_T free_size = 0;
-                    nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE);
-                }
-                return false;
-            }
-
-            auto cleanup_pages = [&]() -> bool {
-                bool ok = true;
-
-                if (veh_handle) {
-                    rtl_remove_vectored_exception_handler(veh_handle);
-                    veh_handle = nullptr;
-                }
-
-                for (ULONG i = 0; i < active_threads; ++i) {
-                    if (thread_handles[i]) {
-                        ok = NT_SUCCESS(nt_close(thread_handles[i])) && ok;
-                        thread_handles[i] = nullptr;
-                    }
-                }
-
-                if (src_page) {
-                    SIZE_T free_size = 0;
-                    ok = NT_SUCCESS(nt_free_virtual_memory(current_process, &src_page, &free_size, MEM_RELEASE)) && ok;
-                }
-                if (dst_page) {
-                    SIZE_T free_size = 0;
-                    ok = NT_SUCCESS(nt_free_virtual_memory(current_process, &dst_page, &free_size, MEM_RELEASE)) && ok;
-                }
-
-                return ok;
-            };
-
-            if (util::is_running_under_translator())
-                return cleanup_pages() ? hook_detected : false;
-
-            // initialize src memory
-            __stosb(static_cast<PBYTE>(src_page), 0xAB, 0x2000);
-
-            thread_local static volatile bool ermsb_trap_detected = false;
-            ermsb_trap_detected = false;
-
-            // capture-less local lambda decays to PVECTORED_EXCEPTION_HANDLER function pointer
-            auto veh_handler = [](PEXCEPTION_POINTERS ctx) -> LONG {
-                if (ctx->ExceptionRecord->ExceptionCode == EXCEPTION_SINGLE_STEP) {
-                    ermsb_trap_detected = true;
-                    return EXCEPTION_CONTINUE_EXECUTION;
-                }
-                return EXCEPTION_CONTINUE_SEARCH;
-            };
-
-            veh_handle = rtl_add_vectored_exception_handler(1, static_cast<PVECTORED_EXCEPTION_HANDLER>(veh_handler));
-            if (!veh_handle) {
-                cleanup_pages();
-                return false;
-            }
-
-            CONTEXT ctx{};
-            ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
-            status = nt_get_context_thread(current_thread, &ctx);
-            if (status < 0) {
-                cleanup_pages();
-                return false;
-            }
-
-            // set hw breakpoint inside the source page
-            ctx.Dr0 = reinterpret_cast<DWORD64>(src_page) + 0x1000;
-
-            // Dr7 = 0x30001
-            // bit 0      = 1
-            // bits 17:16 = 11b
-            // bits 19:18 = 00b
-            ctx.Dr7 = 0x30001;
-            status = nt_set_context_thread(current_thread, &ctx);
-            if (status < 0) {
-                cleanup_pages();
-                return false;
-            }
-
-            __try {
-                __movsb(static_cast<PBYTE>(dst_page), static_cast<PBYTE>(src_page), 0x2000);
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER) {
-                // veh will already detect if Dr0 fired successfully
-            }
-
-            rtl_remove_vectored_exception_handler(veh_handle);
-            veh_handle = nullptr;
-
-            ctx.Dr0 = 0;
-            ctx.Dr7 = 0;
-            status = nt_set_context_thread(current_thread, &ctx);
-            if (status < 0) {
-                cleanup_pages();
-                return false;
-            }
-
             for (ULONG i = 0; i < num_processors && i < 256; ++i) {
-                HANDLE h_thread = nullptr;
-                // 0x1FFFFF = THREAD_ALL_ACCESS
-                NTSTATUS t_status = nt_create_thread_ex(&h_thread, THREAD_ALL_ACCESS, nullptr, current_process,
-                    reinterpret_cast<PVOID>(thread_proc), &t_ctx,
-                    0, 0, 0, 0, nullptr);
-
-                if (t_status < 0 || !h_thread) {
-                    if (h_thread && nt_close(h_thread) < 0) {
-                        cleanup_pages();
-                        return false;
-                    }
-                    cleanup_pages();
-                    return false;
-                }
-
-                // ebind the created thread to physical core i
+                // pin the current thread to physical core i
                 ULONG_PTR affinity = (ULONG_PTR)1 << i;
-                status = nt_set_information_thread(h_thread, 4 /* ThreadAffinityMask */, &affinity, sizeof(affinity));
+                status = nt_set_information_thread(current_thread, 4 /* ThreadAffinityMask */, &affinity, sizeof(affinity));
                 if (status < 0) {
-                    if (nt_close(h_thread) < 0) {
-                        cleanup_pages();
-                        return false;
-                    }
-                    cleanup_pages();
                     return false;
                 }
 
-                thread_handles[active_threads++] = h_thread;
-            }
-
-            // wait for completion on all cores
-            for (ULONG i = 0; i < active_threads; ++i) {
-                status = nt_wait_for_single_object(thread_handles[i], FALSE, nullptr);
-                if (status < 0) {
-                    cleanup_pages();
-                    return false;
+                __try {
+                    using func_t = void(*)();
+                    reinterpret_cast<func_t>(pointer)();
                 }
-
-                status = nt_close(thread_handles[i]);
-                if (status < 0) {
-                    cleanup_pages();
-                    return false;
+                __except (EXCEPTION_EXECUTE_HANDLER) {
+                    did_anyone_throw = 1;
                 }
-                thread_handles[i] = nullptr;
             }
 
             if (did_anyone_throw != 0) {
                 hook_detected = true;
             }
-
-            cleanup_pages();
         }
 
         PVOID src_page = nullptr;
@@ -12637,9 +12478,6 @@ public:
             }
             return false;
         }
-
-        if (util::is_running_under_translator())
-            return hook_detected;
 
         // initialize src memory
         __stosb(static_cast<PBYTE>(src_page), 0xAB, 0x2000);
@@ -12720,12 +12558,16 @@ public:
     #endif
     }
 
+
     /**
      * @brief Check whether a hypervisor delays trap flags over exiting instructions
-     * @category Windows
+     * @category Windows, x86
      * @implements VM::POPF
      */
     [[nodiscard]] static bool popf() {
+    #if (!x86)
+        return false;
+    #else
         const HMODULE ntdll = util::get_ntdll();
         if (!ntdll) return false;
 
@@ -12814,17 +12656,20 @@ public:
         nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
 
         return is_vm;
+    #endif
     }
 
 
     /**
      * @brief Check whether a hypervisor does not correctly emulate instructions in compatibility mode
-     * @category Windows
+     * @category Windows, x86_64
      * @implements VM::EIP_OVERFLOW
      */
     [[nodiscard]] static bool eip_overflow() {
     #if (!x86_64) 
-        return false;
+        // this requires mapping executable memory at the end of the 4GB address space (0xFFFF0000) so an instruction can wrap the 32 bit boundary
+        // because NtAllocateVirtualMemory will always return 0xC0000018 (STATUS_CONFLICTING_ADDRESSES) we physically cannot place an instruction at 0xFFFFFFFE
+        return false; 
     #else   
         #pragma pack(push, 1)
         struct iretq_frame {
@@ -12867,7 +12712,7 @@ public:
         const auto rtl_remove_vectored_exception_handler = reinterpret_cast<rtl_remove_vectored_exception_handler_t>(funcs[5]);
 
         if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory ||
-            !nt_flush_instruction_cache || !nt_free_virtual_memory || 
+            !nt_flush_instruction_cache || !nt_free_virtual_memory ||
             !rtl_add_vectored_exception_handler || !rtl_remove_vectored_exception_handler) {
             return false;
         }
@@ -12888,9 +12733,9 @@ public:
             }
 
             if (g_recovery_pad != 0) {
-                exc_info->ContextRecord->SegCs = 0x33;           
+                exc_info->ContextRecord->SegCs = 0x33;
                 exc_info->ContextRecord->Rip = g_recovery_pad;   // cleanup shellcode
-                exc_info->ContextRecord->Rsp = g_saved_rsp;     
+                exc_info->ContextRecord->Rsp = g_saved_rsp;
                 return EXCEPTION_CONTINUE_EXECUTION;
             }
 
@@ -12929,10 +12774,10 @@ public:
         }
 
         // map stub bytes into allocated chunk
-        uint8_t* code_ptr = static_cast<uint8_t*>(shellcode_base);
+        u8* code_ptr = static_cast<u8*>(shellcode_base);
         for (size_t i = 0; i < sizeof(switch_stub); ++i) code_ptr[i] = switch_stub[i];
 
-        uint8_t* rec_ptr = code_ptr + sizeof(switch_stub);
+        u8* rec_ptr = code_ptr + sizeof(switch_stub);
         for (size_t i = 0; i < sizeof(recover_stub); ++i) rec_ptr[i] = recover_stub[i];
 
         // executable memory protection
@@ -12971,7 +12816,7 @@ public:
 
         if (alloc_status >= 0 && boundary_base == reinterpret_cast<PVOID>(0xFFFF0000ULL)) {
             // inject cpuid at the strict end of the compat-mode space
-            uint8_t* execution_target = reinterpret_cast<uint8_t*>(0xFFFFFFFEULL);
+            u8* execution_target = reinterpret_cast<u8*>(0xFFFFFFFEULL);
             execution_target[0] = 0x0F;
             execution_target[1] = 0xA2;
 
@@ -12980,7 +12825,7 @@ public:
             frame.cs = 0x23;
 
             // dispatch hardware context switch shellcode
-            auto switch_func = reinterpret_cast<void(*)(iretq_frame*, uintptr_t, uint64_t*)>(code_ptr);
+            auto switch_func = reinterpret_cast<void(*)(iretq_frame*, uintptr_t, u64*)>(code_ptr);
             switch_func(&frame, stack32_ptr, &g_saved_rsp);
 
             SIZE_T free_size = 0;
@@ -14273,6 +14118,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
             {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::POPF, {100, VM::popf}},
+            {VM::BLOCKSTEP, {100, VM::blockstep}},
             {VM::MSR, {100, VM::msr}},
             {VM::EDID, {100, VM::edid}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
@@ -14286,7 +14132,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::DISPLAY, {25, VM::display}},
             {VM::DLL, {50, VM::dll}},
             {VM::UD, {100, VM::ud}},
-            {VM::BLOCKSTEP, {100, VM::blockstep}},
             {VM::VMWARE_BACKDOOR, {100, VM::vmware_backdoor}},
             {VM::VIRTUAL_REGISTRY, {90, VM::virtual_registry}},
             {VM::MUTEX, {100, VM::mutex}},
