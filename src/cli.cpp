@@ -908,11 +908,6 @@ static void general(
         }
     #endif
 
-    const std::string hash = compute_self_sha256();
-    if (!hash.empty()) {
-        std::cout << "SHA256: " << hash << '\n';
-    }
-
     const auto t1 = std::chrono::high_resolution_clock::now();
 
     checker(VM::VMID, "VMID");
@@ -1125,6 +1120,17 @@ static void general(
         }
 
         std::printf("\n");
+    }
+
+
+    // sha256 output (debug)
+    {
+        #ifdef __VMAWARE_DEBUG__
+            const std::string hash = compute_self_sha256();
+            if (!hash.empty()) {
+                std::cout << "SHA256: " << hash << '\n';
+            }
+        #endif
     }
 
 

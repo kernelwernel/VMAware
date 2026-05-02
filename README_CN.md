@@ -23,11 +23,11 @@
 
 - 非常易于使用
 - 跨平台 (Windows + MacOS + Linux)
-- 涵盖约100种独特的虚拟机检测方案 【[列表](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)】
+- 涵盖约90种独特的虚拟机检测方案 【[列表](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)】
 - 采用最尖端的技术
 - 能够检测超过70种虚拟机品牌，包括 VMware、VirtualBox、QEMU、Hyper-V 等等 【[列表](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)】
 - 能够击败 VM 硬化技术
-- 兼容 x86 和 ARM 架构，并向下兼容 32 位系统
+- 多架构支持 (amd64, arm64, armhf, armel, i386, mips64el, ppc64el, riscv64, s390x)
 - 非常灵活，可对执行哪些技术进行完全精细化的控制
 - 能够检测各种虚拟机和半虚拟机技术，如虚拟机监控程序、模拟器、容器、沙箱等。
 - 适用于 C++11 及更高版本
@@ -37,6 +37,10 @@
 - 本项目完全采用MIT许可证授权，允许不受限制地使用、修改和分发
 
 <br>
+
+> [!NOTE]
+> 我们正在寻找愿意将此 README 翻译成您的母语的翻译者。如果您有意贡献，欢迎提交 PR！
+
 
 ## 例子 🧪
 
@@ -152,6 +156,21 @@ endif()
 您可在 [docs/documentation.md](docs/documentation.md) 查看完整文档 。其中详尽列出了所有细节，包括功能、技术、设置及示例。相信我，内容并不复杂
 
 若想了解本库的架构与设计，请访问 [DeepWiki - VMAware](https://deepwiki.com/kernelwernel/VMAware)
+
+<br>
+
+
+## 其他语言移植版本 🔀
+
+VMAware 同样支持多种编程语言。若 C++ 不是您的首选语言，请参考以下列表。以下所有项目均已获得 VMAware 开发团队的官方认可。
+
+| 语言 | 仓库 | 详情 | 作者 |
+|:---------|:---------------:|:--------:|:------:|
+| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [链接](https://github.com/kernelwernel/VMAware/tree/main/gem) | 嵌入于 VMAware 仓库中的官方 Ruby 移植版本，但不支持 Windows。 | [Adam Ruman](https://github.com/addam128) |
+| <img src="assets/language_icons/js.png" width="20"> JS | [链接](https://github.com/Kyun-J/node-vm-detect) | 提供完善的 API，持续维护中。 | [Kyun-J](https://github.com/Kyun-J) |
+
+> [!WARNING]
+> 尽管存在非官方移植版本，但与官方版本相比，这些版本未经充分测试和验证。此外，由于其源自的 C++ 代码较为复杂，所有移植版本均存在产生误报的可能性。本列表之外，使用 AI 生成的移植版本无法准确映射我们的检测技术（甚至可能完全失效）。请自行承担使用风险。
 
 <br>
 

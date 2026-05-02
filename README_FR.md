@@ -13,7 +13,7 @@
       <b>VMAware</b> (VM + Aware) est une bibliothèque C++ multiplateforme pour la détection des machines virtuelles.
       <br>
       <br>
-      <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
+      <a href="README.md">English 🇬🇧</a> | <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_KR.md">한국어 🇰🇷</a>
    </div>
 </p>
 
@@ -22,11 +22,11 @@
 Cette bibliothèque est :
 - Très facile à utiliser
 - Multiplateforme (Windows, MacOS et Linux)
-- Offre une centaine de techniques uniques pour détecter les machines virtuelles [[liste](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
+- Offre environ 90 techniques uniques pour détecter les machines virtuelles [[liste](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Offre les techniques les plus avancées
 - Capable de détecter plus de 70 marques de machines virtuelles, notamment VMware, VirtualBox, QEMU, Hyper-V et bien d'autres [[liste](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
 - Capable de contourner les renforts des VM
-- Compatible avec x86 et ARM, avec rétrocompatibilité pour les systèmes 32 bits
+- Support multi-architecture (amd64, arm64, armhf, armel, i386, mips64el, ppc64el, riscv64, s390x)
 - Très flexible, avec un contrôle précis sur les techniques exécutées
 - Capable de détecter diverses technologies VM et semi-VM telles que les hyperviseurs, les émulateurs, les conteneurs, les sandbox, etc.
 - Disponible avec C++11 et versions ultérieures
@@ -36,6 +36,10 @@ Cette bibliothèque est :
 - Entièrement sous licence MIT, permettant une utilisation et une distribution sans restriction
 
 <br>
+
+> [!NOTE]
+> Nous recherchons des traducteurs prêts à traduire ce README dans leur langue maternelle. Si vous souhaitez contribuer, n'hésitez pas à soumettre une PR !
+
 
 ## Exemple 🧪
 ```cpp
@@ -88,10 +92,6 @@ Vous trouverez ci-dessous un exemple de système QEMU de base sans modifications
 <br>
 
 ## Installation 📥
-To install the library, download the `vmaware.hpp` file in the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest) to your project. The binaries are also located there. No CMake or shared object linkages are necessary, it's literally that simple.
-
-However, if you want the full project (globally accessible headers with <vmaware.hpp> and the CLI tool), follow these commands:
-
 Pour installer la bibliothèque, téléchargez le fichier `vmaware.hpp` dans la dernière [section de publication](https://github.com/kernelwernel/VMAware/releases/latest) vers votre projet. Les binaires s'y trouvent également. Aucun CMake ni les liens des shared objects sont nécessaire, c'est aussi simple que ça.
 
 Toutefois, si vous souhaitez obtenir le projet complet (ficher header accessibles globalement avec <vmaware.hpp> et l'outil CLI), suivez ces commandes:
@@ -150,6 +150,21 @@ Le fichier du module et la version fonctionelle se trouvent [ici](auxiliary/vmaw
 Vous pouvez consulter la documentation complète [ici](docs/documentation.md). Vous y trouverez tous les détails comme les: fonctions, techniques, paramètres et des exemples. Croyez-moi, ce n’est pas si compliqué ;)
 
 Si vous voulez comprendre l’architecture et la conception de la bibliothèque, rendez-vous sur https://deepwiki.com/kernelwernel/VMAware
+
+<br>
+
+
+## Portages vers d’autres langages 🔀
+
+VMAware prend également en charge une variété de langages. Si C++ n’est pas le langage que vous recherchez, veuillez vous référer à la liste ci-dessous. Tous ces projets sont officiellement référencés par les développeurs de VMAware.
+
+| Langage | Dépôt | Détails | Auteur |
+|:---------|:---------------:|:--------:|:------:|
+| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [lien](https://github.com/kernelwernel/VMAware/tree/main/gem) | Portage Ruby officiel intégré dans le dépôt VMAware, mais Windows n’est pas pris en charge. | [Adam Ruman](https://github.com/addam128) |
+| <img src="assets/language_icons/js.png" width="20"> JS | [lien](https://github.com/Kyun-J/node-vm-detect) | Très bonne API, activement maintenu. | [Kyun-J](https://github.com/Kyun-J) |
+
+> [!WARNING]
+> Bien que des portages non officiels existent, ceux-ci ne sont pas aussi testés et validés que nos portages officiels. De plus, tous les portages sont susceptibles de générer des faux positifs en raison de la complexité du code C++ dont ils sont issus. En dehors de cette liste, les portages utilisant l’IA sont incapables de reproduire nos techniques avec précision (ou pire, échouent complètement). Utilisez-les à vos propres risques.
 
 <br>
 

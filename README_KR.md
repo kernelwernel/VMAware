@@ -22,11 +22,11 @@
 라이브러리 특징:
 - 매우 간단한 사용
 - 크로스 플랫폼 지원 (Windows + MacOS + Linux)
-- 100여개의 가상 머신 감지 기술 [[목록](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
+- 약 90개의 가상 머신 감지 기술 [[목록](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
 - 그리고 가장 선구적인 감지 기술
 - VMAware, VirtualBox, QEMU, Hyper-V등을 포함하는 70가지 이상의 VM 브랜드 감지 [[목록](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
 - VM 보안 강화 무력화
-- x86, ARM 아키텍처 및 32비트 시스템에서도 사용 가능
+- 멀티 아키텍처 지원 (amd64, arm64, armhf, armel, i386, mips64el, ppc64el, riscv64, s390x)
 - 매우 유연한 구조로, 필요한 기술 구현에 세부적인 제어
 - 하이퍼바이저, 에뮬레이터, 컨테이너, 샌드박스 등 준 가상 머신 감지
 - C++11 이상부터 호환
@@ -36,6 +36,9 @@
 - 이 프로젝트는 MIT 라이선스로 제한 없는 사용, 수정 및 배포가 허용됩니다.
 
 <br>
+
+> [!NOTE]
+> 이 README를 모국어로 번역해 주실 분을 찾고 있습니다. 기여하고 싶으시다면 PR을 제출해 주세요!
 
 
 ## 사용 예시 🧪
@@ -149,6 +152,21 @@ endif()
 전체 문서는 [이곳](docs/documentation.md) 에서 확인하실 수 있습니다. 함수, 기술, 설정, 예시가 포함되어 있습니다. 복잡하지 않아요! ;)
 
 이 라이브러리의 아키텍처 및 디자인에 대해 상세히 알고싶으시면, https://deepwiki.com/kernelwernel/VMAware 을 방문하세요
+
+<br>
+
+
+## 다른 언어 포트 🔀
+
+VMAware는 다양한 언어를 지원합니다. C++가 원하시는 언어가 아니라면 아래 목록을 참고하세요. 이 프로젝트들은 모두 VMAware 개발팀이 공식적으로 인정한 것들입니다.
+
+| 언어 | 저장소 | 세부사항 | 작성자 |
+|:---------|:---------------:|:--------:|:------:|
+| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [링크](https://github.com/kernelwernel/VMAware/tree/main/gem) | VMAware 저장소에 내장된 공식 Ruby 포트이지만, Windows는 지원되지 않습니다. | [Adam Ruman](https://github.com/addam128) |
+| <img src="assets/language_icons/js.png" width="20"> JS | [링크](https://github.com/Kyun-J/node-vm-detect) | 뛰어난 API, 활발히 유지보수 중. | [Kyun-J](https://github.com/Kyun-J) |
+
+> [!WARNING]
+> 비공식 포트가 존재하지만, 공식 포트에 비해 충분히 테스트되지 않았습니다. 또한, 모든 포트는 기반이 되는 C++ 코드의 복잡성으로 인해 오탐 가능성이 있습니다. 이 목록 외에 AI를 사용한 포트는 우리의 기술을 정확하게 재현하지 못합니다(또는 완전히 실패합니다). 사용에 주의하세요.
 
 <br>
 
