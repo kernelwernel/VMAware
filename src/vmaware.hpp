@@ -4555,9 +4555,9 @@ public:
             #endif
 
             auto remove = [&](const enum brand_enum brand) noexcept {
-                for (u8 i = 0; i < active_brands.size(); i++) {
-                    if (brand == active_brands.at(i).first) {
-                        active_brands.erase(active_brands.begin() + i);
+                for (auto it = active_brands.begin(); it != active_brands.end(); ++it) {
+                    if (it->first == brand) {
+                        active_brands.erase(it);
                         return;
                     }
                 }
