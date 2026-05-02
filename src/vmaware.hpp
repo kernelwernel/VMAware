@@ -3563,11 +3563,6 @@ public:
             print_to_stream(ss, std::forward<Args>(message)...);
             std::string msg_content = ss.str();
 
-            constexpr const char* prefix = "VM::";
-            if (msg_content.rfind(prefix, 0) != 0) {
-                msg_content.insert(0, prefix);
-            }
-
             if (printed_messages.find(msg_content) == printed_messages.end()) {
 #if (LINUX || APPLE)
                 constexpr const char* black_bg = "\x1B[48;2;0;0;0m";
