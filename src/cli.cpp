@@ -1292,6 +1292,13 @@ static void generate_json(const char* output) {
 int main(int argc, char* argv[]) {
 #if (CLI_WINDOWS)
     win_ansi_enabler_t ansi_enabler;
+    SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* ep) -> LONG {
+        fprintf(stderr, "CRASH: unhandled exception code 0x%08lX at address %p\n",
+            ep->ExceptionRecord->ExceptionCode,
+            ep->ExceptionRecord->ExceptionAddress);
+        fflush(stderr);
+        return EXCEPTION_CONTINUE_SEARCH;
+    });
 #endif
 
     const std::vector<std::string> args(argv + 1, argv + argc); // easier to handle args this way
