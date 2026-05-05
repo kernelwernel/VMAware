@@ -2,7 +2,6 @@ name: Cross-platform build
 
 on:
   push:
-    branches: ["main"]
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
@@ -10,7 +9,6 @@ on:
       - '.github/workflows/*.bat'
       - 'CMakeLists.txt'
   pull_request:
-    branches: ["main"]
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
