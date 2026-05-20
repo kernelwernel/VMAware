@@ -23,37 +23,14 @@ const char* color(const u8 score, const bool is_hardened) {
     }
 
     if (arg_bitset.test(DYNAMIC)) {
-        if (score == 0) {
-            return red.c_str();
-        }
-
-        if (score <= 12) {
-            return red.c_str();
-        }
-
-        if (score <= 25) {
-            return red_orange.c_str();
-        }
-
-        if (score < 50) {
-            return red_orange.c_str();
-        }
-
-        if (score <= 62) {
-            return orange.c_str();
-        }
-
-        if (score <= 75) {
-            return green_orange.c_str();
-        }
-
-        if (score < 100) {
-            return green.c_str();
-        }
-
-        if (score == 100) {
-            return green.c_str();
-        }
+        if (score == 0) { return red.c_str(); }
+        if (score <= 12) { return red.c_str(); }
+        if (score <= 25) { return red_orange.c_str(); }
+        if (score < 50) { return red_orange.c_str(); }
+        if (score <= 62) { return orange.c_str(); }
+        if (score <= 75) { return green_orange.c_str(); }
+        if (score < 100) { return green.c_str(); }
+        if (score == 100) { return green.c_str(); }
     } else {
         if (score == 100) {
             return green.c_str();

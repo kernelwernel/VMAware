@@ -31,8 +31,11 @@
 
 #include "types.hpp"
 #include "strings.hpp"
-#include "windows_cli.hpp"
 #include "output.hpp"
+
+#if (CLI_WINDOWS)
+    #include "windows_cli.hpp"
+#endif
 
 constexpr const char* ver = "2.7.0";
 constexpr const char* date = "April 2026";

@@ -68,9 +68,11 @@ void SHA256::transform() {
     };
 
     u32 m[64]{};
+
     for (u32 i = 0, j = 0; i < 16; ++i, j += 4) {
         m[i] = (u32)buf[j] << 24 | (u32)buf[j + 1] << 16 | (u32)buf[j + 2] << 8 | (u32)buf[j + 3];
     }
+
     for (u32 i = 16; i < 64; ++i) {
         m[i] = sig1(m[i - 2]) + m[i - 7] + sig0(m[i - 15]) + m[i - 16];
     }
@@ -125,8 +127,7 @@ void SHA256::final(u8 out[32]) {
         while (i < 56) {
             buf[i++] = 0;
         }
-    }
-    else {
+    } else {
         buf[i++] = 0x80;
         while (i < 64) {
             buf[i++] = 0;

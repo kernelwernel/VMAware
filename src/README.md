@@ -1,7 +1,13 @@
 | File | Purpose |
 |------|---------|
-| `cli.cpp`  | Entire CLI tool code |
 | `vmaware.hpp` | Official and original library header, most likely what you're looking for. |
+| | |
+| `cli/main.cpp` | CLI entry point and argument parsing |
+| `cli/output.hpp` | Output formatting (general display and JSON) |
+| `cli/strings.hpp` | ANSI color strings, argument enums, and global counters |
+| `cli/types.hpp` | Shared primitive type aliases |
+| `cli/sha256.hpp` | SHA-256 implementation used by the CLI |
+| `cli/windows_cli.hpp` | Windows-specific ANSI support and string utilities |
 
 <br>
 
