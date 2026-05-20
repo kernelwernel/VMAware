@@ -328,6 +328,7 @@ And if you found this project useful, a star would be appreciated :)
 - [virtfunc](https://github.com/virtfunc)
 - [Adam Ruman](https://github.com/addam128)
 - [Juan Diego](https://github.com/w451)
+- [Wiisus](https://github.com/wiisus)
 
 <br>
 
