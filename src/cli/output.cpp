@@ -580,7 +580,7 @@ void general(bool high_threshold, bool all, bool dynamic) {
     checker(VM::HYPERVISOR_HOOK, "EPT/NPT hooking");
     checker(VM::SINGLE_STEP, "single step behavior");
     checker(VM::EIP_OVERFLOW, "instructions in compat mode");
-    checker(VM::SVM_EXCEPTIONS, "SVM instruction exceptions");
+    checker(VM::SVM_EXCEPTIONS, "SVM exceptions");
     checker(VM::CGROUP, "cgroup namespace");
     checker(VM::TIMER, "timing anomalies");
 
