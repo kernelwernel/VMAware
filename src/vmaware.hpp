@@ -13297,6 +13297,7 @@ public:
                         debug("SVM_INSTRUCTION_EXCEPTIONS: #GP with SVM CPUID visible, VM detected");
                     } else {
                         debug("SVM_INSTRUCTION_EXCEPTIONS: #GP with SVM CPUID hidden, VM spoofing CPUID detected");
+                        core::add(brand_enum::NULL_BRAND, 100);
                     }
 
                     return true;
@@ -14590,7 +14591,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
             {VM::INTERRUPT_SHADOW, {100, VM::interrupt_shadow}},
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
-            {VM::SVM_INSTRUCTION_EXCEPTIONS, {75, VM::svm_instruction_exceptions}},
+            {VM::SVM_INSTRUCTION_EXCEPTIONS, {25, VM::svm_instruction_exceptions}},
             {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::SINGLE_STEP, {100, VM::single_step}},
             {VM::NVRAM, {100, VM::nvram}},
