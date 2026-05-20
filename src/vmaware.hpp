@@ -13185,48 +13185,24 @@ public:
      */
     [[nodiscard]] static bool svm_instruction_exceptions() {
         if (!x86 || !cpu::is_amd()) {
-            debug("SVM_INSTRUCTION_EXCEPTIONS: neither AMD or x86 detected, returned false");
+            debug("SVM_INSTRUCTION_EXCEPTIONS: neither AMD or x86 detected, skipping");
             return false;
         }
+
+        const auto hx = util::hyper_x();
+        if (hx == HYPERV_ARTIFACT_VM || hx == HYPERV_REAL_VM || hx == HYPERV_ENLIGHTENMENT) {
+            debug("SVM_INSTRUCTION_EXCEPTIONS: Hyper-V active, skipping");
+            return false;
+        }
+
+        u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+        cpu::cpuid(eax, ebx, ecx, edx, 0x80000001);
+        const bool svmcpuid_visible = (ecx >> 2) & 1;
 
         const HMODULE ntdll = util::get_ntdll();
 
         if (!ntdll) {
             return false;
-        }
-
-        // Skip if HVCI is active — SVME will be armed by the hypervisor
-        // legitimately, causing #GP on bare metal and producing a false positive
-        using nt_query_system_information_t = NTSTATUS(__stdcall*)(ULONG, PVOID, ULONG, PULONG);
-
-        const char* hvci_names[] = { "NtQuerySystemInformation" };
-        void* hvci_funcs[1] = {};
-        util::get_function_address(ntdll, hvci_names, hvci_funcs, 1);
-
-        const auto nt_query_system_information = reinterpret_cast<nt_query_system_information_t>(hvci_funcs[0]);
-
-        if (nt_query_system_information) {
-            struct SYSTEM_CODEINTEGRITY_INFORMATION {
-                ULONG Length;
-                ULONG CodeIntegrityOptions;
-            } ci_info = { sizeof(SYSTEM_CODEINTEGRITY_INFORMATION), 0 };
-
-            constexpr ULONG SystemCodeIntegrityInformation = 103;
-            constexpr ULONG hvci_kmci_enabled_flag = 0x400;
-
-            NTSTATUS status = nt_query_system_information(
-                SystemCodeIntegrityInformation,
-                &ci_info,
-                sizeof(ci_info),
-                nullptr
-            );
-
-            if (NT_SUCCESS(status)) {
-                if (ci_info.CodeIntegrityOptions & CODEINTEGRITY_OPTION_HVCI_KMCI_ENABLED) {
-                    debug("SVM_INSTRUCTION_EXCEPTIONS: HVCI is active, skipping to avoid false positive");
-                    return false;
-                }
-            }
         }
 
         using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
@@ -13289,7 +13265,7 @@ public:
             ULONG old_protect = 0;
             PVOID protect_address = base_address;
             SIZE_T protect_size = region_size;
-            
+
             status = nt_protect_virtual_memory(
                 current_process, &protect_address, &protect_size,
                 PAGE_EXECUTE_READ, &old_protect
@@ -13313,9 +13289,17 @@ public:
                 nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
 
                 if (fault_hit) {
-                    if (exception_status != EXCEPTION_ILLEGAL_INSTRUCTION) {
-                        return true;
+                    if (exception_status == EXCEPTION_ILLEGAL_INSTRUCTION) {
+                        continue;
                     }
+
+                    if (svmcpuid_visible) {
+                        debug("SVM_INSTRUCTION_EXCEPTIONS: #GP with SVM CPUID visible, VM detected");
+                    } else {
+                        debug("SVM_INSTRUCTION_EXCEPTIONS: #GP with SVM CPUID hidden, VM spoofing CPUID detected");
+                    }
+
+                    return true;
                 }
             } else {
                 SIZE_T free_size = 0;
@@ -13325,6 +13309,9 @@ public:
 
         return false;
     }
+
+    // ADD NEW TECHNIQUE FUNCTION HERE
+
 
     
 
