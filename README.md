@@ -184,7 +184,7 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 > 
 > Additionally, software could adjust the behaviour of their program based on the detected environment. It could be useful for debugging and testing purposes, while system administrators could manage configurations differently. Finally, some applications might want to legally restrict usage in VMs as a license clause to prevent unauthorized distribution or testing.
 >
-> There are also projects that utilise our tool such as [Hypervisor-Phantom](https://github.com/Scrut1ny/Hypervisor-Phantom), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability.
+> There are also projects that utilise our tool such as [AutoVirt](https://github.com/Scrut1ny/AutoVirt), which is an advanced malware analysis project that we helped strengthen their hypervisor environment and undetectability.
 
 </details>
 
@@ -327,6 +327,7 @@ And if you found this project useful, a star would be appreciated :)
 - [Lorenzo Rizzotti (Dreaming-Codes)](https://github.com/Dreaming-Codes)
 - [virtfunc](https://github.com/virtfunc)
 - [Adam Ruman](https://github.com/addam128)
+- [Juan Diego](https://github.com/w451)
 
 <br>
 

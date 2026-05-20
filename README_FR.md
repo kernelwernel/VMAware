@@ -183,7 +183,7 @@ VMAware prend également en charge une variété de langages. Si C++ n’est pas
 > 
 > De plus, les logiciels pourraient adapter leur comportement en fonction de l'environnement détecté. Cela pourrait s'avérer utile pour le débogage et les tests, tandis que les administrateurs système pourraient gérer les configurations différemment. Enfin, certaines applications pourraient souhaiter restreindre légalement leur utilisation dans les VM, par exemple via une clause de licence, afin d'empêcher toute distribution ou tout test non autorisé.
 >
-> Il existe également des projets qui utilisent notre outil tels que [Hypervisor-Phantom](https://codeberg.org/Scrut1ny/Hypervisor-Phantom), qui est un projet d'analyse de logiciels malveillants avancé que nous avons aidé à renforcer leur environnement hyperviseur et leur indétectabilité.
+> Il existe également des projets qui utilisent notre outil tels que [AutoVirt](https://codeberg.org/Scrut1ny/AutoVirt), qui est un projet d'analyse de logiciels malveillants avancé que nous avons aidé à renforcer leur environnement hyperviseur et leur indétectabilité.
 
 </details>
 
@@ -316,6 +316,7 @@ Et si ce projet vous a été utile, un star serait très apprécié :)
 - [Lorenzo Rizzotti (Dreaming-Codes)](https://github.com/Dreaming-Codes)
 - [virtfunc](https://github.com/virtfunc)
 - [Adam Ruman](https://github.com/addam128)
+- [Juan Diego](https://github.com/w451)
 
 <br>
 
