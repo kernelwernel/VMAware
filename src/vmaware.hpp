@@ -13178,29 +13178,29 @@ public:
         return hypervisor_detected;
     #endif  
     }
+
+
     /**
      * @brief Check whether a hypervisor leaks EFER.SVME into guest context via SVM instruction fault type
-     * @category Windows, x86_64, AMD
+     * @category Windows, x86
      * @implements VM::SVM_EXCEPTIONS
      */
     [[nodiscard]] static bool svm_exceptions() {
-        if (!x86 || !cpu::is_amd()) {
-            debug("SVM_EXCEPTIONS: neither AMD or x86 detected, skipping");
+    #if (x86)
+        if (!cpu::is_amd()) {
+            debug("SVM_EXCEPTIONS: AMD CPU not detected, skipping");
             return false;
         }
 
-        const auto hx = util::hyper_x();
-        if (hx == HYPERV_ARTIFACT_VM || hx == HYPERV_REAL_VM || hx == HYPERV_ENLIGHTENMENT) {
-            debug("SVM_EXCEPTIONS: Hyper-V active, skipping");
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
             return false;
         }
 
         u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
         cpu::cpuid(eax, ebx, ecx, edx, 0x80000001);
-        const bool svmcpuid_visible = (ecx >> 2) & 1;
+        const bool svmcpuid_visible = ((ecx >> 2) & 1) != 0;
 
         const HMODULE ntdll = util::get_ntdll();
-
         if (!ntdll) {
             return false;
         }
@@ -13221,45 +13221,51 @@ public:
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
         const auto nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
-        const auto nt_protect_virtual_memory  = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[1]);
-        const auto nt_free_virtual_memory     = reinterpret_cast<nt_free_virtual_memory_t>(funcs[2]);
+        const auto nt_protect_virtual_memory = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[1]);
+        const auto nt_free_virtual_memory = reinterpret_cast<nt_free_virtual_memory_t>(funcs[2]);
         const auto nt_flush_instruction_cache = reinterpret_cast<nt_flush_instruction_cache_t>(funcs[3]);
 
-        if (
-            (!nt_allocate_virtual_memory) ||
-            (!nt_protect_virtual_memory)  ||
-            (!nt_free_virtual_memory)     ||
-            (!nt_flush_instruction_cache)
-        ) {
+        if (!nt_allocate_virtual_memory || !nt_protect_virtual_memory || !nt_free_virtual_memory || !nt_flush_instruction_cache) {
             return false;
         }
-        
 
-        constexpr u8 opcodes[][4] = {
+        constexpr std::array<std::array<u8, 4>, 5> opcodes{ {
             { 0x0F, 0x01, 0xD8, 0xC3 }, // VMRUN
             { 0x0F, 0x01, 0xDA, 0xC3 }, // VMLOAD
             { 0x0F, 0x01, 0xDB, 0xC3 }, // VMSAVE
             { 0x0F, 0x01, 0xDD, 0xC3 }, // CLGI
             { 0x0F, 0x01, 0xDF, 0xC3 }  // INVLPGA
-        };
+        } };
 
+        constexpr SIZE_T opcode_size = 4;
         const HANDLE current_process = reinterpret_cast<HANDLE>(-1);
-        constexpr u32 opcode_size = 4;
 
         for (const auto& opcode : opcodes) {
             PVOID base_address = nullptr;
             SIZE_T region_size = 0x1000;
 
+            auto free_region = [&]() {
+                if (base_address) {
+                    SIZE_T free_size = 0;
+                    nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+                    base_address = nullptr;
+                }
+            };
+
             NTSTATUS status = nt_allocate_virtual_memory(
-                current_process, &base_address, 0, &region_size,
-                MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+                current_process,
+                &base_address,
+                0,
+                &region_size,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_EXECUTE_READWRITE
             );
 
             if (!NT_SUCCESS(status)) {
                 continue;
             }
 
-            memcpy(base_address, opcode, opcode_size);
+            memcpy(base_address, opcode.data(), opcode_size);
             nt_flush_instruction_cache(current_process, base_address, opcode_size);
 
             ULONG old_protect = 0;
@@ -13267,47 +13273,51 @@ public:
             SIZE_T protect_size = region_size;
 
             status = nt_protect_virtual_memory(
-                current_process, &protect_address, &protect_size,
-                PAGE_EXECUTE_READ, &old_protect
+                current_process,
+                &protect_address,
+                &protect_size,
+                PAGE_EXECUTE_READ,
+                &old_protect
             );
 
-            if (NT_SUCCESS(status)) {
-                nt_flush_instruction_cache(current_process, base_address, opcode_size);
-
-                DWORD exception_status = 0;
-                bool fault_hit = false;
-
-                __try {
-                    const auto execute_svm = reinterpret_cast<void(*)()>(base_address);
-                    execute_svm();
-                }
-                __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
-                    fault_hit = true;
-                }
-
-                SIZE_T free_size = 0;
-                nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
-
-                if (fault_hit) {
-                    if (exception_status == EXCEPTION_ILLEGAL_INSTRUCTION) {
-                        continue;
-                    }
-
-                    if (svmcpuid_visible) {
-                        debug("SVM_EXCEPTIONS: #GP with SVM CPUID visible, VM detected");
-                    } else {
-                        debug("SVM_EXCEPTIONS: #GP with SVM CPUID hidden, VM spoofing CPUID detected");
-                        core::add(brand_enum::NULL_BRAND, 100);
-                    }
-
-                    return true;
-                }
-            } else {
-                SIZE_T free_size = 0;
-                nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+            if (!NT_SUCCESS(status)) {
+                free_region();
+                continue;
             }
-        }
 
+            nt_flush_instruction_cache(current_process, base_address, opcode_size);
+
+            DWORD exception_status = 0;
+            bool fault_hit = false;
+
+            __try {
+                reinterpret_cast<void(*)()>(base_address)();
+            }
+            __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
+                fault_hit = true;
+            }
+
+            free_region();
+
+            if (!fault_hit) {
+                continue;
+            }
+
+            if (exception_status == EXCEPTION_ILLEGAL_INSTRUCTION) {
+                continue;
+            }
+
+            if (svmcpuid_visible) {
+                debug("SVM_EXCEPTIONS: Detected SVM hypervisor");
+            }
+            else {
+                debug("SVM_EXCEPTIONS: Detected SVM hypervisor hiding CPU capabilities");
+                core::add(brand_enum::NULL_BRAND, 150);
+            }
+
+            return true;
+        }
+    #endif
         return false;
     }
 
@@ -14589,9 +14599,9 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
         #if (WINDOWS)
             {VM::TRAP, {100, VM::trap}},
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
+            {VM::SVM_EXCEPTIONS, {100, VM::svm_exceptions}},
             {VM::INTERRUPT_SHADOW, {100, VM::interrupt_shadow}},
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
-            {VM::SVM_EXCEPTIONS, {25, VM::svm_exceptions}},
             {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::SINGLE_STEP, {100, VM::single_step}},
             {VM::NVRAM, {100, VM::nvram}},
