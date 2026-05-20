@@ -598,7 +598,7 @@ public:
         HYPERVISOR_HOOK,
         SINGLE_STEP,
         EIP_OVERFLOW,
-        SVM_INSTRUCTION_EXCEPTIONS,
+        SVM_EXCEPTIONS,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -13181,17 +13181,17 @@ public:
     /**
      * @brief Check whether a hypervisor leaks EFER.SVME into guest context via SVM instruction fault type
      * @category Windows, x86_64, AMD
-     * @implements VM::SVM_INSTRUCTION_EXCEPTIONS
+     * @implements VM::SVM_EXCEPTIONS
      */
-    [[nodiscard]] static bool svm_instruction_exceptions() {
+    [[nodiscard]] static bool svm_exceptions() {
         if (!x86 || !cpu::is_amd()) {
-            debug("SVM_INSTRUCTION_EXCEPTIONS: neither AMD or x86 detected, skipping");
+            debug("SVM_EXCEPTIONS: neither AMD or x86 detected, skipping");
             return false;
         }
 
         const auto hx = util::hyper_x();
         if (hx == HYPERV_ARTIFACT_VM || hx == HYPERV_REAL_VM || hx == HYPERV_ENLIGHTENMENT) {
-            debug("SVM_INSTRUCTION_EXCEPTIONS: Hyper-V active, skipping");
+            debug("SVM_EXCEPTIONS: Hyper-V active, skipping");
             return false;
         }
 
@@ -13294,9 +13294,9 @@ public:
                     }
 
                     if (svmcpuid_visible) {
-                        debug("SVM_INSTRUCTION_EXCEPTIONS: #GP with SVM CPUID visible, VM detected");
+                        debug("SVM_EXCEPTIONS: #GP with SVM CPUID visible, VM detected");
                     } else {
-                        debug("SVM_INSTRUCTION_EXCEPTIONS: #GP with SVM CPUID hidden, VM spoofing CPUID detected");
+                        debug("SVM_EXCEPTIONS: #GP with SVM CPUID hidden, VM spoofing CPUID detected");
                         core::add(brand_enum::NULL_BRAND, 100);
                     }
 
@@ -14072,7 +14072,7 @@ public:
             case HYPERVISOR_HOOK: return "HYPERVISOR_HOOK";
             case SINGLE_STEP: return "SINGLE_STEP";
             case EIP_OVERFLOW: return "EIP_OVERFLOW";
-            case SVM_INSTRUCTION_EXCEPTIONS: return "SVM_INSTRUCTION_EXCEPTIONS";
+            case SVM_EXCEPTIONS: return "SVM_EXCEPTIONS";
             case CGROUP: return "CGROUP";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
@@ -14591,7 +14591,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
             {VM::INTERRUPT_SHADOW, {100, VM::interrupt_shadow}},
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
-            {VM::SVM_INSTRUCTION_EXCEPTIONS, {25, VM::svm_instruction_exceptions}},
+            {VM::SVM_EXCEPTIONS, {25, VM::svm_exceptions}},
             {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::SINGLE_STEP, {100, VM::single_step}},
             {VM::NVRAM, {100, VM::nvram}},
