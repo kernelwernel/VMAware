@@ -598,6 +598,7 @@ public:
         HYPERVISOR_HOOK,
         SINGLE_STEP,
         EIP_OVERFLOW,
+        SVM_INSTRUCTION_EXCEPTIONS,
 
         // Linux and Windows
         SYSTEM_REGISTERS,
@@ -13177,7 +13178,155 @@ public:
         return hypervisor_detected;
     #endif  
     }
-    // ADD NEW TECHNIQUE FUNCTION HERE
+    /**
+     * @brief Check whether a hypervisor leaks EFER.SVME into guest context via SVM instruction fault type
+     * @category Windows, x86_64, AMD
+     * @implements VM::SVM_INSTRUCTION_EXCEPTIONS
+     */
+    [[nodiscard]] static bool svm_instruction_exceptions() {
+        if (!x86 || !cpu::is_amd()) {
+            debug("SVM_INSTRUCTION_EXCEPTIONS: neither AMD or x86 detected, returned false");
+            return false;
+        }
+
+        const HMODULE ntdll = util::get_ntdll();
+
+        if (!ntdll) {
+            return false;
+        }
+
+        // Skip if HVCI is active — SVME will be armed by the hypervisor
+        // legitimately, causing #GP on bare metal and producing a false positive
+        using nt_query_system_information_t = NTSTATUS(__stdcall*)(ULONG, PVOID, ULONG, PULONG);
+
+        const char* hvci_names[] = { "NtQuerySystemInformation" };
+        void* hvci_funcs[1] = {};
+        util::get_function_address(ntdll, hvci_names, hvci_funcs, 1);
+
+        const auto nt_query_system_information = reinterpret_cast<nt_query_system_information_t>(hvci_funcs[0]);
+
+        if (nt_query_system_information) {
+            struct SYSTEM_CODEINTEGRITY_INFORMATION {
+                ULONG Length;
+                ULONG CodeIntegrityOptions;
+            } ci_info = { sizeof(SYSTEM_CODEINTEGRITY_INFORMATION), 0 };
+
+            constexpr ULONG SystemCodeIntegrityInformation = 103;
+                constexpr ULONG CODEINTEGRITY_OPTION_HVCI_KMCI_ENABLED = 0x400;
+
+            NTSTATUS status = nt_query_system_information(
+                SystemCodeIntegrityInformation,
+                &ci_info,
+                sizeof(ci_info),
+                nullptr
+            );
+
+            if (NT_SUCCESS(status)) {
+                if (ci_info.CodeIntegrityOptions & CODEINTEGRITY_OPTION_HVCI_KMCI_ENABLED) {
+                    debug("SVM_INSTRUCTION_EXCEPTIONS: HVCI is active, skipping to avoid false positive");
+                    return false;
+                }
+            }
+        }
+
+        using nt_allocate_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG);
+        using nt_protect_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+        using nt_free_virtual_memory_t = NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG);
+        using nt_flush_instruction_cache_t = NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T);
+
+        const char* names[] = {
+            "NtAllocateVirtualMemory",
+            "NtProtectVirtualMemory",
+            "NtFreeVirtualMemory",
+            "NtFlushInstructionCache"
+        };
+
+        void* funcs[ARRAYSIZE(names)] = {};
+        util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
+
+        const auto nt_allocate_virtual_memory = reinterpret_cast<nt_allocate_virtual_memory_t>(funcs[0]);
+        const auto nt_protect_virtual_memory  = reinterpret_cast<nt_protect_virtual_memory_t>(funcs[1]);
+        const auto nt_free_virtual_memory     = reinterpret_cast<nt_free_virtual_memory_t>(funcs[2]);
+        const auto nt_flush_instruction_cache = reinterpret_cast<nt_flush_instruction_cache_t>(funcs[3]);
+
+        if (
+            (!nt_allocate_virtual_memory) ||
+            (!nt_protect_virtual_memory)  ||
+            (!nt_free_virtual_memory)     ||
+            (!nt_flush_instruction_cache)
+        ) {
+            return false;
+        }
+        
+
+        constexpr u8 opcodes[][4] = {
+            { 0x0F, 0x01, 0xD8, 0xC3 }, // VMRUN
+            { 0x0F, 0x01, 0xDA, 0xC3 }, // VMLOAD
+            { 0x0F, 0x01, 0xDB, 0xC3 }, // VMSAVE
+            { 0x0F, 0x01, 0xDD, 0xC3 }, // CLGI
+            { 0x0F, 0x01, 0xDF, 0xC3 }  // INVLPGA
+        };
+
+        const HANDLE current_process = reinterpret_cast<HANDLE>(-1);
+        constexpr u32 opcode_size = 4;
+
+        for (const auto& opcode : opcodes) {
+            PVOID base_address = nullptr;
+            SIZE_T region_size = 0x1000;
+
+            NTSTATUS status = nt_allocate_virtual_memory(
+                current_process, &base_address, 0, &region_size,
+                MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE
+            );
+
+            if (!NT_SUCCESS(status)) {
+                continue;
+            }
+
+            memcpy(base_address, opcode, opcode_size);
+            nt_flush_instruction_cache(current_process, base_address, opcode_size);
+
+            ULONG old_protect = 0;
+            PVOID protect_address = base_address;
+            SIZE_T protect_size = region_size;
+            
+            status = nt_protect_virtual_memory(
+                current_process, &protect_address, &protect_size,
+                PAGE_EXECUTE_READ, &old_protect
+            );
+
+            if (NT_SUCCESS(status)) {
+                nt_flush_instruction_cache(current_process, base_address, opcode_size);
+
+                DWORD exception_status = 0;
+                bool fault_hit = false;
+
+                __try {
+                    const auto execute_svm = reinterpret_cast<void(*)()>(base_address);
+                    execute_svm();
+                }
+                __except (exception_status = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
+                    fault_hit = true;
+                }
+
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+
+                if (fault_hit) {
+                    if (exception_status != EXCEPTION_ILLEGAL_INSTRUCTION) {
+                        return true;
+                    }
+                }
+            } else {
+                SIZE_T free_size = 0;
+                nt_free_virtual_memory(current_process, &base_address, &free_size, MEM_RELEASE);
+            }
+        }
+
+        return false;
+    }
+
+    
 
     #if (CLANG)
         #pragma clang diagnostic pop
@@ -13935,6 +14084,7 @@ public:
             case HYPERVISOR_HOOK: return "HYPERVISOR_HOOK";
             case SINGLE_STEP: return "SINGLE_STEP";
             case EIP_OVERFLOW: return "EIP_OVERFLOW";
+            case SVM_INSTRUCTION_EXCEPTIONS: return "SVM_INSTRUCTION_EXCEPTIONS";
             case CGROUP: return "CGROUP";
             // END OF TECHNIQUE LIST
             case DEFAULT: return "DEFAULT"; 
@@ -14453,6 +14603,7 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
             {VM::INTERRUPT_SHADOW, {100, VM::interrupt_shadow}},
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
+            {VM::SVM_INSTRUCTION_EXCEPTIONS, {75, VM::svm_instruction_exceptions}},
             {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
             {VM::SINGLE_STEP, {100, VM::single_step}},
             {VM::NVRAM, {100, VM::nvram}},
