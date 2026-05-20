@@ -13212,7 +13212,7 @@ public:
             } ci_info = { sizeof(SYSTEM_CODEINTEGRITY_INFORMATION), 0 };
 
             constexpr ULONG SystemCodeIntegrityInformation = 103;
-            constexpr ULONG CODEINTEGRITY_OPTION_HVCI_KMCI_ENABLED = 0x400;
+            constexpr ULONG hvci_kmci_enabled_flag = 0x400;
 
             NTSTATUS status = nt_query_system_information(
                 SystemCodeIntegrityInformation,
