@@ -224,11 +224,9 @@ static void checker(const VM::enum_flags flag, const char* message) {
 
     if (is_disabled(flag)) {
         disabled_count++;
-        do {
-            std::ostringstream _oss;
-            _oss << tag_skipped << " " << grey << "Skipped " << message << "." << ansi_exit;
-            g_tui.printLeft(_oss.str());
-        } while (0);
+        std::ostringstream skip_oss;
+        skip_oss << tag_skipped << " " << grey << "Skipped " << message << "." << ansi_exit;
+        PRINT_LINE(skip_oss.str());
         return;
     }
 
