@@ -25,6 +25,7 @@
  *      - luukjp (https://github.com/luukjp)
  *      - Lorenzo Rizzotti (https://github.com/Dreaming-Codes) 
  *      - virtfunc (https://github.com/virtfunc)
+ *      - Wiisus (https://github.com/wiisus)
  *  - Repository: https://github.com/kernelwernel/VMAware
  *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F

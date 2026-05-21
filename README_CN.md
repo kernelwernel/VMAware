@@ -323,6 +323,7 @@ VMAware 同样支持多种编程语言。若 C++ 不是您的首选语言，请�
 - [virtfunc](https://github.com/virtfunc)
 - [Adam Ruman](https://github.com/addam128)
 - [Juan Diego](https://github.com/w451)
+- [Wiisus](https://github.com/wiisus)
 
 <br>
 
