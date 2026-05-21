@@ -72,14 +72,14 @@ static bool are_perms_required(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-    case VM::VMWARE_DMESG:
-    case VM::DMIDECODE:
-    case VM::DMESG:
-    case VM::QEMU_USB:
-    case VM::KMSG:
-    case VM::SMBIOS_VM_BIT:
-    case VM::NVRAM: return true;
-    default: return false;
+        case VM::VMWARE_DMESG:
+        case VM::DMIDECODE:
+        case VM::DMESG:
+        case VM::QEMU_USB:
+        case VM::KMSG:
+        case VM::SMBIOS_VM_BIT:
+        case VM::NVRAM: return true;
+        default: return false;
     }
 }
 #endif
@@ -247,19 +247,19 @@ static void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 
-#if (CLI_LINUX)
-    if (are_perms_required(flag)) {
-        no_perms_count++;
-        VM::check(flag);
-        return;
-    }
-#endif
+    #if (CLI_LINUX)
+        if (are_perms_required(flag)) {
+            no_perms_count++;
+            VM::check(flag);
+            return;
+        }
+    #endif
 
     std::ostringstream cycle_oss;
     cycle_oss << TH_DIM << message << " " << TH_MED << "| " << TH_WHITE << std::fixed << std::setprecision(4) << ms << " ms" << TH_RST;
-#if (CLI_WINDOWS)
-    g_tui.addCycle(cycle_oss.str());
-#endif
+    #if (CLI_WINDOWS)
+        g_tui.addCycle(cycle_oss.str());
+    #endif
 
     std::ostringstream msg_oss;
 
@@ -446,9 +446,9 @@ void general(bool high_threshold, bool all, bool dynamic) {
     const VM::enum_flags al = all ? VM::ALL : VM::NULL_ARG;
     const VM::enum_flags dyn = dynamic ? VM::DYNAMIC : VM::NULL_ARG;
 
-#if (CLI_LINUX)
-    [[maybe_unused]] bool notes_enabled = !arg_bitset.test(NOTES);
-#endif
+    #if (CLI_LINUX)
+        [[maybe_unused]] bool notes_enabled = !arg_bitset.test(NOTES);
+    #endif
 
     if (arg_bitset.test(NO_ANSI)) {
         tag_detected = ("[  DETECTED  ]");
@@ -457,28 +457,28 @@ void general(bool high_threshold, bool all, bool dynamic) {
         green = ""; red_orange = ""; green_orange = ""; grey = ""; white = "";
     }
 
-#if (CLI_WINDOWS)
-    DebugInterceptor* interceptor = nullptr;
-    if (!arg_bitset.test(NO_ANSI)) {
-        g_tui.init();
-        interceptor = new DebugInterceptor(std::cout.rdbuf());
-        std::cout.rdbuf(interceptor);
-    }
-#endif
+    #if (CLI_WINDOWS)
+        DebugInterceptor* interceptor = nullptr;
+        if (!arg_bitset.test(NO_ANSI)) {
+            g_tui.init();
+            interceptor = new DebugInterceptor(std::cout.rdbuf());
+            std::cout.rdbuf(interceptor);
+        }
+    #endif
 
-#if (CLI_LINUX)
-    if (notes_enabled && !is_admin()) {
-        PRINT_LINE(" Running under root might give better results");
-    }
-#elif (CLI_WINDOWS)
-    if (!is_admin()) {
-        do {
-            std::ostringstream _oss; 
-            _oss << red << "    Not running as administrator, NVRAM checks will not run.\n";
-            g_tui.printLeft(_oss.str());
-        } while (0);
-    }
-#endif
+    #if (CLI_LINUX)
+        if (notes_enabled && !is_admin()) {
+            PRINT_LINE(" Running under root might give better results");
+        }
+    #elif (CLI_WINDOWS)
+        if (!is_admin()) {
+            do {
+                std::ostringstream _oss; 
+                _oss << red << "    Not running as administrator, NVRAM checks will not run.\n";
+                g_tui.printLeft(_oss.str());
+            } while (0);
+        }
+    #endif
 
     const auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -611,12 +611,12 @@ void general(bool high_threshold, bool all, bool dynamic) {
     const char* count_color = nullptr;
 
     switch (vm.detected_count) {
-    case 0: count_color = red.c_str(); break;
-    case 1: count_color = red_orange.c_str(); break;
-    case 2: count_color = orange.c_str(); break;
-    case 3: count_color = orange.c_str(); break;
-    case 4: count_color = green_orange.c_str(); break;
-    default: count_color = green.c_str();
+        case 0: count_color = red.c_str(); break;
+        case 1: count_color = red_orange.c_str(); break;
+        case 2: count_color = orange.c_str(); break;
+        case 3: count_color = orange.c_str(); break;
+        case 4: count_color = green_orange.c_str(); break;
+        default: count_color = green.c_str();
     }
 
     summary.push_back(bold + "VM detections: " + ansi_exit + count_color + std::to_string(static_cast<u32>(vm.detected_count)) + "/" + std::to_string(static_cast<u32>(vm.technique_count)) + ansi_exit);

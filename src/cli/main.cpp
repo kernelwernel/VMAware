@@ -288,7 +288,7 @@ int main(int argc, char* argv[]) {
 
         auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, i32>& p) {
             return (std::strcmp(p.first, arg_string) == 0);
-            });
+        });
 
         if (it == table.end()) {
             if (arg_bitset.test(OUTPUT)) {
