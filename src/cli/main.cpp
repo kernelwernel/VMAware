@@ -28,6 +28,7 @@
 #include <array>
 #include <algorithm>
 #include <cstring>
+#include <string>
 
 #include "types.hpp"
 #include "strings.hpp"
@@ -35,6 +36,8 @@
 
 #if (CLI_WINDOWS)
     #include "windows_cli.hpp"
+    #include <windows.h>
+    #include <shellapi.h>
 #endif
 
 constexpr const char* ver = "2.7.0";
@@ -164,10 +167,57 @@ constexpr const char* date = "April 2026";
 }
 
 int main(int argc, char* argv[]) {
-    #if (CLI_WINDOWS)
-        win_ansi_enabler_t ansi_enabler;
-        AddVectoredExceptionHandler(1, VehLogger);
-    #endif
+#if (CLI_WINDOWS)
+    bool relaunched = false;
+    int new_argc = 1;
+    static char* new_argv[256];
+    new_argv[0] = argv[0];
+
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--no-relaunch") == 0) {
+            relaunched = true;
+        }
+        else {
+            if (new_argc < 255) {
+                new_argv[new_argc++] = argv[i];
+            }
+        }
+    }
+
+    argc = new_argc;
+    argv = new_argv;
+
+    if (!relaunched) {        
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+
+        char currentDir[MAX_PATH];
+        GetCurrentDirectoryA(MAX_PATH, currentDir);
+
+        std::string args = "\"" + std::string(exePath) + "\" --no-relaunch";
+        for (int i = 1; i < argc; ++i) {
+            args += " \"";
+            args += argv[i];
+            args += "\"";
+        }
+
+        SHELLEXECUTEINFOA sei = { sizeof(sei) };
+        sei.fMask = 0;
+        sei.hwnd = NULL;
+        sei.lpVerb = "open";
+        sei.lpFile = "conhost.exe";
+        sei.lpParameters = args.c_str();
+        sei.lpDirectory = currentDir;
+        sei.nShow = SW_SHOWNORMAL;
+
+        if (!IsDebuggerPresent() && ShellExecuteExA(&sei)) {
+            ExitProcess(0);
+        }        
+    }
+
+    win_ansi_enabler_t ansi_enabler;
+    AddVectoredExceptionHandler(1, VehLogger);
+#endif
 
     const std::vector<std::string> args(argv + 1, argv + argc);
     const u32 arg_count = static_cast<u32>(argc - 1);
@@ -178,38 +228,38 @@ int main(int argc, char* argv[]) {
     }
 
     static const std::array<std::pair<const char*, arg_enum>, 33> table{ {
-        { "-h", HELP }, 
-        { "-v", VERSION }, 
-        { "-a", ALL }, 
-        { "-d", DETECT }, 
-        { "-s", STDOUT }, 
+        { "-h", HELP },
+        { "-v", VERSION },
+        { "-a", ALL },
+        { "-d", DETECT },
+        { "-s", STDOUT },
         { "-b", BRAND },
-        { "-p", PERCENT }, 
-        { "-c", CONCLUSION }, 
-        { "-l", BRAND_LIST }, 
-        { "-n", NUMBER }, 
-        { "-t", TYPE }, 
+        { "-p", PERCENT },
+        { "-c", CONCLUSION },
+        { "-l", BRAND_LIST },
+        { "-n", NUMBER },
+        { "-t", TYPE },
         { "-o", OUTPUT },
-        { "help", HELP }, 
-        { "--help", HELP }, 
-        { "--version", VERSION }, 
-        { "--all", ALL }, 
+        { "help", HELP },
+        { "--help", HELP },
+        { "--version", VERSION },
+        { "--all", ALL },
         { "--detect", DETECT },
-        { "--stdout", STDOUT }, 
-        { "--brand", BRAND }, 
-        { "--percent", PERCENT }, 
+        { "--stdout", STDOUT },
+        { "--brand", BRAND },
+        { "--percent", PERCENT },
         { "--conclusion", CONCLUSION },
-        { "--brand-list", BRAND_LIST }, 
-        { "--number", NUMBER }, 
-        { "--type", TYPE }, 
+        { "--brand-list", BRAND_LIST },
+        { "--number", NUMBER },
+        { "--type", TYPE },
         { "--disable-notes", NOTES },
         { "--high-threshold", HIGH_THRESHOLD },
-        { "--dynamic", DYNAMIC }, 
-        { "--verbose", VERBOSE }, 
+        { "--dynamic", DYNAMIC },
+        { "--verbose", VERBOSE },
         { "--enums", ENUMS },
-        { "--no-ansi", NO_ANSI }, 
-        { "--detected-only", DETECTED_ONLY }, 
-        { "--json", JSON }, 
+        { "--no-ansi", NO_ANSI },
+        { "--detected-only", DETECTED_ONLY },
+        { "--json", JSON },
         { "--output", OUTPUT }
     } };
 
@@ -247,7 +297,8 @@ int main(int argc, char* argv[]) {
                     potential_output_arg = arg_string;
                 }
                 arg_bitset.set(OUTPUT, false);
-            } else {
+            }
+            else {
                 arg_bitset.set(NULL_ARG);
                 potential_null_arg = arg_string;
             }

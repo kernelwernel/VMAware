@@ -3,29 +3,77 @@
 #include "windows_cli.hpp"
 
 #if (CLI_WINDOWS)
+#include <cstdlib>
+#include <algorithm>
 
 TuiManager g_tui;
 
+// Tracks the deepest Y coordinate the right-hand boxes reach to prevent overlapping text at the end
+static SHORT g_right_bottom_y = 0;
+
+bool TuiManager::setCursorSafe(SHORT x, SHORT y) {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(hOut, &csbi);
+
+    // if we reach the bottom of the buffer, dynamically expand it to prevent auto-scrolling
+    // auto-scrolling permanently breaks absolute Y coordinates, so we must expand instead
+    if (y >= csbi.dwSize.Y) {
+        COORD newSize = { csbi.dwSize.X, static_cast<SHORT>(y + 100) };
+        SetConsoleScreenBufferSize(hOut, newSize);
+        GetConsoleScreenBufferInfo(hOut, &csbi);
+    }
+
+    SetConsoleCursorPosition(hOut, { x, y });
+
+    // scroll the user's viewport downwards if we draw below the visible area
+    if (y > csbi.srWindow.Bottom) {
+        SMALL_RECT sr = csbi.srWindow;
+        SHORT diff = y - sr.Bottom;
+        sr.Top += diff;
+        sr.Bottom += diff;
+        SetConsoleWindowInfo(hOut, TRUE, &sr);
+    }
+
+    return true;
+}
+
+void TuiManager::clearBoxes() {
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(hOut, &csbi);
+
+    int wipe_len = static_cast<int>(csbi.dwSize.X) - right_x;
+    if (wipe_len <= 0) return;
+
+    std::string wipe_str(static_cast<size_t>(wipe_len), ' ');
+    // clear vertically over the maximum theoretical height of the 3 boxes
+    for (SHORT i = 0; i < 70; i++) {
+        if (exception_y + i >= csbi.dwSize.Y) break; // Don't expand the buffer just to clear empty space
+        SetConsoleCursorPosition(hOut, { right_x, static_cast<SHORT>(exception_y + i) });
+        *raw_out << TH_RST << wipe_str << "\x1B[K";
+    }
+}
+
 bool TuiManager::updateBoxWidth(size_t incoming_len) {
-    // Enforce safe boundary so it never line-wraps out of bounds
-    size_t max_allowed = static_cast<size_t>(console_width - right_x - 22);
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(hOut, &csbi);
+    console_width = csbi.dwSize.X;
+
+    // leaves room for the big right-side bracket (24 chars)
+    size_t max_allowed = static_cast<size_t>(std::max<int>(10, console_width - right_x - 24));
+
     if (incoming_len > max_allowed) {
         incoming_len = max_allowed;
     }
 
     if (incoming_len > global_box_width) {
         global_box_width = incoming_len;
+        clearBoxes(); // wipe old ghost boundaries before redrawing
         return true;
     }
     return false;
 }
 
 void TuiManager::init() {
-    HWND hwnd = GetConsoleWindow();
-    if (hwnd) {
-        ShowWindow(hwnd, SW_MAXIMIZE);
-    }
-
     hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     SetConsoleOutputCP(CP_UTF8);
     enabled = true;
@@ -33,21 +81,53 @@ void TuiManager::init() {
     orig_buf = std::cout.rdbuf();
     raw_out = new std::ostream(orig_buf);
 
+    // maximize window ASYNCHRONOUSLY to avoid Windows Terminal DWM freezes
+    HWND hwnd = GetForegroundWindow();
+    char className[256];
+    if (GetClassNameA(hwnd, className, sizeof(className))) {
+        if (strcmp(className, "CASCADIA_HOSTING_WINDOW_CLASS") == 0 ||
+            strcmp(className, "ConsoleWindowClass") == 0) {
+            PostMessage(hwnd, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+            Sleep(150);
+        }
+    }
+    else {
+        HWND hCon = GetConsoleWindow();
+        if (hCon) PostMessage(hCon, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+    }
+
+    // ANSI fallback maximize for Windows Terminal
+    *raw_out << "\x1B[9;1t" << std::flush;
+    Sleep(50);
+
+    // pre-allocate buffer space downwards for subsequent runs
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(hOut, &csbi);
 
-    if (csbi.dwCursorPosition.Y + 400 > csbi.dwSize.Y) {
-        COORD newSize = { csbi.dwSize.X, static_cast<SHORT>(csbi.dwCursorPosition.Y + 400) };
-        SetConsoleScreenBufferSize(hOut, newSize);
+    SHORT safe_height = csbi.dwCursorPosition.Y + 200;
+    if (safe_height > csbi.dwSize.Y) {
+        SetConsoleScreenBufferSize(hOut, { csbi.dwSize.X, safe_height });
     }
 
+    GetConsoleScreenBufferInfo(hOut, &csbi);
     console_width = csbi.dwSize.X;
+
+    // calculate right-side UI anchors
     right_x = 88;
+    if (console_width < 120) {
+        right_x = std::max<SHORT>(10, console_width - 35);
+    }
+    global_box_width = 30;
 
-#ifndef __VMAWARE_DEBUG__
-    debugs.push_back(TH_DIM + std::string("Compile in debug mode to view detailed logs.") + TH_RST);
-#endif
+    start_y = csbi.dwCursorPosition.Y;
+    left_y = start_y;
+    exception_y = start_y;
 
+    #ifndef __VMAWARE_DEBUG__
+        debugs.push_back(TH_DIM + std::string("Compile in debug mode to view detailed logs.") + TH_RST);
+    #endif
+
+    setCursorSafe(0, start_y);
     printHeader();
 }
 
@@ -170,13 +250,14 @@ void TuiManager::printHeader() {
 
     *raw_out << TH_DIM << repeat_str("─", static_cast<size_t>(console_width) - 1) << TH_RST << "\n";
 
+    // resync Y coordinates natively after the \n's
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     GetConsoleScreenBufferInfo(hOut, &csbi);
-    start_y = csbi.dwCursorPosition.Y + 1; // gap
-    left_y = start_y;
-    exception_y = start_y;
 
-    redrawAllBoxes(); // Draws initial boxes and bracket
+    left_y = csbi.dwCursorPosition.Y;
+    exception_y = left_y;
+
+    redrawAllBoxes();
 }
 
 void TuiManager::printLeft(const std::string& str) {
@@ -185,103 +266,105 @@ void TuiManager::printLeft(const std::string& str) {
         return;
     }
     std::lock_guard<std::mutex> lock(mtx);
-    SetConsoleCursorPosition(hOut, { left_margin, left_y });
-    *raw_out << str << std::flush;
+    setCursorSafe(left_margin, left_y);
+    *raw_out << str << "\x1B[K" << std::flush;
     left_y++;
-}
-
-void TuiManager::clearBoxes() {
-    std::string wipe_str(static_cast<size_t>(console_width - right_x), ' ');
-    // Clear to prevent any overflowing logs from lingering
-    for (SHORT i = 0; i < 80; i++) {
-        SetConsoleCursorPosition(hOut, { right_x, static_cast<SHORT>(exception_y + i) });
-        *raw_out << TH_RST << wipe_str;
-    }
 }
 
 void TuiManager::redrawAllBoxes() {
     if (!enabled) return;
+
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    GetConsoleScreenBufferInfo(hOut, &csbi);
+    console_width = csbi.dwSize.X;
+
     SHORT draw_y = exception_y;
     size_t content_w = global_box_width - 4;
 
     // 1. Exceptions Box
+    setCursorSafe(right_x, draw_y++);
+    *raw_out << TH_DIM << "┌─ " << TH_WHITE << "Exceptions" << TH_DIM << " " << repeat_str("─", global_box_width >= 15 ? global_box_width - 15 : 0) << "┐" << TH_RST << "\x1B[K";
+
     if (!exceptions.empty()) {
         const auto& lines = exceptions[exc_scroll_index];
-        SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
-        *raw_out << TH_DIM << "┌─ " << TH_WHITE << "Exceptions" << TH_DIM << " " << repeat_str("─", global_box_width - 15) << "┐" << TH_RST << "\x1B[K";
-
         for (size_t i = 0; i < lines.size(); i++) {
-            SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
+            setCursorSafe(right_x, draw_y++);
             *raw_out << TH_DIM << "│ " << TH_RST << pad(lines[i], content_w) << TH_DIM << " │" << TH_RST << "\x1B[K";
         }
     }
     else {
-        SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
-        *raw_out << TH_DIM << "┌─ " << TH_WHITE << "Exceptions" << TH_DIM << " " << repeat_str("─", global_box_width - 15) << "┐" << TH_RST << "\x1B[K";
         for (size_t i = 0; i < (size_t)box_height - 2; i++) {
-            SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
+            setCursorSafe(right_x, draw_y++);
             *raw_out << TH_DIM << "│ " << TH_RST << pad("", content_w) << TH_DIM << " │" << TH_RST << "\x1B[K";
         }
     }
-    SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
-    *raw_out << TH_DIM << "└" << repeat_str("─", global_box_width - 2) << "┘" << TH_RST << "\x1B[K";
-    SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
-    *raw_out << TH_DIM << " Use Left/Right arrows to scroll " << TH_RST << "\x1B[K";
 
-    SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
-    *raw_out << TH_RST << "\x1B[K"; // Ensure gap is cleared
+    setCursorSafe(right_x, draw_y++);
+    *raw_out << TH_DIM << "└" << repeat_str("─", global_box_width >= 2 ? global_box_width - 2 : 0) << "┘" << TH_RST << "\x1B[K";
+
+    setCursorSafe(right_x, draw_y++);
+    std::string exc_controls = "Use Left/Right arrows to scroll (" +
+        std::to_string(exceptions.empty() ? 0 : exc_scroll_index + 1) + "/" +
+        std::to_string(exceptions.size()) + ")";
+    *raw_out << TH_DIM << " " << exc_controls << " " << TH_RST << "\x1B[K";
+
+    setCursorSafe(right_x, draw_y++);
+    *raw_out << TH_RST << "\x1B[K"; // gap
 
     // 2. Timings Box
     draw_y = drawBoxInternal(draw_y, global_box_width, "Timings", cycles, cyc_scroll_index, "Use Up/Down arrows to scroll");
 
-    SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
-    *raw_out << TH_RST << "\x1B[K"; // same here
+    setCursorSafe(right_x, draw_y++);
+    *raw_out << TH_RST << "\x1B[K"; // gap
 
     // 3. Debug Box
     draw_y = drawBoxInternal(draw_y, global_box_width, "Debug", debugs, dbg_scroll_index, "Use PgUp/PgDn to scroll");
 
-    // 4. Right-side encapsulation bracket for CPUID leaves
     SHORT bottom_y = draw_y - 1; // Ends exactly at the Debug control text line
     SHORT bracket_x = right_x + static_cast<SHORT>(global_box_width) + 4;
 
-    SetConsoleCursorPosition(hOut, { bracket_x, exception_y });
-    *raw_out << TH_WHITE << "┐" << TH_RST; // Pointing left (arms go left, spine is vertical)
+    if (bracket_x + 15 < console_width) {
+        setCursorSafe(bracket_x, exception_y);
+        *raw_out << TH_WHITE << "┐" << TH_RST;
 
-    for (SHORT y = static_cast<SHORT>(exception_y + 1); y < bottom_y; y++) {
-        SetConsoleCursorPosition(hOut, { bracket_x, y });
-        *raw_out << TH_WHITE << "│" << TH_RST;
+        for (SHORT y = static_cast<SHORT>(exception_y + 1); y < bottom_y; y++) {
+            setCursorSafe(bracket_x, y);
+            *raw_out << TH_WHITE << "│" << TH_RST;
+        }
+
+        setCursorSafe(bracket_x, bottom_y);
+        *raw_out << TH_WHITE << "┘" << TH_RST;
+
+        SHORT mid_y = exception_y + (bottom_y - exception_y) / 2;
+        SHORT text_x = bracket_x + 3;
+
+        setCursorSafe(text_x, static_cast<SHORT>(mid_y - 1));
+        *raw_out << TH_DIM << "s: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_std << TH_RST << "\x1B[K";
+        setCursorSafe(text_x, mid_y);
+        *raw_out << TH_DIM << "h: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_hyp << TH_RST << "\x1B[K";
+        setCursorSafe(text_x, static_cast<SHORT>(mid_y + 1));
+        *raw_out << TH_DIM << "e: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_ext << TH_RST << "\x1B[K";
     }
 
-    SetConsoleCursorPosition(hOut, { bracket_x, bottom_y });
-    *raw_out << TH_WHITE << "┘" << TH_RST;
+    g_right_bottom_y = draw_y;
 
-    SHORT mid_y = exception_y + (bottom_y - exception_y) / 2;
-    SHORT text_x = bracket_x + 3;
-
-    SetConsoleCursorPosition(hOut, { text_x, static_cast<SHORT>(mid_y - 1) });
-    *raw_out << TH_DIM << "s: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_std << TH_RST << "\x1B[K";
-    SetConsoleCursorPosition(hOut, { text_x, mid_y });
-    *raw_out << TH_DIM << "h: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_hyp << TH_RST << "\x1B[K";
-    SetConsoleCursorPosition(hOut, { text_x, static_cast<SHORT>(mid_y + 1) });
-    *raw_out << TH_DIM << "e: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_ext << TH_RST << "\x1B[K";
-
-    // Re-align to primary drawing coords
-    SetConsoleCursorPosition(hOut, { left_margin, left_y });
+    // Re-align to primary drawing coords safely
+    setCursorSafe(left_margin, left_y);
     *raw_out << std::flush;
 }
 
-SHORT TuiManager::drawBoxInternal(SHORT startY, size_t box_width, const std::string& title, const std::vector<std::string>& items, size_t scroll_idx, const std::string& controls) {
+SHORT TuiManager::drawBoxInternal(SHORT startY, size_t box_width, const std::string& title, const std::vector<std::string>& items, size_t scroll_idx, const std::string& controls_base) {
     SHORT draw_y = startY;
     size_t content_w = box_width - 4;
     size_t title_len = visible_length(title);
     size_t dash_count = (box_width >= 5 + title_len) ? (box_width - 5 - title_len) : 0;
 
-    SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
+    setCursorSafe(right_x, draw_y++);
     *raw_out << TH_DIM << "┌─ " << TH_WHITE << title << " " << TH_DIM << repeat_str("─", dash_count) << "┐" << TH_RST << "\x1B[K" << std::flush;
 
     size_t limit = box_height - 2;
     for (size_t i = 0; i < limit; i++) {
-        SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
+        setCursorSafe(right_x, draw_y++);
         if (scroll_idx + i < items.size()) {
             *raw_out << TH_DIM << "│ " << TH_RST << pad(items[scroll_idx + i], content_w) << TH_DIM << " │" << TH_RST << "\x1B[K" << std::flush;
         }
@@ -290,10 +373,14 @@ SHORT TuiManager::drawBoxInternal(SHORT startY, size_t box_width, const std::str
         }
     }
 
-    SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
-    *raw_out << TH_DIM << "└" << repeat_str("─", box_width - 2) << "┘" << TH_RST << "\x1B[K" << std::flush;
+    setCursorSafe(right_x, draw_y++);
+    *raw_out << TH_DIM << "└" << repeat_str("─", box_width >= 2 ? box_width - 2 : 0) << "┘" << TH_RST << "\x1B[K" << std::flush;
 
-    SetConsoleCursorPosition(hOut, { right_x, draw_y++ });
+    setCursorSafe(right_x, draw_y++);
+    std::string controls = controls_base + " (" +
+        std::to_string(items.empty() ? 0 : scroll_idx + 1) + "/" +
+        std::to_string(items.size()) + ")";
+
     *raw_out << TH_DIM << " " << controls << " " << TH_RST << "\x1B[K" << std::flush;
     return draw_y;
 }
@@ -313,9 +400,7 @@ void TuiManager::addException(const std::vector<std::string>& lines) {
         }
     }
     std::lock_guard<std::mutex> draw_lock(mtx);
-    if (resized) {
-        clearBoxes();
-    }
+    if (resized) clearBoxes();
     redrawAllBoxes();
 }
 
@@ -333,9 +418,7 @@ void TuiManager::addCycle(const std::string& line) {
         }
     }
     std::lock_guard<std::mutex> draw_lock(mtx);
-    if (resized) {
-        clearBoxes();
-    }
+    if (resized) clearBoxes();
     redrawAllBoxes();
 }
 
@@ -344,13 +427,9 @@ void TuiManager::addDebug(const std::string& line) {
     bool resized = false;
 
     std::string colored_line;
-    size_t pos = 0;
-
-    // find the first ':' that is followed by a space ' '
-    pos = line.find(": ");
+    size_t pos = line.find(": ");
 
     if (pos != std::string::npos) {
-        // left of ':' is pure white, right of ':' is dark grey
         colored_line = TH_WHITE + line.substr(0, pos) + TH_DIM + line.substr(pos) + TH_RST;
     }
     else {
@@ -368,9 +447,7 @@ void TuiManager::addDebug(const std::string& line) {
         }
     }
     std::lock_guard<std::mutex> draw_lock(mtx);
-    if (resized) {
-        clearBoxes();
-    }
+    if (resized) clearBoxes();
     redrawAllBoxes();
 }
 
@@ -448,17 +525,22 @@ void TuiManager::drawSummaryBox(const std::vector<std::string>& lines) {
     for (auto& l : lines) {
         max_len = std::max(max_len, visible_length(l));
     }
+
     SHORT box_width = static_cast<SHORT>(std::max(static_cast<size_t>(80), max_len + 4));
 
-    SetConsoleCursorPosition(hOut, { left_margin, draw_y++ });
+    if (box_width >= console_width - 2) {
+        box_width = std::max<SHORT>(40, console_width - 2);
+    }
+
+    setCursorSafe(left_margin, draw_y++);
     *raw_out << TH_DIM << "┌" << repeat_str("─", static_cast<size_t>(box_width)) << "┐" << TH_RST << "\n";
 
     for (const auto& line : lines) {
-        SetConsoleCursorPosition(hOut, { left_margin, draw_y++ });
+        setCursorSafe(left_margin, draw_y++);
         *raw_out << TH_DIM << "│ " << TH_RST << pad(line, static_cast<size_t>(box_width - 2)) << TH_DIM << " │" << TH_RST << "\n";
     }
 
-    SetConsoleCursorPosition(hOut, { left_margin, draw_y++ });
+    setCursorSafe(left_margin, draw_y++);
     *raw_out << TH_DIM << "└" << repeat_str("─", static_cast<size_t>(box_width)) << "┘" << TH_RST << "\n";
 
     left_y = draw_y;
@@ -466,7 +548,10 @@ void TuiManager::drawSummaryBox(const std::vector<std::string>& lines) {
 
 void TuiManager::finalize() {
     if (!enabled) return;
-    SetConsoleCursorPosition(hOut, { left_margin, left_y });
+
+    // position terminal exit prompt below EVERYTHING drawn 
+    SHORT final_y = std::max<SHORT>(left_y, g_right_bottom_y + 1);
+    setCursorSafe(0, final_y);
     *raw_out << TH_RST << "\n" << std::flush;
 }
 
@@ -478,12 +563,14 @@ DebugInterceptor::~DebugInterceptor() {
 }
 
 DebugInterceptor::int_type DebugInterceptor::overflow(int_type c) {
-    if (c != EOF) {
-        buffer += static_cast<char>(c);
+    if (c == EOF) {
         return c;
     }
 
-    if (c != '\n') {
+    char ch = static_cast<char>(c);
+
+    if (ch != '\n') {
+        buffer += ch;
         return c;
     }
 
@@ -504,22 +591,20 @@ DebugInterceptor::int_type DebugInterceptor::overflow(int_type c) {
     }
     else {
         if (g_tui.raw_out) {
-            SetConsoleCursorPosition(g_tui.hOut, { g_tui.left_margin, g_tui.left_y });
-            *(g_tui.raw_out) << buffer << "\n";
-            g_tui.left_y++; // Safely increments tracker if string breaches
+            g_tui.setCursorSafe(g_tui.left_margin, g_tui.left_y);
+            *(g_tui.raw_out) << buffer << "\x1B[K" << std::flush;
+            g_tui.left_y++;
         }
         else {
             std::ostream os(original);
             os << buffer << "\n";
         }
     }
-    buffer.clear();
 
+    buffer.clear();
     return c;
 }
 
-// Called by the stream when writing multiple characters at once (e.g. operator<<).
-// Routes each character through overflow() where the newline and [DEBUG] logic lives.
 std::streamsize DebugInterceptor::xsputn(const char* s, std::streamsize n) {
     for (std::streamsize i = 0; i < n; ++i) {
         overflow(s[i]);
@@ -532,8 +617,8 @@ LONG WINAPI VehLogger(PEXCEPTION_POINTERS ep) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
-    std::string c_white = TH_WHITE;  // pure white numbers
-    std::string c_grey = TH_DIM;    // dark grey strings
+    std::string c_white = TH_WHITE;
+    std::string c_grey = TH_DIM;
     std::string c_rst = TH_RST;
 
     auto to_hex = [](auto val) {

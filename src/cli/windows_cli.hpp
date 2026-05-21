@@ -44,7 +44,7 @@ private:
     HANDLE m_out;
 };
 
-// Safely trims and pads a string ensuring it fits perfectly within bounds
+// safely trims and pads a string ensuring it fits perfectly within bounds
 // without leaking unclosed ANSI tags or overflowing text visually.
 inline std::string pad(const std::string& str, size_t target_len) {
     size_t vlen = 0;
@@ -73,7 +73,7 @@ inline std::string pad(const std::string& str, size_t target_len) {
     }
 
     if (vlen >= target_len) {
-        result += "\x1B[0m"; // Ensure sequences are closed if string gets sliced
+        result += "\x1B[0m"; // ensure sequences are closed if string gets sliced
     }
 
     return result;
@@ -116,7 +116,7 @@ public:
     SHORT box_height = 10;
     size_t global_box_width = 70; // dynamic base width
 
-    HANDLE hOut;
+    HANDLE hOut = nullptr;
     std::mutex mtx;
     bool enabled = false;
 
@@ -136,6 +136,7 @@ public:
     u32 g_max_hyp = 0;
     u32 g_max_ext = 0;
 
+    bool setCursorSafe(SHORT x, SHORT y);
     bool updateBoxWidth(size_t incoming_len);
     void init();
     ~TuiManager();

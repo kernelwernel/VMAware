@@ -6,8 +6,8 @@ const std::string TH_WHITE = "\x1B[38;2;255;255;255m";
 const std::string TH_RST = "\x1B[0m";
 
 #if (CLI_WINDOWS)
-const std::string TH_BRIGHT = "\x1B[38;2;180;180;180m";
-const std::string TH_RED = "\x1B[38;2;220;0;0m";
+	const std::string TH_BRIGHT = "\x1B[38;2;180;180;180m";
+	const std::string TH_RED = "\x1B[38;2;220;0;0m";
 #endif
 
 std::string bold = "\x1B[1;97m";
@@ -30,3 +30,5 @@ u8 disabled_count = 0;
 
 std::string tag_detected = ("\x1B[97m[\x1B[31m  DETECTED  \x1B[97m]\x1B[0m");
 std::string tag_not_detected = ("   \x1B[97m[\x1B[90mNOT DETECTED\x1B[97m]\x1B[0m");
+std::string tag_skipped = ("   \x1B[97m[\x1B[90m  DISABLED  \x1B[97m]\x1B[0m");
+std::string tag_notes = ("   \x1B[97m[\x1B[90m  NOTES   \x1B[97m]\x1B[0m");
