@@ -31,7 +31,8 @@ const char* color(const u8 score, const bool is_hardened) {
         if (score <= 75) { return green_orange.c_str(); }
         if (score < 100) { return green.c_str(); }
         if (score == 100) { return green.c_str(); }
-    } else {
+    }
+    else {
         if (score == 100) {
             return green.c_str();
         }
@@ -71,14 +72,14 @@ static bool are_perms_required(const VM::enum_flags flag) {
     }
 
     switch (flag) {
-        case VM::VMWARE_DMESG:
-        case VM::DMIDECODE:
-        case VM::DMESG:
-        case VM::QEMU_USB:
-        case VM::KMSG:
-        case VM::SMBIOS_VM_BIT:
-        case VM::NVRAM: return true;
-        default: return false;
+    case VM::VMWARE_DMESG:
+    case VM::DMIDECODE:
+    case VM::DMESG:
+    case VM::QEMU_USB:
+    case VM::KMSG:
+    case VM::SMBIOS_VM_BIT:
+    case VM::NVRAM: return true;
+    default: return false;
     }
 }
 #endif
@@ -116,10 +117,10 @@ static std::pair<bool, VM::enum_flags> string_to_technique(const std::string& na
     for (u8 i = VM::technique_begin; i < static_cast<u8>(VM::technique_end); ++i) {
         const VM::enum_flags flag = static_cast<VM::enum_flags>(i);
         if (VM::flag_to_string(flag) == name) {
-            return {true, flag};
+            return { true, flag };
         }
     }
-    return {false, VM::NULL_ARG};
+    return { false, VM::NULL_ARG };
 }
 
 bool is_vm_brand_multiple(const std::string& vm_brand) {
@@ -223,7 +224,11 @@ static void checker(const VM::enum_flags flag, const char* message) {
 
     if (is_disabled(flag)) {
         disabled_count++;
-        PRINT_LINE(grey + "Skipped " + message + ansi_exit);
+        do {
+            std::ostringstream _oss;
+            _oss << tag_skipped << " " << grey << "Skipped " << message << "." << ansi_exit;
+            g_tui.printLeft(_oss.str());
+        } while (0);
         return;
     }
 
@@ -244,25 +249,26 @@ static void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 
-    #if (CLI_LINUX)
-        if (are_perms_required(flag)) {
-            no_perms_count++;
-            VM::check(flag);
-            return;
-        }
-    #endif
+#if (CLI_LINUX)
+    if (are_perms_required(flag)) {
+        no_perms_count++;
+        VM::check(flag);
+        return;
+    }
+#endif
 
     std::ostringstream cycle_oss;
     cycle_oss << TH_DIM << message << " " << TH_MED << "| " << TH_WHITE << std::fixed << std::setprecision(4) << ms << " ms" << TH_RST;
-    #if (CLI_WINDOWS)
-        g_tui.addCycle(cycle_oss.str());
-    #endif
+#if (CLI_WINDOWS)
+    g_tui.addCycle(cycle_oss.str());
+#endif
 
     std::ostringstream msg_oss;
 
     if (result) {
         msg_oss << white << "🪲 " << white << tag_detected << " " << white << "Checking " << message << "..." << ansi_exit << enum_name;
-    } else {
+    }
+    else {
         msg_oss << tag_not_detected << " " << grey << "Checking " << message << "..." << ansi_exit << enum_name;
     }
 
@@ -280,7 +286,8 @@ bool parse_disable_token(const char* token) {
                 names.push_back(current);
                 current.clear();
             }
-        } else {
+        }
+        else {
             current += c;
         }
     }
@@ -291,7 +298,7 @@ bool parse_disable_token(const char* token) {
 
     for (const auto& name : names) {
         std::pair<bool, VM::enum_flags> technique = string_to_technique(name);
-        
+
         const bool found = technique.first;
         const VM::enum_flags flag = technique.second;
 
@@ -314,7 +321,8 @@ void generate_json(const char* output) {
 
     if (VM::detect()) {
         json.emplace_back("true,");
-    } else {
+    }
+    else {
         json.emplace_back("false,");
     }
 
@@ -351,14 +359,16 @@ void generate_json(const char* output) {
     const auto detected_status = VM::detected_enums();
     if (detected_status.size() == 0) {
         json.emplace_back("]\n}");
-    } else {
+    }
+    else {
         for (size_t i = 0; i < detected_status.size(); i++) {
             json.emplace_back("\n\t\t\"");
             json.push_back(VM::flag_to_string(detected_status[i]));
 
             if (i == detected_status.size() - 1) {
                 json.emplace_back("\"");
-            } else {
+            }
+            else {
                 json.emplace_back("\",");
             }
         }
@@ -385,24 +395,24 @@ u32 get_technique_count() {
 int run_stdout(bool high_threshold, bool all, bool dynamic) {
     return static_cast<int>(!VM::detect(
         high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG,
-        all            ? VM::ALL            : VM::NULL_ARG,
-        dynamic        ? VM::DYNAMIC        : VM::NULL_ARG
+        all ? VM::ALL : VM::NULL_ARG,
+        dynamic ? VM::DYNAMIC : VM::NULL_ARG
     ));
 }
 
 u32 run_percent(bool high_threshold, bool all, bool dynamic) {
     return static_cast<u32>(VM::percentage(
         high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG,
-        all            ? VM::ALL            : VM::NULL_ARG,
-        dynamic        ? VM::DYNAMIC        : VM::NULL_ARG
+        all ? VM::ALL : VM::NULL_ARG,
+        dynamic ? VM::DYNAMIC : VM::NULL_ARG
     ));
 }
 
 bool run_detect(bool high_threshold, bool all, bool dynamic) {
     return VM::detect(
         high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG,
-        all            ? VM::ALL            : VM::NULL_ARG,
-        dynamic        ? VM::DYNAMIC        : VM::NULL_ARG
+        all ? VM::ALL : VM::NULL_ARG,
+        dynamic ? VM::DYNAMIC : VM::NULL_ARG
     );
 }
 
@@ -410,8 +420,8 @@ std::string run_brand(bool high_threshold, bool all, bool dynamic) {
     return VM::brand(
         VM::MULTIPLE,
         high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG,
-        all            ? VM::ALL            : VM::NULL_ARG,
-        dynamic        ? VM::DYNAMIC        : VM::NULL_ARG
+        all ? VM::ALL : VM::NULL_ARG,
+        dynamic ? VM::DYNAMIC : VM::NULL_ARG
     );
 }
 
@@ -419,8 +429,8 @@ std::string run_type(bool high_threshold, bool all, bool dynamic) {
     return VM::type(
         VM::MULTIPLE,
         high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG,
-        all            ? VM::ALL            : VM::NULL_ARG,
-        dynamic        ? VM::DYNAMIC        : VM::NULL_ARG
+        all ? VM::ALL : VM::NULL_ARG,
+        dynamic ? VM::DYNAMIC : VM::NULL_ARG
     );
 }
 
@@ -428,19 +438,19 @@ std::string run_conclusion(bool high_threshold, bool all, bool dynamic) {
     return VM::conclusion(
         VM::MULTIPLE,
         high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG,
-        all            ? VM::ALL            : VM::NULL_ARG,
-        dynamic        ? VM::DYNAMIC        : VM::NULL_ARG
+        all ? VM::ALL : VM::NULL_ARG,
+        dynamic ? VM::DYNAMIC : VM::NULL_ARG
     );
 }
 
 void general(bool high_threshold, bool all, bool dynamic) {
-    const VM::enum_flags ht  = high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG;
-    const VM::enum_flags al  = all            ? VM::ALL            : VM::NULL_ARG;
-    const VM::enum_flags dyn = dynamic        ? VM::DYNAMIC        : VM::NULL_ARG;
+    const VM::enum_flags ht = high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG;
+    const VM::enum_flags al = all ? VM::ALL : VM::NULL_ARG;
+    const VM::enum_flags dyn = dynamic ? VM::DYNAMIC : VM::NULL_ARG;
 
-    #if (CLI_LINUX)
-        [[maybe_unused]] bool notes_enabled = !arg_bitset.test(NOTES);
-    #endif
+#if (CLI_LINUX)
+    [[maybe_unused]] bool notes_enabled = !arg_bitset.test(NOTES);
+#endif
 
     if (arg_bitset.test(NO_ANSI)) {
         tag_detected = ("[  DETECTED  ]");
@@ -449,24 +459,28 @@ void general(bool high_threshold, bool all, bool dynamic) {
         green = ""; red_orange = ""; green_orange = ""; grey = ""; white = "";
     }
 
-    #if (CLI_WINDOWS)
-        DebugInterceptor* interceptor = nullptr;
-        if (!arg_bitset.test(NO_ANSI)) {
-            g_tui.init();
-            interceptor = new DebugInterceptor(std::cout.rdbuf());
-            std::cout.rdbuf(interceptor);
-        }
-    #endif
+#if (CLI_WINDOWS)
+    DebugInterceptor* interceptor = nullptr;
+    if (!arg_bitset.test(NO_ANSI)) {
+        g_tui.init();
+        interceptor = new DebugInterceptor(std::cout.rdbuf());
+        std::cout.rdbuf(interceptor);
+    }
+#endif
 
-    #if (CLI_LINUX)
-        if (notes_enabled && !is_admin()) {
-            PRINT_LINE(" Running under root might give better results");
-        }
-    #elif (CLI_WINDOWS)
-        if (!is_admin()) {
-            PRINT_LINE(" Not running as admin, some technique may not run");
-        }
-    #endif
+#if (CLI_LINUX)
+    if (notes_enabled && !is_admin()) {
+        PRINT_LINE(" Running under root might give better results");
+    }
+#elif (CLI_WINDOWS)
+    if (!is_admin()) {
+        do {
+            std::ostringstream _oss; 
+            _oss << red << "    Not running as administrator, NVRAM checks will not run.\n";
+            g_tui.printLeft(_oss.str());
+        } while (0);
+    }
+#endif
 
     const auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -578,13 +592,17 @@ void general(bool high_threshold, bool all, bool dynamic) {
 
     if (vm.percentage == 0) {
         percent_color = red.c_str();
-    } else if (vm.percentage < 25) {
+    }
+    else if (vm.percentage < 25) {
         percent_color = red_orange.c_str();
-    } else if (vm.percentage < 50) {
+    }
+    else if (vm.percentage < 50) {
         percent_color = orange.c_str();
-    } else if (vm.percentage < 75) {
+    }
+    else if (vm.percentage < 75) {
         percent_color = green_orange.c_str();
-    } else {
+    }
+    else {
         percent_color = green.c_str();
     }
 
@@ -595,12 +613,12 @@ void general(bool high_threshold, bool all, bool dynamic) {
     const char* count_color = nullptr;
 
     switch (vm.detected_count) {
-        case 0: count_color = red.c_str(); break;
-        case 1: count_color = red_orange.c_str(); break;
-        case 2: count_color = orange.c_str(); break;
-        case 3: count_color = orange.c_str(); break;
-        case 4: count_color = green_orange.c_str(); break;
-        default: count_color = green.c_str();
+    case 0: count_color = red.c_str(); break;
+    case 1: count_color = red_orange.c_str(); break;
+    case 2: count_color = orange.c_str(); break;
+    case 3: count_color = orange.c_str(); break;
+    case 4: count_color = green_orange.c_str(); break;
+    default: count_color = green.c_str();
     }
 
     summary.push_back(bold + "VM detections: " + ansi_exit + count_color + std::to_string(static_cast<u32>(vm.detected_count)) + "/" + std::to_string(static_cast<u32>(vm.technique_count)) + ansi_exit);
@@ -640,7 +658,8 @@ void general(bool high_threshold, bool all, bool dynamic) {
                 if ((static_cast<unsigned long long>(char_count) - 1) >= (static_cast<unsigned long long>(60) + 3)) {
                     it = divided_description.insert(it + 1, "\n");
                     char_count = it->length() + 1;
-                } else {
+                }
+                else {
                     continue;
                 }
             }
@@ -665,7 +684,8 @@ void general(bool high_threshold, bool all, bool dynamic) {
 #if (CLI_WINDOWS)
     if (!arg_bitset.test(NO_ANSI)) {
         g_tui.drawSummaryBox(summary);
-    } else {
+    }
+    else {
         for (const auto& l : summary) {
             std::cout << l << "\n";
         }
@@ -675,7 +695,8 @@ void general(bool high_threshold, bool all, bool dynamic) {
 
     if (g_tui.raw_out) {
         *(g_tui.raw_out) << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
-    } else {
+    }
+    else {
         std::cout << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
     }
 
@@ -685,15 +706,20 @@ void general(bool high_threshold, bool all, bool dynamic) {
             ch = _getch();
             if (ch == 72) {
                 g_tui.scrollCyclesUp();
-            } else if (ch == 80) {
+            }
+            else if (ch == 80) {
                 g_tui.scrollCyclesDown();
-            } else if (ch == 73) {
+            }
+            else if (ch == 73) {
                 g_tui.scrollDebugUp();
-            } else if (ch == 81) {
+            }
+            else if (ch == 81) {
                 g_tui.scrollDebugDown();
-            } else if (ch == 75) {
+            }
+            else if (ch == 75) {
                 g_tui.scrollExceptionsUp();
-            } else if (ch == 77) {
+            }
+            else if (ch == 77) {
                 g_tui.scrollExceptionsDown();
             }
         }

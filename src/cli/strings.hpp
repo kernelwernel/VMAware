@@ -28,8 +28,8 @@ extern const std::string TH_WHITE;
 extern const std::string TH_RST;
 
 #if (CLI_WINDOWS)
-extern const std::string TH_BRIGHT;
-extern const std::string TH_RED;
+    extern const std::string TH_BRIGHT;
+    extern const std::string TH_RED;
 #endif
 
 extern std::string bold;
@@ -44,26 +44,26 @@ extern std::string grey;
 extern std::string white;
 
 enum arg_enum : u8 {
-    HELP, 
-    VERSION, 
-    ALL, 
-    DETECT, 
-    STDOUT, 
-    BRAND, 
-    BRAND_LIST, 
-    PERCENT, 
-    CONCLUSION, 
-    NUMBER, 
-    TYPE, 
-    OUTPUT, 
-    NOTES, 
-    HIGH_THRESHOLD, 
-    NO_ANSI, 
-    DYNAMIC, 
-    VERBOSE, 
-    ENUMS, 
-    DETECTED_ONLY, 
-    JSON, 
+    HELP,
+    VERSION,
+    ALL,
+    DETECT,
+    STDOUT,
+    BRAND,
+    BRAND_LIST,
+    PERCENT,
+    CONCLUSION,
+    NUMBER,
+    TYPE,
+    OUTPUT,
+    NOTES,
+    HIGH_THRESHOLD,
+    NO_ANSI,
+    DYNAMIC,
+    VERBOSE,
+    ENUMS,
+    DETECTED_ONLY,
+    JSON,
     NULL_ARG
 };
 
@@ -77,3 +77,5 @@ extern u8 disabled_count;
 
 extern std::string tag_detected;
 extern std::string tag_not_detected;
+extern std::string tag_skipped;
+extern std::string tag_notes;
