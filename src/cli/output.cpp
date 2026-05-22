@@ -453,6 +453,8 @@ void general(bool high_threshold, bool all, bool dynamic) {
     if (arg_bitset.test(NO_ANSI)) {
         tag_detected = ("[  DETECTED  ]");
         tag_not_detected = ("   [NOT DETECTED]");
+        tag_skipped = ("   [  DISABLED  ]");
+        tag_notes = ("   [  NOTES   ]");
         bold = ""; underline = ""; ansi_exit = ""; red = ""; orange = "";
         green = ""; red_orange = ""; green_orange = ""; grey = ""; white = "";
     }
