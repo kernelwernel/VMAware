@@ -10766,7 +10766,7 @@ public:
         if (is_hyperv) {
             if (!shadow_broken) {
                 debug("INTERRUPT_SHADOW: hyper-v present but shadow respected, VM hardening suspected");
-                core::add(brand_enum::HYPERV_ARTIFACT_VM, 75);
+                core::add(brand_enum::NULL_BRAND, 50);
             } else {
                 debug("INTERRUPT_SHADOW: hyper-v present and shadow broken, baremetal behaviour");
             }
@@ -10855,7 +10855,7 @@ public:
         if (is_hyperv) {
             if (!shadow_broken) {
                 debug("INTERRUPT_SHADOW: hyper-v present but shadow respected, VM hardening suspected");
-                core::add(brand_enum::HYPERV_ARTIFACT_VM, 75);
+                core::add(brand_enum::NULL_BRAND, 50);
             } else {
                 debug("INTERRUPT_SHADOW: hyper-v present and shadow broken, baremetal behaviour");
             }
