@@ -5514,7 +5514,7 @@ public:
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 25.0;
+        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 35.0;
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         #if (MSVC)
