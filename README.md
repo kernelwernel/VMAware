@@ -1,18 +1,14 @@
-<p align="center">
-   <img src="assets/banner.jpg" align="center" width="500" title="VMAware">
-   <br>
-   <img align="center" src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cross-platform-build.yml">
-   <img align="center" src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
-   <img align="center" src="https://img.shields.io/badge/License-MIT-yellow.svg">
-   <a href="https://deepwiki.com/kernelwernel/VMAware"><img align="center" src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-
-   <div align="center">
-      <b>VMAware</b> (VM + Aware) is a cross-platform C++ framework for virtual machine detection.
-      <br>
-      <br>
-      <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
-   </div>
-</p>
+<div align="center">
+   <h1>VMAware</h1>
+   <img src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cross-platform-build.yml">
+   <img src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
+   <img src="https://img.shields.io/badge/License-MIT-yellow.svg">
+   <a href="https://deepwiki.com/kernelwernel/VMAware"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+   <br><br>
+   <b>VMAware</b> (VM + Aware) is a cross-platform C++ framework for virtual machine detection.
+   <br><br>
+   <a href="README_CN.md">中文 🇨🇳</a> | <a href="README_FR.md">Français 🇫🇷</a> | <a href="README_KR.md">한국어 🇰🇷</a>
+</div>
 
 - - -
 
