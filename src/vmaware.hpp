@@ -10729,7 +10729,9 @@ public:
      * @implements VM::INTERRUPT_SHADOW
      */
     [[nodiscard]] static bool interrupt_shadow() {
-        const bool is_hyperv = (util::hyper_x() == HYPERV_REAL_VM);
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                   return false;
+        }
         volatile ULONG_PTR trap_ip = 0;
 
     #if (x86_32) && !(CLANG || GCC)
@@ -10761,19 +10763,9 @@ public:
                 EXCEPTION_CONTINUE_EXECUTION
             ) : EXCEPTION_CONTINUE_SEARCH) {}
 
-        const bool shadow_broken = (trap_ip == 0 || trap_ip != baremetal_target_ip);
-
-        if (is_hyperv) {
-            if (!shadow_broken) {
-                debug("INTERRUPT_SHADOW: hyper-v present but shadow respected, VM hardening suspected");
-                core::add(brand_enum::NULL_BRAND, 50);
-            } else {
-                debug("INTERRUPT_SHADOW: hyper-v present and shadow broken, baremetal behaviour");
-            }
-            return false;
-        }
-
-        return shadow_broken;
+         // hypervisor is detected if the trap fired at any IP differing from the expected baremetal target
+        // OR if the single step exception never fired at all (trap_ip == 0)
+        return (trap_ip == 0 || trap_ip != baremetal_target_ip);
 
     #elif (x86_64) || ((x86_32) && (CLANG || GCC))
         const HMODULE ntdll = util::get_ntdll();
@@ -10850,19 +10842,7 @@ public:
 
         // hypervisor is detected if execution trapped at any offset other than expected baremetal
         // OR if the single step exception never fired at all (trap_ip == 0)
-        const bool shadow_broken = NT_SUCCESS(st) && (trap_ip == 0 || trap_ip != baremetal_target_ip);
-
-        if (is_hyperv) {
-            if (!shadow_broken) {
-                debug("INTERRUPT_SHADOW: hyper-v present but shadow respected, VM hardening suspected");
-                core::add(brand_enum::NULL_BRAND, 50);
-            } else {
-                debug("INTERRUPT_SHADOW: hyper-v present and shadow broken, baremetal behaviour");
-            }
-            return false;
-        }
-
-        return shadow_broken;
+      return NT_SUCCESS(st) && (trap_ip == 0 || trap_ip != baremetal_target_ip);
     #else
         return false;
     #endif
