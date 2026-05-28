@@ -2374,6 +2374,26 @@ public:
                 { "i7-14950HX", 24 },
 
                 // i9 series
+                { "i9-7900X", 20 },
+                { "i9-7920X", 24 },
+                { "i9-7940X", 28 },
+                { "i9-7960X", 32 },
+                { "i9-7980XE", 36 },
+                { "i9-8950HK", 12 },
+                { "i9-9820X", 20 },
+                { "i9-9880H", 16 },
+                { "i9-9900", 16 },
+                { "i9-9900K", 16 },
+                { "i9-9900KF", 16 },
+                { "i9-9900KS", 16 },
+                { "i9-9900T", 16 },
+                { "i9-9900X", 20 },
+                { "i9-9920X", 24 },
+                { "i9-9940X", 28 },
+                { "i9-9960X", 32 },
+                { "i9-9980HK", 16 },
+                { "i9-9980XE", 36 },
+                { "i9-9990XE", 28 },
                 { "i9-10850K", 20 },
                 { "i9-10885H", 16 },
                 { "i9-10900", 20 },
@@ -2399,21 +2419,29 @@ public:
                 { "i9-11950H", 16 },
                 { "i9-11980HK", 16 },
                 { "i9-12900", 24 },
+                { "i9-12900E", 24 },
                 { "i9-12900F", 24 },
                 { "i9-12900H", 20 },
+                { "i9-12900HK", 20 },
+                { "i9-12900HX", 24 },
                 { "i9-12900K", 24 },
                 { "i9-12900KF", 24 },
                 { "i9-12900KS", 24 },
                 { "i9-12900T", 24 },
+                { "i9-12900TE", 24 },
+                { "i9-12950HX", 24 },
                 { "i9-13900", 32 },
                 { "i9-13900E", 32 },
                 { "i9-13900F", 32 },
+                { "i9-13900H", 20 },
+                { "i9-13900HK", 20 },
                 { "i9-13900HX", 32 },
                 { "i9-13900K", 32 },
                 { "i9-13900KF", 32 },
                 { "i9-13900KS", 32 },
                 { "i9-13900T", 32 },
                 { "i9-13900TE", 32 },
+                { "i9-13905H", 20 },
                 { "i9-13950HX", 32 },
                 { "i9-13980HX", 32 },
                 { "i9-14900", 32 },
@@ -2423,35 +2451,6 @@ public:
                 { "i9-14900KF", 32 },
                 { "i9-14900KS", 32 },
                 { "i9-14900T", 32 },
-                { "i9-7900X", 20 },
-                { "i9-7920X", 24 },
-                { "i9-7940X", 28 },
-                { "i9-7960X", 32 },
-                { "i9-7980XE", 36 },
-                { "i9-8950HK", 12 },
-                { "i9-9820X", 20 },
-                { "i9-9880H", 16 },
-                { "i9-9900", 16 },
-                { "i9-9900K", 16 },
-                { "i9-9900KF", 16 },
-                { "i9-9900KS", 16 },
-                { "i9-9900T", 16 },
-                { "i9-9900X", 20 },
-                { "i9-9920X", 24 },
-                { "i9-9940X", 28 },
-                { "i9-9960X", 32 },
-                { "i9-9980HK", 16 },
-                { "i9-9980XE", 36 },
-                { "i9-9990XE", 28 },
-                { "i9-12900E", 24 },
-                { "i9-12900HK", 20 },
-                { "i9-12900HX", 24 },
-                { "i9-12900TE", 24 },
-                { "i9-12950HX", 24 },
-                { "i9-13900H", 20 },
-                { "i9-13900HK", 20 },
-                { "i9-13905H", 20 },
-                { "i9-14900H", 32 },
                 { "i9-14901KE", 16 }
             };
             out_ptr = db;
@@ -5515,7 +5514,7 @@ public:
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 25.0;
+        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 35.0;
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         #if (MSVC)
@@ -10730,6 +10729,9 @@ public:
      * @implements VM::INTERRUPT_SHADOW
      */
     [[nodiscard]] static bool interrupt_shadow() {
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+                   return false;
+        }
         volatile ULONG_PTR trap_ip = 0;
 
     #if (x86_32) && !(CLANG || GCC)
@@ -10761,7 +10763,7 @@ public:
                 EXCEPTION_CONTINUE_EXECUTION
             ) : EXCEPTION_CONTINUE_SEARCH) {}
 
-        // hypervisor is detected if the trap fired at any IP differing from the expected baremetal target
+         // hypervisor is detected if the trap fired at any IP differing from the expected baremetal target
         // OR if the single step exception never fired at all (trap_ip == 0)
         return (trap_ip == 0 || trap_ip != baremetal_target_ip);
 
@@ -10776,30 +10778,30 @@ public:
         void* funcs[ARRAYSIZE(names)] = {};
         util::get_function_address(ntdll, names, funcs, ARRAYSIZE(names));
 
-        const auto nt_alloc = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
+        const auto nt_alloc   = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, ULONG_PTR, PSIZE_T, ULONG, ULONG)>(funcs[0]);
         const auto nt_protect = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG)>(funcs[1]);
-        const auto nt_flush = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
-        const auto nt_free = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
+        const auto nt_flush   = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID, SIZE_T)>(funcs[2]);
+        const auto nt_free    = reinterpret_cast<NTSTATUS(__stdcall*)(HANDLE, PVOID*, PSIZE_T, ULONG)>(funcs[3]);
 
         if (!nt_alloc || !nt_protect || !nt_flush || !nt_free) return false;
 
         // these opcodes are byte-for-byte identical for both x86_32 and x86_64 architectures 
         // 0x53 maps to push ebx in 32-bit and push rbx in 64-bit
         static constexpr u8 blockstep_opcodes[] = {
-            0x53,                                     // 0:  push rbx/ebx (preserve non-volatile register)
-            0x31, 0xC0,                               // 1:  xor eax, eax
-            0x8C, 0xD0,                               // 3:  mov ax, ss
-            0x9C,                                     // 5:  pushfq/pushfd
+            0x53,                                      // 0:  push rbx/ebx (preserve non-volatile register)
+            0x31, 0xC0,                                // 1:  xor eax, eax
+            0x8C, 0xD0,                                // 3:  mov ax, ss
+            0x9C,                                      // 5:  pushfq/pushfd
             0x81, 0x0C, 0x24, 0x00, 0x01, 0x00, 0x00, // 6:  or dword ptr [rsp/esp], 0x100
-            0x9D,                                     // 13: popfq/popfd
-            0x8E, 0xD0,                               // 14: mov ss, ax  <- shadow starts here
-            0x0F, 0xA2,                               // 16: cpuid       <- buggy hypervisor traps here
-            0x5B,                                     // 18: pop rbx/ebx <- baremetal traps here
-            0x90,                                     // 19: nop         
-            0x9C,                                     // 20: pushfq/pushfd
+            0x9D,                                      // 13: popfq/popfd
+            0x8E, 0xD0,                                // 14: mov ss, ax  <- shadow starts here
+            0x0F, 0xA2,                                // 16: cpuid       <- buggy hypervisor traps here
+            0x5B,                                      // 18: pop rbx/ebx <- baremetal traps here
+            0x90,                                      // 19: nop         
+            0x9C,                                      // 20: pushfq/pushfd
             0x81, 0x24, 0x24, 0xFF, 0xFE, 0xFF, 0xFF, // 21: and dword ptr [rsp/esp], 0xFFFFFEFF
-            0x9D,                                     // 28: popfq/popfd
-            0xC3                                      // 29: ret
+            0x9D,                                      // 28: popfq/popfd
+            0xC3                                       // 29: ret
         };
 
         const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
@@ -10831,7 +10833,7 @@ public:
                     trap_ip = GetExceptionInformation()->ContextRecord->Eip,
                 #endif
                     GetExceptionInformation()->ContextRecord->EFlags &= ~0x100, // to avoid infinite looping
-                    EXCEPTION_CONTINUE_EXECUTION 
+                    EXCEPTION_CONTINUE_EXECUTION
                 ) : EXCEPTION_CONTINUE_SEARCH) {}
         }
 
@@ -10840,7 +10842,7 @@ public:
 
         // hypervisor is detected if execution trapped at any offset other than expected baremetal
         // OR if the single step exception never fired at all (trap_ip == 0)
-        return NT_SUCCESS(st) && (trap_ip == 0 || trap_ip != baremetal_target_ip);
+      return NT_SUCCESS(st) && (trap_ip == 0 || trap_ip != baremetal_target_ip);
     #else
         return false;
     #endif
