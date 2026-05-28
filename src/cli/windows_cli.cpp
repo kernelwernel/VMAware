@@ -1,3 +1,4 @@
+#include "types.hpp"
 
 #if (CLI_WINDOWS)
 #include "globals.hpp"
