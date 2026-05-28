@@ -5533,7 +5533,6 @@ public:
         // Shared state and results
         cache_state state;
         bool hypervisor_detected = false;
-        bool bypass_detected = false;
 
         #define VMAWARE_STR2(x) #x
         #define VMAWARE_STR(x) VMAWARE_STR2(x)
@@ -5986,7 +5985,7 @@ public:
                 // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
                 // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
                 // this is why the score of this technique is not enough to determine a VM
-                trigger_vmexit(); // this forces the hypervisor to keep interception and try to bypass latency, or disable interception if on AMD and try to bypass XSAVE states
+                trigger_vmexit();
 
                 std::atomic_signal_fence(std::memory_order_seq_cst);
                 v_post = state.counter;
@@ -6036,35 +6035,9 @@ public:
             // Detect IPI-based counter pausing bypasses
             // For the median itself to exceed baremetal limits (which rarely pass 1000), an interrupt must be occurring on almost EVERY single loop iteration
             // This is the footprint of a hypervisor continuously spamming cross-core IPIs to try and pause the counter thread (or the trigger_thread to make SERIALIZE/LFENCE take a lot of time)
-            if (!hypervisor_detected && (cpuid_l > 1000 || ref_l > 1000 || cpuid_l == 1 || ref_l == 1)) {
+            if (cpuid_l > 1000 || ref_l > 1000 || cpuid_l == 1 || ref_l == 1) {
                 debug("TIMER: Detected artificial IPI delivery to VMAware's threads");
-                bypass_detected = true;
-            }
-
-            // Now detect bypassers disabling cpuid interception with SVM
-            // Even when a bypasser disables INTERCEPT_CPUID in the VMCB, they often fail to realize that certain CPUID leaves do not return static values from the hardware
-            // Instead, they return values based on the LAPIC state or internal CPU registers that the hypervisor must initialize for the vCPU to function
-            // if hypervisor lies about the CPU vendor, it will create 100000 more detectable signals (querying Intel-specific behavior)
-            if (cpu::is_amd() && !hypervisor_detected) {
-                i32 res_d0[4], res_d1[4], res_d12[4], res_ext[4];
-                cpu::cpuid(res_d0, 0xD, 0);    // XCR0 features
-                cpu::cpuid(res_d1, 0xD, 1);    // XCR0 + XSS features
-                cpu::cpuid(res_d12, 0xD, 12);  // CET State details
-                cpu::cpuid(res_ext, 0x80000008, 0);
-
-                const bool hardware_supports_cet = (res_d12[0] > 0);
-                const u32 active_xcr0_size = (u32)res_d0[1];  // size for features enabled in XCR0
-                const u32 active_total_size = (u32)res_d1[1]; // size for XCR0 + IA32_XSS
-
-                if (hardware_supports_cet) {
-                    // delta is the size attributed to supervisor states like CET_U
-                    const u32 xss_delta = active_total_size - active_xcr0_size;
-
-                    if (xss_delta != 0x10) {
-                        debug("TIMER: VMAware detected a SVM hypervisor with cpuid interception disabled, score was raised up due to a bypass attempt");
-                        bypass_detected = true;
-                    }
-                }
+                hypervisor_detected = true;
             }
 
             // cleanup
@@ -6079,13 +6052,6 @@ public:
         std::thread t1(counter_thread);
         trigger_thread();
         t1.join();
-
-        if (hypervisor_detected) {
-            return true; // 100 score, 99% hypervisor likeliness
-        }
-        else if (bypass_detected) {
-            return core::add(brand_enum::KVM, 150); // 100% hypervisor likeliness; KVM is a guess
-        }
 
         return hypervisor_detected;
     #endif
