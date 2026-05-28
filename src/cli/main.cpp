@@ -31,7 +31,7 @@
 #include <string>
 
 #include "types.hpp"
-#include "strings.hpp"
+#include "globals.hpp"
 #include "output.hpp"
 
 #if (CLI_WINDOWS)
@@ -45,34 +45,35 @@ constexpr const char* date = "April 2026";
 
 [[noreturn]] static void help() {
     std::cout <<
-        R"(Usage:
-         vmaware [option] [extra]
-         (do not run with any options if you want the full summary)
+R"(Usage:
+ vmaware [option] [extra]
+ (do not run with any options if you want the full summary)
 
-        Options:
-         -h | --help        prints this help menu
-         -v | --version     print CLI version and other details
-         -a | --all         run the result with ALL the techniques enabled (might contain false positives)
-         -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
-         -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
-         -b | --brand       returns the VM brand string
-         -l | --brand-list  returns all the possible VM brand string values
-         -p | --percent     returns the VM percentage between 0 and 100
-         -c | --conclusion  returns the conclusion message string
-         -n | --number      returns the number of VM detection techniques it performs
-         -t | --type        returns the VM type (if a VM was found)
-         -o | --output      set the output path for files, specifically with the --json command
+Options:
+ -h | --help        prints this help menu
+ -v | --version     print CLI version and other details
+ -a | --all         run the result with ALL the techniques shown and enabled
+ -d | --detect      returns the result as a boolean (1 = VM, 0 = baremetal)
+ -s | --stdout      returns either 0 or 1 to STDOUT without any text output (0 = VM, 1 = baremetal)
+ -b | --brand       returns the VM brand string
+ -l | --brand-list  returns all the possible VM brand string values
+ -p | --percent     returns the VM percentage between 0 and 100
+ -c | --conclusion  returns the conclusion message string
+ -n | --number      returns the number of VM detection techniques it performs
+ -t | --type        returns the VM type (if a VM was found)
+ -o | --output      set the output path
 
-        Extra:
-         --disable-notes    no notes will be provided
-         --high-threshold   a higher threshold bar for a VM detection will be applied
-         --no-ansi          removes color and ansi escape codes from the output
-         --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
-         --verbose          add more information to the output
-         --enums            display the technique enum name used by the lib
-         --detected-only    only display the techniques that were detected
-         --json             output a json-formatted file of the results
-     )";
+Extra:
+ --disable-notes    no notes will be provided
+ --high-threshold   a higher threshold bar for a VM detection will be applied (2x higher)
+ --no-ansi          removes color and ansi escape codes from the output
+ --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
+ --verbose          add more information to the output
+ --enums            display the technique enum name used by the lib
+ --detected-only    only display the techniques that were detected
+ --json             output a json-formatted file of the results
+
+)";
 
     std::exit(0);
 }
@@ -265,6 +266,7 @@ int main(int argc, char* argv[]) {
 
     std::string potential_null_arg;
     const char* potential_output_arg = "results.json";
+    const char* general_output_arg = nullptr;
     bool collecting_disable = false;
 
     for (i32 i = 1; i < argc; ++i) {
@@ -293,17 +295,18 @@ int main(int argc, char* argv[]) {
         if (it == table.end()) {
             if (arg_bitset.test(OUTPUT)) {
                 std::ofstream file(arg_string);
+
                 if (file.good()) {
                     potential_output_arg = arg_string;
+                    general_output_arg = arg_string;
                 }
+
                 arg_bitset.set(OUTPUT, false);
-            }
-            else {
+            } else {
                 arg_bitset.set(NULL_ARG);
                 potential_null_arg = arg_string;
             }
-        }
-        else {
+        } else {
             arg_bitset.set(it->second);
         }
     }
@@ -380,6 +383,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    general(high_threshold, all, dynamic);
+    general(high_threshold, all, dynamic, general_output_arg);
     return 0;
 }

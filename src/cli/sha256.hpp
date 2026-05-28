@@ -12,17 +12,17 @@ struct SHA256 {
 
     SHA256();
 
-    static u32 rotr(u32 x, int n);
-    static u32 ch(u32 x, u32 y, u32 z);
-    static u32 maj(u32 x, u32 y, u32 z);
-    static u32 ep0(u32 x);
-    static u32 ep1(u32 x);
-    static u32 sig0(u32 x);
-    static u32 sig1(u32 x);
+    static u32 rotr(const u32 x, const u32 n);
+    static u32 ch(const u32 x, const u32 y, const u32 z);
+    static u32 maj(const u32 x, const u32 y, const u32 z);
+    static u32 ep0(const u32 x);
+    static u32 ep1(const u32 x);
+    static u32 sig0(const u32 x);
+    static u32 sig1(const u32 x);
 
     void transform();
 
-    void update(const u8* data, size_t n);
+    void update(const u8* data, const size_t n);
 
     void final(u8 out[32]);
 };

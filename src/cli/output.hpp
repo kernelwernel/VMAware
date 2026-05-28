@@ -19,4 +19,4 @@ std::string run_brand(bool high_threshold, bool all, bool dynamic);
 std::string run_type(bool high_threshold, bool all, bool dynamic);
 std::string run_conclusion(bool high_threshold, bool all, bool dynamic);
 
-void general(bool high_threshold, bool all, bool dynamic);
+void general(bool high_threshold, bool all, bool dynamic, const char* output_file = nullptr);

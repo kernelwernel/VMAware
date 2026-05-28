@@ -1,12 +1,9 @@
 #pragma once
 
-#include "strings.hpp"
-#include "sha256.hpp"
 
 #include <iostream>
 #include <sstream>
-#include <vector>
-#include <string>
+
 
 #if (CLI_WINDOWS)
 
@@ -19,6 +16,10 @@
 #include <deque>
 #include <conio.h>
 #include <iomanip>
+#include <vector>
+#include <string>
+#include "globals.hpp"
+#include "sha256.hpp"
 #pragma comment(lib, "ntdll.lib")
 
 class win_ansi_enabler_t

@@ -6131,6 +6131,7 @@ public:
      * @implements VM::CVENDOR
      */
     [[nodiscard]] static bool chassis_vendor() {
+        return true; // TEMPORARY
         const char* vendor_file = "/sys/devices/virtual/dmi/id/chassis_vendor";
 
         if (!util::exists(vendor_file)) {

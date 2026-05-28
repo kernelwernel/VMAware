@@ -1,10 +1,10 @@
+#include "../vmaware.hpp"
 #include "output.hpp"
 #include "windows_cli.hpp"
-#include "../vmaware.hpp"
+#include "globals.hpp"
 
 #include <chrono>
 #include <sstream>
-#include <iomanip>
 #include <iostream>
 #include <vector>
 #include <fstream>
@@ -232,7 +232,9 @@ static void checker(const VM::enum_flags flag, const char* message) {
 
     if (is_unsupported(flag)) {
         unsupported_count++;
-        return;
+        if (arg_bitset.test(ALL) == false) {
+            return;
+        }
     }
 
     supported_count++;
@@ -256,7 +258,7 @@ static void checker(const VM::enum_flags flag, const char* message) {
     #endif
 
     std::ostringstream cycle_oss;
-    cycle_oss << TH_DIM << message << " " << TH_MED << "| " << TH_WHITE << std::fixed << std::setprecision(4) << ms << " ms" << TH_RST;
+    cycle_oss << TH_DIM << message << " " << TH_MED << "| " << white << std::fixed << std::setprecision(4) << ms << " ms" << ansi_exit;
     #if (CLI_WINDOWS)
         g_tui.addCycle(cycle_oss.str());
     #endif
@@ -264,9 +266,8 @@ static void checker(const VM::enum_flags flag, const char* message) {
     std::ostringstream msg_oss;
 
     if (result) {
-        msg_oss << white << "🪲 " << white << tag_detected << " " << white << "Checking " << message << "..." << ansi_exit << enum_name;
-    }
-    else {
+        msg_oss << white << tag_detected << " " << white << "Checking " << message << "..." << ansi_exit << enum_name;
+    } else {
         msg_oss << tag_not_detected << " " << grey << "Checking " << message << "..." << ansi_exit << enum_name;
     }
 
@@ -284,8 +285,7 @@ bool parse_disable_token(const char* token) {
                 names.push_back(current);
                 current.clear();
             }
-        }
-        else {
+        } else {
             current += c;
         }
     }
@@ -345,28 +345,27 @@ void generate_json(const char* output) {
     json.emplace_back("\",");
 
     json.emplace_back("\n\t\"is_hardened\": ");
+
     if (VM::is_hardened()) {
         json.emplace_back("true,");
-    }
-    else {
+    } else {
         json.emplace_back("false,");
     }
 
     json.emplace_back("\n\t\"detected_techniques\": [");
 
     const auto detected_status = VM::detected_enums();
+
     if (detected_status.size() == 0) {
         json.emplace_back("]\n}");
-    }
-    else {
+    } else {
         for (size_t i = 0; i < detected_status.size(); i++) {
             json.emplace_back("\n\t\t\"");
             json.push_back(VM::flag_to_string(detected_status[i]));
 
             if (i == detected_status.size() - 1) {
                 json.emplace_back("\"");
-            }
-            else {
+            } else {
                 json.emplace_back("\",");
             }
         }
@@ -374,6 +373,7 @@ void generate_json(const char* output) {
     }
 
     std::ofstream file(output);
+
     if (!file) {
         std::cerr << "Failed to open/create file\n";
         return;
@@ -441,22 +441,43 @@ std::string run_conclusion(bool high_threshold, bool all, bool dynamic) {
     );
 }
 
-void general(bool high_threshold, bool all, bool dynamic) {
-    const VM::enum_flags ht = high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG;
-    const VM::enum_flags al = all ? VM::ALL : VM::NULL_ARG;
-    const VM::enum_flags dyn = dynamic ? VM::DYNAMIC : VM::NULL_ARG;
+void general(bool high_threshold, bool all, bool dynamic, const char* output_file) {
+    const VM::enum_flags high_thresh_arg = high_threshold ? VM::HIGH_THRESHOLD : VM::NULL_ARG;
+    const VM::enum_flags all_arg = all ? VM::ALL : VM::NULL_ARG;
+    const VM::enum_flags dynamic_arg = dynamic ? VM::DYNAMIC : VM::NULL_ARG;
 
     #if (CLI_LINUX)
         [[maybe_unused]] bool notes_enabled = !arg_bitset.test(NOTES);
     #endif
 
+    std::ofstream output_fstream;
+    std::streambuf* original_cout_buf = nullptr;
+
+    if (output_file) {
+        output_fstream.open(output_file);
+        if (!output_fstream) {
+            std::cerr << "Failed to open/create file \"" << output_file << "\"\n";
+        } else {
+            original_cout_buf = std::cout.rdbuf(output_fstream.rdbuf());
+            arg_bitset.set(NO_ANSI);
+        }
+    }
+
     if (arg_bitset.test(NO_ANSI)) {
         tag_detected = ("[  DETECTED  ]");
-        tag_not_detected = ("   [NOT DETECTED]");
-        tag_skipped = ("   [  DISABLED  ]");
-        tag_notes = ("   [  NOTES   ]");
-        bold = ""; underline = ""; ansi_exit = ""; red = ""; orange = "";
-        green = ""; red_orange = ""; green_orange = ""; grey = ""; white = "";
+        tag_not_detected = ("[NOT DETECTED]");
+        tag_skipped = ("[  DISABLED  ]");
+        tag_notes = ("[    NOTE    ]");
+        bold = ""; 
+        underline = ""; 
+        ansi_exit = ""; 
+        red = ""; 
+        orange = "";
+        green = ""; 
+        red_orange = ""; 
+        green_orange = "";
+        grey = ""; 
+        white = "";
     }
 
     #if (CLI_WINDOWS)
@@ -470,13 +491,13 @@ void general(bool high_threshold, bool all, bool dynamic) {
 
     #if (CLI_LINUX)
         if (notes_enabled && !is_admin()) {
-            PRINT_LINE(" Running under root might give better results");
+            PRINT_LINE("Running under root might give better results");
         }
     #elif (CLI_WINDOWS)
         if (!is_admin()) {
             do {
                 std::ostringstream _oss; 
-                _oss << red << "    Not running as administrator, NVRAM checks will not run.\n";
+                _oss << red << "Not running as administrator, NVRAM checks will not run.\n";
                 g_tui.printLeft(_oss.str());
             } while (0);
         }
@@ -576,12 +597,12 @@ void general(bool high_threshold, bool all, bool dynamic) {
     checker(VM::TIMER, "timing anomalies");
 
     const auto t2 = std::chrono::high_resolution_clock::now();
-    VM::vmaware vm(VM::MULTIPLE, ht, al, dyn);
+    VM::vmaware vm(VM::MULTIPLE, high_thresh_arg, all_arg, dynamic_arg);
     std::vector<std::string> summary;
 
     std::string brand = vm.brand;
     const bool is_red = ((brand == VM::brands::NULL_BRAND) || (brand == VM::brands::HYPERV_ROOT));
-    summary.push_back(bold + "VM brand: " + ansi_exit + (is_red ? red : green) + brand + ansi_exit);
+    summary.push_back(bold + "\nVM brand: " + ansi_exit + (is_red ? red : green) + brand + ansi_exit);
 
     if (!is_vm_brand_multiple(vm.brand)) {
         std::string current_color = (vm.type == "Unknown" || vm.type == "Host machine") ? red : green;
@@ -592,17 +613,13 @@ void general(bool high_threshold, bool all, bool dynamic) {
 
     if (vm.percentage == 0) {
         percent_color = red.c_str();
-    }
-    else if (vm.percentage < 25) {
+    } else if (vm.percentage < 25) {
         percent_color = red_orange.c_str();
-    }
-    else if (vm.percentage < 50) {
+    } else if (vm.percentage < 50) {
         percent_color = orange.c_str();
-    }
-    else if (vm.percentage < 75) {
+    } else if (vm.percentage < 75) {
         percent_color = green_orange.c_str();
-    }
-    else {
+    } else {
         percent_color = green.c_str();
     }
 
@@ -678,14 +695,26 @@ void general(bool high_threshold, bool all, bool dynamic) {
         }
     }
 
+    const std::string is_bold = (vm.is_vm ? bold : "");
+
     const char* conclusion_color = color(vm.percentage, vm.is_hardened);
-    summary.push_back(bold + "CONCLUSION: " + ansi_exit + conclusion_color + vm.conclusion + ansi_exit);
+    summary.push_back(
+        bold + 
+        "===== CONCLUSION: " + 
+        ansi_exit + 
+        conclusion_color + 
+        is_bold + 
+        vm.conclusion + 
+        ansi_exit + 
+        bold + 
+        " =====\n" + 
+        ansi_exit
+    );
 
 #if (CLI_WINDOWS)
     if (!arg_bitset.test(NO_ANSI)) {
         g_tui.drawSummaryBox(summary);
-    }
-    else {
+    } else {
         for (const auto& l : summary) {
             std::cout << l << "\n";
         }
@@ -695,8 +724,7 @@ void general(bool high_threshold, bool all, bool dynamic) {
 
     if (g_tui.raw_out) {
         *(g_tui.raw_out) << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
-    }
-    else {
+    } else {
         std::cout << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
     }
 
@@ -706,24 +734,18 @@ void general(bool high_threshold, bool all, bool dynamic) {
             ch = _getch();
             if (ch == 72) {
                 g_tui.scrollCyclesUp();
-            }
-            else if (ch == 80) {
+            } else if (ch == 80) {
                 g_tui.scrollCyclesDown();
-            }
-            else if (ch == 73) {
+            } else if (ch == 73) {
                 g_tui.scrollDebugUp();
-            }
-            else if (ch == 81) {
+            } else if (ch == 81) {
                 g_tui.scrollDebugDown();
-            }
-            else if (ch == 75) {
+            } else if (ch == 75) {
                 g_tui.scrollExceptionsUp();
-            }
-            else if (ch == 77) {
+            } else if (ch == 77) {
                 g_tui.scrollExceptionsDown();
             }
-        }
-        else if (ch == '\r' || ch == '\n' || ch == 'q' || ch == 'Q' || ch == 3) {
+        } else if (ch == '\r' || ch == '\n' || ch == 'q' || ch == 'Q' || ch == 3) {
             break;
         }
     }
@@ -735,6 +757,10 @@ void general(bool high_threshold, bool all, bool dynamic) {
 #else
     for (const auto& l : summary) {
         std::cout << l << "\n";
+    }
+
+    if (original_cout_buf) {
+        std::cout.rdbuf(original_cout_buf);
     }
 #endif
 }

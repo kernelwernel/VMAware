@@ -1,8 +1,8 @@
-#include "strings.hpp"
-#include "sha256.hpp"
-#include "windows_cli.hpp"
 
 #if (CLI_WINDOWS)
+#include "globals.hpp"
+#include "sha256.hpp"
+#include "windows_cli.hpp"
 #include <cstdlib>
 #include <algorithm>
 
