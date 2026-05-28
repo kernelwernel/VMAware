@@ -33,6 +33,7 @@
 #include "types.hpp"
 #include "globals.hpp"
 #include "output.hpp"
+#include "wagner_fischer.hpp"
 
 #if (CLI_WINDOWS)
     #include "windows_cli.hpp"
@@ -313,6 +314,7 @@ int main(int argc, char* argv[]) {
 
     if (arg_bitset.test(NULL_ARG)) {
         std::cerr << "Unknown argument \"" << potential_null_arg << "\", aborting\n";
+        manage_output(suggest(potential_null_arg, table));
         return 1;
     }
 

@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 #include <algorithm>
+#include <iostream>
 
 using sv = std::string_view;
 
@@ -67,9 +68,9 @@ std::vector<std::string> suggest(
     candidates.reserve(N);
 
     for (const auto& word : dictionary) {
-        const u8 distance = wagner_fischer(word, misspelled_word);
-        if (distance <= 3) {
-            candidates.emplace_back(distance, word);
+        const u8 distance = wagner_fischer(word.first, misspelled_word);
+        if (distance <= 2) {
+            candidates.emplace_back(distance, word.first);
         }
     }
 
@@ -92,6 +93,20 @@ std::vector<std::string> suggest(
 }
 
 
-void manage_output(const std::vector<std::string> &tmp) {
-    (void)tmp;
+void manage_output(const std::vector<std::string>& suggestions) {
+    if (suggestions.empty()) {
+        return;
+    }
+
+    std::cerr << "Did you mean: \"";
+
+    for (std::size_t i = 0; i < suggestions.size(); ++i) {
+        if (i > 0) {
+            std::cerr << ", ";
+        }
+        std::cerr << bold + suggestions.at(i);
+        std::cerr << ansi_exit;
+    }
+
+    std::cerr << "\"?\n";
 }
