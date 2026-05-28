@@ -5508,6 +5508,12 @@ public:
      */
     [[nodiscard]] static bool timer() {
     #if (x86 && WINDOWS)
+        // Hyper-V root partition is the host, not a guest. Do not treat host-side
+        // timing variance as a VM signal.
+        if (util::hyper_x() == HYPERV_ARTIFACT_VM) {
+            return false;
+        }
+
         // The timing attack uses our own software-based clock, meaning a hypervisor can't hide time by offsetting TSC or controlling any other timer
         double threshold = 2.5;
         if (util::is_running_under_translator()) {
