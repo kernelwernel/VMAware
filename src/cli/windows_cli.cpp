@@ -50,7 +50,7 @@ void TuiManager::clearBoxes() {
     for (SHORT i = 0; i < 70; i++) {
         if (exception_y + i >= csbi.dwSize.Y) break; // Don't expand the buffer just to clear empty space
         SetConsoleCursorPosition(hOut, { right_x, static_cast<SHORT>(exception_y + i) });
-        *raw_out << TH_RST << wipe_str << "\x1B[K";
+        *raw_out << ansi_exit << wipe_str << "\x1B[K";
     }
 }
 
@@ -125,7 +125,7 @@ void TuiManager::init() {
     exception_y = start_y;
 
     #ifndef __VMAWARE_DEBUG__
-        debugs.push_back(TH_DIM + std::string("Compile in debug mode to view detailed logs.") + TH_RST);
+        debugs.push_back(TH_DIM + std::string("Compile in debug mode to view detailed logs.") + ansi_exit);
     #endif
 
     setCursorSafe(0, start_y);
@@ -247,9 +247,9 @@ void TuiManager::printHeader() {
         << " / stepping: " << TH_BRIGHT << stepping << TH_DIM
         << " / microcode: " << TH_BRIGHT << ucode << TH_DIM
         << " / os: " << TH_BRIGHT << os << TH_DIM
-        << " / sha256: " << TH_BRIGHT << hash_display << TH_RST << "\n\n";
+        << " / sha256: " << TH_BRIGHT << hash_display << ansi_exit << "\n\n";
 
-    *raw_out << TH_DIM << repeat_str("─", static_cast<size_t>(console_width) - 1) << TH_RST << "\n";
+    *raw_out << TH_DIM << repeat_str("─", static_cast<size_t>(console_width) - 1) << ansi_exit << "\n";
 
     // resync Y coordinates natively after the \n's
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -284,39 +284,39 @@ void TuiManager::redrawAllBoxes() {
 
     // 1. Exceptions Box
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "┌─ " << TH_WHITE << "Exceptions" << TH_DIM << " " << repeat_str("─", global_box_width >= 15 ? global_box_width - 15 : 0) << "┐" << TH_RST << "\x1B[K";
+    *raw_out << TH_DIM << "┌─ " << white << "Exceptions" << TH_DIM << " " << repeat_str("─", global_box_width >= 15 ? global_box_width - 15 : 0) << "┐" << ansi_exit << "\x1B[K";
 
     if (!exceptions.empty()) {
         const auto& lines = exceptions[exc_scroll_index];
         for (size_t i = 0; i < lines.size(); i++) {
             setCursorSafe(right_x, draw_y++);
-            *raw_out << TH_DIM << "│ " << TH_RST << pad(lines[i], content_w) << TH_DIM << " │" << TH_RST << "\x1B[K";
+            *raw_out << TH_DIM << "│ " << ansi_exit << pad(lines[i], content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K";
         }
     }
     else {
         for (size_t i = 0; i < (size_t)box_height - 2; i++) {
             setCursorSafe(right_x, draw_y++);
-            *raw_out << TH_DIM << "│ " << TH_RST << pad("", content_w) << TH_DIM << " │" << TH_RST << "\x1B[K";
+            *raw_out << TH_DIM << "│ " << ansi_exit << pad("", content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K";
         }
     }
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "└" << repeat_str("─", global_box_width >= 2 ? global_box_width - 2 : 0) << "┘" << TH_RST << "\x1B[K";
+    *raw_out << TH_DIM << "└" << repeat_str("─", global_box_width >= 2 ? global_box_width - 2 : 0) << "┘" << ansi_exit << "\x1B[K";
 
     setCursorSafe(right_x, draw_y++);
     std::string exc_controls = "Use Left/Right arrows to scroll (" +
         std::to_string(exceptions.empty() ? 0 : exc_scroll_index + 1) + "/" +
         std::to_string(exceptions.size()) + ")";
-    *raw_out << TH_DIM << " " << exc_controls << " " << TH_RST << "\x1B[K";
+    *raw_out << TH_DIM << " " << exc_controls << " " << ansi_exit << "\x1B[K";
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_RST << "\x1B[K"; // gap
+    *raw_out << ansi_exit << "\x1B[K"; // gap
 
     // 2. Timings Box
     draw_y = drawBoxInternal(draw_y, global_box_width, "Timings", cycles, cyc_scroll_index, "Use Up/Down arrows to scroll");
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_RST << "\x1B[K"; // gap
+    *raw_out << ansi_exit << "\x1B[K"; // gap
 
     // 3. Debug Box
     draw_y = drawBoxInternal(draw_y, global_box_width, "Debug", debugs, dbg_scroll_index, "Use PgUp/PgDn to scroll");
@@ -326,25 +326,25 @@ void TuiManager::redrawAllBoxes() {
 
     if (bracket_x + 15 < console_width) {
         setCursorSafe(bracket_x, exception_y);
-        *raw_out << TH_WHITE << "┐" << TH_RST;
+        *raw_out << white << "┐" << ansi_exit;
 
         for (SHORT y = static_cast<SHORT>(exception_y + 1); y < bottom_y; y++) {
             setCursorSafe(bracket_x, y);
-            *raw_out << TH_WHITE << "│" << TH_RST;
+            *raw_out << white << "│" << ansi_exit;
         }
 
         setCursorSafe(bracket_x, bottom_y);
-        *raw_out << TH_WHITE << "┘" << TH_RST;
+        *raw_out << white << "┘" << ansi_exit;
 
         SHORT mid_y = exception_y + (bottom_y - exception_y) / 2;
         SHORT text_x = bracket_x + 3;
 
         setCursorSafe(text_x, static_cast<SHORT>(mid_y - 1));
-        *raw_out << TH_DIM << "s: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_std << TH_RST << "\x1B[K";
+        *raw_out << TH_DIM << "s: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_std << ansi_exit << "\x1B[K";
         setCursorSafe(text_x, mid_y);
-        *raw_out << TH_DIM << "h: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_hyp << TH_RST << "\x1B[K";
+        *raw_out << TH_DIM << "h: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_hyp << ansi_exit << "\x1B[K";
         setCursorSafe(text_x, static_cast<SHORT>(mid_y + 1));
-        *raw_out << TH_DIM << "e: " << TH_WHITE << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_ext << TH_RST << "\x1B[K";
+        *raw_out << TH_DIM << "e: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_ext << ansi_exit << "\x1B[K";
     }
 
     g_right_bottom_y = draw_y;
@@ -361,28 +361,28 @@ SHORT TuiManager::drawBoxInternal(SHORT startY, size_t box_width, const std::str
     size_t dash_count = (box_width >= 5 + title_len) ? (box_width - 5 - title_len) : 0;
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "┌─ " << TH_WHITE << title << " " << TH_DIM << repeat_str("─", dash_count) << "┐" << TH_RST << "\x1B[K" << std::flush;
+    *raw_out << TH_DIM << "┌─ " << white << title << " " << TH_DIM << repeat_str("─", dash_count) << "┐" << ansi_exit << "\x1B[K" << std::flush;
 
     size_t limit = box_height - 2;
     for (size_t i = 0; i < limit; i++) {
         setCursorSafe(right_x, draw_y++);
         if (scroll_idx + i < items.size()) {
-            *raw_out << TH_DIM << "│ " << TH_RST << pad(items[scroll_idx + i], content_w) << TH_DIM << " │" << TH_RST << "\x1B[K" << std::flush;
+            *raw_out << TH_DIM << "│ " << ansi_exit << pad(items[scroll_idx + i], content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K" << std::flush;
         }
         else {
-            *raw_out << TH_DIM << "│ " << TH_RST << pad("", content_w) << TH_DIM << " │" << TH_RST << "\x1B[K" << std::flush;
+            *raw_out << TH_DIM << "│ " << ansi_exit << pad("", content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K" << std::flush;
         }
     }
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "└" << repeat_str("─", box_width >= 2 ? box_width - 2 : 0) << "┘" << TH_RST << "\x1B[K" << std::flush;
+    *raw_out << TH_DIM << "└" << repeat_str("─", box_width >= 2 ? box_width - 2 : 0) << "┘" << ansi_exit << "\x1B[K" << std::flush;
 
     setCursorSafe(right_x, draw_y++);
     std::string controls = controls_base + " (" +
         std::to_string(items.empty() ? 0 : scroll_idx + 1) + "/" +
         std::to_string(items.size()) + ")";
 
-    *raw_out << TH_DIM << " " << controls << " " << TH_RST << "\x1B[K" << std::flush;
+    *raw_out << TH_DIM << " " << controls << " " << ansi_exit << "\x1B[K" << std::flush;
     return draw_y;
 }
 
@@ -431,10 +431,10 @@ void TuiManager::addDebug(const std::string& line) {
     size_t pos = line.find(": ");
 
     if (pos != std::string::npos) {
-        colored_line = TH_WHITE + line.substr(0, pos) + TH_DIM + line.substr(pos) + TH_RST;
+        colored_line = white + line.substr(0, pos) + TH_DIM + line.substr(pos) + ansi_exit;
     }
     else {
-        colored_line = TH_DIM + line + TH_RST;
+        colored_line = TH_DIM + line + ansi_exit;
     }
 
     {
@@ -534,15 +534,15 @@ void TuiManager::drawSummaryBox(const std::vector<std::string>& lines) {
     }
 
     setCursorSafe(left_margin, draw_y++);
-    *raw_out << TH_DIM << "┌" << repeat_str("─", static_cast<size_t>(box_width)) << "┐" << TH_RST << "\n";
+    *raw_out << TH_DIM << "┌" << repeat_str("─", static_cast<size_t>(box_width)) << "┐" << ansi_exit << "\n";
 
     for (const auto& line : lines) {
         setCursorSafe(left_margin, draw_y++);
-        *raw_out << TH_DIM << "│ " << TH_RST << pad(line, static_cast<size_t>(box_width - 2)) << TH_DIM << " │" << TH_RST << "\n";
+        *raw_out << TH_DIM << "│ " << ansi_exit << pad(line, static_cast<size_t>(box_width - 2)) << TH_DIM << " │" << ansi_exit << "\n";
     }
 
     setCursorSafe(left_margin, draw_y++);
-    *raw_out << TH_DIM << "└" << repeat_str("─", static_cast<size_t>(box_width)) << "┘" << TH_RST << "\n";
+    *raw_out << TH_DIM << "└" << repeat_str("─", static_cast<size_t>(box_width)) << "┘" << ansi_exit << "\n";
 
     left_y = draw_y;
 }
@@ -553,7 +553,7 @@ void TuiManager::finalize() {
     // position terminal exit prompt below EVERYTHING drawn 
     SHORT final_y = std::max<SHORT>(left_y, g_right_bottom_y + 1);
     setCursorSafe(0, final_y);
-    *raw_out << TH_RST << "\n" << std::flush;
+    *raw_out << ansi_exit << "\n" << std::flush;
 }
 
 DebugInterceptor::~DebugInterceptor() {
@@ -618,9 +618,9 @@ LONG WINAPI VehLogger(PEXCEPTION_POINTERS ep) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
-    std::string c_white = TH_WHITE;
+    std::string c_white = white;
     std::string c_grey = TH_DIM;
-    std::string c_rst = TH_RST;
+    std::string c_rst = ansi_exit;
 
     auto to_hex = [](auto val) {
         std::ostringstream oss;
