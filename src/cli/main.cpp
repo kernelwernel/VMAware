@@ -72,7 +72,7 @@ Extra:
  --enums            display the technique enum name used by the lib
  --detected-only    only display the techniques that were detected
  --json             output a json-formatted file of the results
- --simple           output a simpler alternative of the output (Windows specific) 
+ --rich             output the rich TUI alternative of the output (Windows specific)
 
 )";
 
@@ -262,7 +262,7 @@ int main(int argc, char* argv[]) {
         { "--detected-only", DETECTED_ONLY },
         { "--json", JSON },
         { "--output", OUTPUT },
-        { "--simple", SIMPLE }
+        { "--rich", RICH }
     } };
 
     std::string potential_null_arg;

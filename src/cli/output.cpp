@@ -488,7 +488,7 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
 
     #if (CLI_WINDOWS)
         std::unique_ptr<DebugInterceptor> interceptor;
-        if (!arg_bitset.test(NO_ANSI) && !arg_bitset.test(SIMPLE)) {
+        if (!arg_bitset.test(NO_ANSI) && arg_bitset.test(RICH)) {
             g_tui.init();
             interceptor = std::make_unique<DebugInterceptor>(std::cout.rdbuf());
             std::cout.rdbuf(interceptor.get());
@@ -500,9 +500,9 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
             PRINT_LINE("Running under root might give better results");
         }
     #elif (CLI_WINDOWS)
-        if (!is_admin()) {
+        if (!is_admin() && arg_bitset.test(RICH)) {
             do {
-                std::ostringstream _oss; 
+                std::ostringstream _oss;
                 _oss << red << "Not running as administrator, NVRAM checks will not run.\n";
                 g_tui.printLeft(_oss.str());
             } while (0);
@@ -717,7 +717,7 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     );
 
 #if (CLI_WINDOWS)
-    if (!arg_bitset.test(NO_ANSI) && !arg_bitset.test(SIMPLE)) {
+    if (!arg_bitset.test(NO_ANSI) && arg_bitset.test(RICH)) {
         g_tui.drawSummaryBox(summary);
 
         g_tui.finalize();

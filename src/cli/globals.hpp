@@ -40,7 +40,7 @@ enum arg_enum : u8 {
     ENUMS,
     DETECTED_ONLY,
     JSON,
-    SIMPLE,
+    RICH,
     NULL_ARG,
 };
 
