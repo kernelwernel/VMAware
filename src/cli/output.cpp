@@ -474,6 +474,7 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
         tag_not_detected = ("[NOT DETECTED]");
         tag_skipped = ("[  DISABLED  ]");
         tag_notes = ("[    NOTE    ]");
+        tag_no_perms = ("[  NO PERMS  ]");
         bold = ""; 
         underline = ""; 
         ansi_exit = ""; 
