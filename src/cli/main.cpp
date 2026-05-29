@@ -35,7 +35,7 @@
 #include "wagner_fischer.hpp"
 
 #if (CLI_WINDOWS)
-    #include "windows_cli.hpp"
+    #include "windows_tui.hpp"
     #include <windows.h>
     #include <shellapi.h>
 #endif

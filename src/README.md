@@ -7,7 +7,7 @@
 | `cli/strings.hpp` | ANSI color strings, argument enums, and global counters |
 | `cli/types.hpp` | Shared primitive type aliases |
 | `cli/sha256.hpp` | SHA-256 implementation used by the CLI |
-| `cli/windows_cli.hpp` | Windows-specific ANSI support and string utilities |
+| `cli/windows_tui.hpp` | Windows-specific ANSI support and string utilities |
 
 <br>
 
