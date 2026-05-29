@@ -1,11 +1,11 @@
 #pragma once
 
+#include <array>
 #include <string>
 #include <bitset>
 #include "types.hpp"
 
 extern std::string dim;
-extern std::string medium;
 extern std::string bright;
 
 extern std::string bold;
@@ -40,7 +40,8 @@ enum arg_enum : u8 {
     ENUMS,
     DETECTED_ONLY,
     JSON,
-    NULL_ARG
+    SIMPLE,
+    NULL_ARG,
 };
 
 constexpr u8 arg_bits = static_cast<u8>(NULL_ARG) + 1;
@@ -54,4 +55,10 @@ extern u8 disabled_count;
 extern std::string tag_detected;
 extern std::string tag_not_detected;
 extern std::string tag_skipped;
+extern std::string tag_no_perms;
 extern std::string tag_notes;
+
+// increment this each time a new argument is introduced
+constexpr std::size_t arg_count = 34;
+
+using arg_table = std::array<std::pair<const char*, arg_enum>, arg_count>;

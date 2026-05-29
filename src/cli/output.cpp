@@ -1,6 +1,6 @@
 #include "../vmaware.hpp"
 #include "output.hpp"
-#include "windows_cli.hpp"
+#include "windows_tui.hpp"
 #include "globals.hpp"
 
 #include <chrono>
@@ -121,6 +121,7 @@ static std::pair<bool, VM::enum_flags> string_to_technique(const std::string& na
             return { true, flag };
         }
     }
+
     return { false, VM::NULL_ARG };
 }
 
@@ -132,6 +133,7 @@ const char* get_vm_description(const std::string& vm_brand) {
     if (is_vm_brand_multiple(vm_brand)) {
         return "";
     }
+
     struct brand_entry { const char* brand; const char* description; };
 
     static const brand_entry table[] = {
@@ -244,7 +246,7 @@ static void checker(const VM::enum_flags flag, const char* message) {
     const bool result = VM::check(flag);
     auto end_time = std::chrono::high_resolution_clock::now();
 
-    double ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+    const double ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
     if (arg_bitset.test(DETECTED_ONLY) && !result) {
         return;
@@ -254,12 +256,15 @@ static void checker(const VM::enum_flags flag, const char* message) {
         if (are_perms_required(flag)) {
             no_perms_count++;
             VM::check(flag);
+            std::ostringstream perms_oss;
+            perms_oss << tag_no_perms << " " << grey << "Skipped " << message << "." << ansi_exit;
+            PRINT_LINE(perms_oss.str());
             return;
         }
     #endif
 
     std::ostringstream cycle_oss;
-    cycle_oss << dim << message << " " << medium << "| " << white << std::fixed << std::setprecision(4) << ms << " ms" << ansi_exit;
+    cycle_oss << dim << message << " | " << white << std::fixed << std::setprecision(4) << ms << " ms" << ansi_exit;
     #if (CLI_WINDOWS)
         g_tui.addCycle(cycle_oss.str());
     #endif
@@ -276,11 +281,11 @@ static void checker(const VM::enum_flags flag, const char* message) {
 }
 
 bool parse_disable_token(const char* token) {
-    std::string tok(token);
+    const std::string tok(token);
     std::vector<std::string> names;
     std::string current;
 
-    for (char c : tok) {
+    for (const char c : tok) {
         if (c == ',') {
             if (!current.empty()) {
                 names.push_back(current);
@@ -296,7 +301,7 @@ bool parse_disable_token(const char* token) {
     }
 
     for (const auto& name : names) {
-        std::pair<bool, VM::enum_flags> technique = string_to_technique(name);
+        const std::pair<bool, VM::enum_flags> technique = string_to_technique(name);
 
         const bool found = technique.first;
         const VM::enum_flags flag = technique.second;
@@ -357,7 +362,7 @@ void generate_json(const char* output) {
 
     const auto detected_status = VM::detected_enums();
 
-    if (detected_status.size() == 0) {
+    if (detected_status.empty()) {
         json.emplace_back("]\n}");
     } else {
         for (size_t i = 0; i < detected_status.size(); i++) {
@@ -448,7 +453,7 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     const VM::enum_flags dynamic_arg = dynamic ? VM::DYNAMIC : VM::NULL_ARG;
 
     #if (CLI_LINUX)
-        [[maybe_unused]] bool notes_enabled = !arg_bitset.test(NOTES);
+        [[maybe_unused]] const bool notes_enabled = !arg_bitset.test(NOTES);
     #endif
 
     std::ofstream output_fstream;
@@ -482,11 +487,11 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     }
 
     #if (CLI_WINDOWS)
-        DebugInterceptor* interceptor = nullptr;
-        if (!arg_bitset.test(NO_ANSI)) {
+        std::unique_ptr<DebugInterceptor> interceptor;
+        if (!arg_bitset.test(NO_ANSI) && !arg_bitset.test(SIMPLE)) {
             g_tui.init();
-            interceptor = new DebugInterceptor(std::cout.rdbuf());
-            std::cout.rdbuf(interceptor);
+            interceptor = std::make_unique<DebugInterceptor>(std::cout.rdbuf());
+            std::cout.rdbuf(interceptor.get());
         }
     #endif
 
@@ -598,15 +603,15 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     checker(VM::TIMER, "timing anomalies");
 
     const auto t2 = std::chrono::high_resolution_clock::now();
-    VM::vmaware vm(VM::MULTIPLE, high_thresh_arg, all_arg, dynamic_arg);
+    const VM::vmaware vm(VM::MULTIPLE, high_thresh_arg, all_arg, dynamic_arg);
     std::vector<std::string> summary;
 
-    std::string brand = vm.brand;
+    const std::string brand = vm.brand;
     const bool is_red = ((brand == VM::brands::NULL_BRAND) || (brand == VM::brands::HYPERV_ROOT));
     summary.push_back(bold + "\nVM brand: " + ansi_exit + (is_red ? red : green) + brand + ansi_exit);
 
     if (!is_vm_brand_multiple(vm.brand)) {
-        std::string current_color = (vm.type == "Unknown" || vm.type == "Host machine") ? red : green;
+        const std::string current_color = (vm.type == "Unknown" || vm.type == "Host machine") ? red : green;
         summary.push_back(bold + "VM type: " + ansi_exit + current_color + vm.type + ansi_exit);
     }
 
@@ -696,8 +701,8 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     }
 
     const std::string is_bold = (vm.is_vm ? bold : "");
-
     const char* conclusion_color = color(vm.percentage, vm.is_hardened);
+
     summary.push_back(
         bold + 
         "===== CONCLUSION: " + 
@@ -712,68 +717,67 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     );
 
 #if (CLI_WINDOWS)
-    if (!arg_bitset.test(NO_ANSI)) {
+    if (!arg_bitset.test(NO_ANSI) && !arg_bitset.test(SIMPLE)) {
         g_tui.drawSummaryBox(summary);
+
+        g_tui.finalize();
+
+        if (g_tui.raw_out) {
+            *(g_tui.raw_out) << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
+        } else {
+            std::cout << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
+        }
+
+        constexpr u8 KEY_ESCAPE_PREFIX = 0;
+        constexpr u8 KEY_EXTENDED = 224;
+        constexpr u8 KEY_UP = 72;
+        constexpr u8 KEY_DOWN = 80;
+        constexpr u8 KEY_PAGE_UP = 73;
+        constexpr u8 KEY_PAGE_DOWN = 81;
+        constexpr u8 KEY_LEFT = 75;
+        constexpr u8 KEY_RIGHT = 77;
+        constexpr u8 KEY_CTRL_C = 3;
+
+        while (true) {
+            int ch = _getch();
+
+            if (ch == KEY_ESCAPE_PREFIX || ch == KEY_EXTENDED) {
+                ch = _getch();
+
+                switch (ch) {
+                    case KEY_UP: g_tui.scrollCyclesUp(); continue;
+                    case KEY_DOWN: g_tui.scrollCyclesDown(); continue;
+                    case KEY_PAGE_UP: g_tui.scrollDebugUp(); continue;
+                    case KEY_PAGE_DOWN: g_tui.scrollDebugDown(); continue;
+                    case KEY_LEFT: g_tui.scrollExceptionsUp(); continue;
+                    case KEY_RIGHT: g_tui.scrollExceptionsDown(); continue;
+                    default: continue;
+                }
+            }
+
+            bool should_break = false;
+
+            switch (ch) {
+                case '\r':
+                case '\n':
+                case 'q':
+                case 'Q':
+                case KEY_CTRL_C:
+                    should_break = true;
+            }
+
+            if (should_break) {
+                break;
+            }
+        }
+
+        if (interceptor) {
+            std::cout.rdbuf(interceptor->original);
+        }
     } else {
         for (const auto& l : summary) {
             std::cout << l << "\n";
         }
-    }
-
-    g_tui.finalize();
-
-    if (g_tui.raw_out) {
-        *(g_tui.raw_out) << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
-    } else {
-        std::cout << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
-    }
-
-    constexpr u8 KEY_ESCAPE_PREFIX = 0;
-    constexpr u8 KEY_EXTENDED = 224;
-    constexpr u8 KEY_UP = 72;
-    constexpr u8 KEY_DOWN = 80;
-    constexpr u8 KEY_PAGE_UP = 73;
-    constexpr u8 KEY_PAGE_DOWN = 81;
-    constexpr u8 KEY_LEFT = 75;
-    constexpr u8 KEY_RIGHT = 77;
-    constexpr u8 KEY_CTRL_C = 3;
-
-    while (true) {
-        int ch = _getch();
-        
-        if (ch == KEY_ESCAPE_PREFIX || ch == KEY_EXTENDED) {
-            ch = _getch();
-            
-            switch (ch) {
-                case KEY_UP: g_tui.scrollCyclesUp(); continue;
-                case KEY_DOWN: g_tui.scrollCyclesDown(); continue;
-                case KEY_PAGE_UP: g_tui.scrollDebugUp(); continue;
-                case KEY_PAGE_DOWN: g_tui.scrollDebugDown(); continue;
-                case KEY_LEFT: g_tui.scrollExceptionsUp(); continue;
-                case KEY_RIGHT: g_tui.scrollExceptionsDown(); continue;
-                default: continue;
-            }
-        }
-
-        bool should_break = false;
-        
-        switch (ch) {
-            case '\r':
-            case '\n':
-            case 'q':
-            case 'Q':
-            case KEY_CTRL_C:
-                should_break = true;
-        }
-
-        if (should_break) {
-            break;
-        }
-    }
-
-    if (interceptor) {
-        std::cout.rdbuf(interceptor->original);
-        delete interceptor;
     }
 #else
     for (const auto& line : summary) {

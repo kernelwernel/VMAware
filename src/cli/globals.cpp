@@ -1,7 +1,6 @@
 #include "globals.hpp"
 
-std::string dim = "\x1B[38;2;60;60;60m";
-std::string medium = "\x1B[38;2;120;120;120m";
+std::string dim = "\x1B[38;2;120;120;120m";
 std::string bright = "\x1B[38;2;180;180;180m";
 
 std::string bold = "\x1B[1;97m";
@@ -24,5 +23,6 @@ u8 disabled_count = 0;
 
 std::string tag_detected = bold + "[" + green + "  DETECTED  " + bold + "]" + ansi_exit;
 std::string tag_not_detected = "[" + red + "NOT DETECTED" + ansi_exit + "]";
-std::string tag_skipped = ("\x1B[97m[\x1B[90m  DISABLED  \x1B[97m]\x1B[0m");
-std::string tag_notes = ("\x1B[97m[\x1B[90m  NOTES   \x1B[97m]\x1B[0m");
+std::string tag_skipped = "[" + grey + "  DISABLED  " + ansi_exit + "]";
+std::string tag_no_perms = "[" + grey + "  NO PERMS  " + ansi_exit + "]";
+std::string tag_notes = "[    NOTE    ]";

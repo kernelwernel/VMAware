@@ -3,7 +3,7 @@
 #if (CLI_WINDOWS)
 #include "globals.hpp"
 #include "sha256.hpp"
-#include "windows_cli.hpp"
+#include "windows_tui.hpp"
 #include <cstdlib>
 #include <algorithm>
 

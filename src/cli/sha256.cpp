@@ -94,8 +94,8 @@ void SHA256::transform() {
     u32 h = s[7];
 
     for (u32 i = 0; i < 64; ++i) {
-        u32 t1 = h + ep1(e) + ch(e, f, g) + k[i] + m[i];
-        u32 t2 = ep0(a) + maj(a, b, c);
+        const u32 t1 = h + ep1(e) + ch(e, f, g) + k[i] + m[i];
+        const u32 t2 = ep0(a) + maj(a, b, c);
         h = g;
         g = f;
         f = e;
@@ -193,7 +193,7 @@ std::string exe_path() {
     return std::string(b.data());
 #else
     std::vector<char> b(PATH_MAX);
-    ssize_t l = ::readlink("/proc/self/exe", b.data(), b.size() - 1);
+    const ssize_t l = ::readlink("/proc/self/exe", b.data(), b.size() - 1);
 
     if (l <= 0) {
         return {};
@@ -211,7 +211,7 @@ std::string exe_path() {
 }
 
 std::string compute_self_sha256() {
-    std::string path = exe_path();
+    const std::string path = exe_path();
     if (path.empty()) {
         return {};
     }
@@ -227,7 +227,7 @@ std::string compute_self_sha256() {
 
     while (ifs) {
         ifs.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
-        std::streamsize r = ifs.gcount();
+        const std::streamsize r = ifs.gcount();
 
         if (r > 0) {
             sha.update(reinterpret_cast<const u8*>(chunk.data()), static_cast<size_t>(r));
@@ -242,7 +242,7 @@ std::string compute_self_sha256() {
 
     static constexpr char hex[] = "0123456789abcdef";
 
-    for (unsigned char i : digest) {
+    for (const unsigned char i : digest) {
         out.push_back(hex[(i >> 4) & 0xF]);
         out.push_back(hex[i & 0xF]);
     }

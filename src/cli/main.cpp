@@ -25,7 +25,6 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
-#include <array>
 #include <algorithm>
 #include <cstring>
 #include <string>
@@ -73,6 +72,7 @@ Extra:
  --enums            display the technique enum name used by the lib
  --detected-only    only display the techniques that were detected
  --json             output a json-formatted file of the results
+ --simple           output a simpler alternative of the output (Windows specific) 
 
 )";
 
@@ -228,7 +228,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    static const std::array<std::pair<const char*, arg_enum>, 33> table{ {
+    static const arg_table table{ {
         { "-h", HELP },
         { "-v", VERSION },
         { "-a", ALL },
@@ -261,7 +261,8 @@ int main(int argc, char* argv[]) {
         { "--no-ansi", NO_ANSI },
         { "--detected-only", DETECTED_ONLY },
         { "--json", JSON },
-        { "--output", OUTPUT }
+        { "--output", OUTPUT },
+        { "--simple", SIMPLE }
     } };
 
     std::string potential_null_arg;
@@ -294,7 +295,7 @@ int main(int argc, char* argv[]) {
 
         if (it == table.end()) {
             if (arg_bitset.test(OUTPUT)) {
-                std::ofstream file(arg_string);
+                const std::ofstream file(arg_string);
 
                 if (file.good()) {
                     potential_output_arg = arg_string;
