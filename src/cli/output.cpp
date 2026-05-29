@@ -259,7 +259,7 @@ static void checker(const VM::enum_flags flag, const char* message) {
     #endif
 
     std::ostringstream cycle_oss;
-    cycle_oss << TH_DIM << message << " " << TH_MED << "| " << white << std::fixed << std::setprecision(4) << ms << " ms" << ansi_exit;
+    cycle_oss << dim << message << " " << medium << "| " << white << std::fixed << std::setprecision(4) << ms << " ms" << ansi_exit;
     #if (CLI_WINDOWS)
         g_tui.addCycle(cycle_oss.str());
     #endif
@@ -676,8 +676,7 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
                 if ((static_cast<unsigned long long>(char_count) - 1) >= (static_cast<unsigned long long>(60) + 3)) {
                     it = divided_description.insert(it + 1, "\n");
                     char_count = it->length() + 1;
-                }
-                else {
+                } else {
                     continue;
                 }
             }
@@ -729,24 +728,45 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
         std::cout << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
     }
 
+    constexpr u8 KEY_ESCAPE_PREFIX = 0;
+    constexpr u8 KEY_EXTENDED = 224;
+    constexpr u8 KEY_UP = 72;
+    constexpr u8 KEY_DOWN = 80;
+    constexpr u8 KEY_PAGE_UP = 73;
+    constexpr u8 KEY_PAGE_DOWN = 81;
+    constexpr u8 KEY_LEFT = 75;
+    constexpr u8 KEY_RIGHT = 77;
+    constexpr u8 KEY_CTRL_C = 3;
+
     while (true) {
         int ch = _getch();
-        if (ch == 0 || ch == 224) {
+        
+        if (ch == KEY_ESCAPE_PREFIX || ch == KEY_EXTENDED) {
             ch = _getch();
-            if (ch == 72) {
-                g_tui.scrollCyclesUp();
-            } else if (ch == 80) {
-                g_tui.scrollCyclesDown();
-            } else if (ch == 73) {
-                g_tui.scrollDebugUp();
-            } else if (ch == 81) {
-                g_tui.scrollDebugDown();
-            } else if (ch == 75) {
-                g_tui.scrollExceptionsUp();
-            } else if (ch == 77) {
-                g_tui.scrollExceptionsDown();
+            
+            switch (ch) {
+                case KEY_UP: g_tui.scrollCyclesUp(); continue;
+                case KEY_DOWN: g_tui.scrollCyclesDown(); continue;
+                case KEY_PAGE_UP: g_tui.scrollDebugUp(); continue;
+                case KEY_PAGE_DOWN: g_tui.scrollDebugDown(); continue;
+                case KEY_LEFT: g_tui.scrollExceptionsUp(); continue;
+                case KEY_RIGHT: g_tui.scrollExceptionsDown(); continue;
+                default: continue;
             }
-        } else if (ch == '\r' || ch == '\n' || ch == 'q' || ch == 'Q' || ch == 3) {
+        }
+
+        bool should_break = false;
+        
+        switch (ch) {
+            case '\r':
+            case '\n':
+            case 'q':
+            case 'Q':
+            case KEY_CTRL_C:
+                should_break = true;
+        }
+
+        if (should_break) {
             break;
         }
     }
@@ -756,8 +776,8 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
         delete interceptor;
     }
 #else
-    for (const auto& l : summary) {
-        std::cout << l << "\n";
+    for (const auto& line : summary) {
+        std::cout << line << "\n";
     }
 
     if (original_cout_buf) {

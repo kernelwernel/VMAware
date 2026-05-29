@@ -1,11 +1,8 @@
 #include "globals.hpp"
 
-const std::string TH_DIM = "\x1B[38;2;60;60;60m";
-const std::string TH_MED = "\x1B[38;2;120;120;120m";
-#if (CLI_WINDOWS)
-	const std::string TH_BRIGHT = "\x1B[38;2;180;180;180m";
-	const std::string TH_RED = "\x1B[38;2;220;0;0m";
-#endif
+std::string dim = "\x1B[38;2;60;60;60m";
+std::string medium = "\x1B[38;2;120;120;120m";
+std::string bright = "\x1B[38;2;180;180;180m";
 
 std::string bold = "\x1B[1;97m";
 std::string underline = "\x1B[4m";

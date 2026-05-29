@@ -178,8 +178,7 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--no-relaunch") == 0) {
             relaunched = true;
-        }
-        else {
+        } else {
             if (new_argc < 255) {
                 new_argv[new_argc++] = argv[i];
             }

@@ -4,13 +4,9 @@
 #include <bitset>
 #include "types.hpp"
 
-extern const std::string TH_DIM;
-extern const std::string TH_MED;
-
-#if (CLI_WINDOWS)
-    extern const std::string TH_BRIGHT;
-    extern const std::string TH_RED;
-#endif
+extern std::string dim;
+extern std::string medium;
+extern std::string bright;
 
 extern std::string bold;
 extern std::string underline;

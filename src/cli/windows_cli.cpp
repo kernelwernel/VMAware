@@ -91,8 +91,7 @@ void TuiManager::init() {
             PostMessage(hwnd, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
             Sleep(150);
         }
-    }
-    else {
+    } else {
         HWND hCon = GetConsoleWindow();
         if (hCon) PostMessage(hCon, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
     }
@@ -125,7 +124,7 @@ void TuiManager::init() {
     exception_y = start_y;
 
     #ifndef __VMAWARE_DEBUG__
-        debugs.push_back(TH_DIM + std::string("Compile in debug mode to view detailed logs.") + ansi_exit);
+        debugs.push_back(dim + std::string("Compile in debug mode to view detailed logs.") + ansi_exit);
     #endif
 
     setCursorSafe(0, start_y);
@@ -147,14 +146,11 @@ void TuiManager::printHeader() {
 
     if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) {
         arch = "x64";
-    }
-    else if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
+    } else if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
         arch = "x86";
-    }
-    else if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64) {
+    } else if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64) {
         arch = "ARM64";
-    }
-    else {
+    } else {
         arch = "Unknown";
     }
 
@@ -179,6 +175,7 @@ void TuiManager::printHeader() {
     if (family == 6 || family == 15) {
         model += ((cpuInfo[0] >> 16) & 0xF) << 4;
     }
+
     if (family == 15) {
         family += (cpuInfo[0] >> 20) & 0xFF;
     }
@@ -214,11 +211,9 @@ void TuiManager::printHeader() {
                 std::ostringstream os_oss;
                 if (rovi.dwMajorVersion == 10 && rovi.dwBuildNumber >= 22000) {
                     os_oss << "Windows 11 (" << rovi.dwBuildNumber << ")";
-                }
-                else if (rovi.dwMajorVersion == 10) {
+                } else if (rovi.dwMajorVersion == 10) {
                     os_oss << "Windows 10 (" << rovi.dwBuildNumber << ")";
-                }
-                else {
+                } else {
                     os_oss << "Windows " << rovi.dwMajorVersion << "." << rovi.dwMinorVersion << " (" << rovi.dwBuildNumber << ")";
                 }
                 os = os_oss.str();
@@ -240,16 +235,16 @@ void TuiManager::printHeader() {
     std::string pad_str(static_cast<size_t>(padding_val), ' ');
 
     *raw_out << pad_str
-        << TH_DIM << "arch: " << TH_BRIGHT << arch << TH_DIM
-        << " / vendor: " << TH_BRIGHT << vendor << TH_DIM
-        << " / family: " << TH_BRIGHT << family << TH_DIM
-        << " / model: " << TH_BRIGHT << model << TH_DIM
-        << " / stepping: " << TH_BRIGHT << stepping << TH_DIM
-        << " / microcode: " << TH_BRIGHT << ucode << TH_DIM
-        << " / os: " << TH_BRIGHT << os << TH_DIM
-        << " / sha256: " << TH_BRIGHT << hash_display << ansi_exit << "\n\n";
+        << dim << "arch: " << bright << arch << dim
+        << " / vendor: " << bright << vendor << dim
+        << " / family: " << bright << family << dim
+        << " / model: " << bright << model << dim
+        << " / stepping: " << bright << stepping << dim
+        << " / microcode: " << bright << ucode << dim
+        << " / os: " << bright << os << dim
+        << " / sha256: " << bright << hash_display << ansi_exit << "\n\n";
 
-    *raw_out << TH_DIM << repeat_str("─", static_cast<size_t>(console_width) - 1) << ansi_exit << "\n";
+    *raw_out << dim << repeat_str("─", static_cast<size_t>(console_width) - 1) << ansi_exit << "\n";
 
     // resync Y coordinates natively after the \n's
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -284,30 +279,29 @@ void TuiManager::redrawAllBoxes() {
 
     // 1. Exceptions Box
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "┌─ " << white << "Exceptions" << TH_DIM << " " << repeat_str("─", global_box_width >= 15 ? global_box_width - 15 : 0) << "┐" << ansi_exit << "\x1B[K";
+    *raw_out << dim << "┌─ " << white << "Exceptions" << dim << " " << repeat_str("─", global_box_width >= 15 ? global_box_width - 15 : 0) << "┐" << ansi_exit << "\x1B[K";
 
     if (!exceptions.empty()) {
         const auto& lines = exceptions[exc_scroll_index];
         for (size_t i = 0; i < lines.size(); i++) {
             setCursorSafe(right_x, draw_y++);
-            *raw_out << TH_DIM << "│ " << ansi_exit << pad(lines[i], content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K";
+            *raw_out << dim << "│ " << ansi_exit << pad(lines[i], content_w) << dim << " │" << ansi_exit << "\x1B[K";
         }
-    }
-    else {
+    } else {
         for (size_t i = 0; i < (size_t)box_height - 2; i++) {
             setCursorSafe(right_x, draw_y++);
-            *raw_out << TH_DIM << "│ " << ansi_exit << pad("", content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K";
+            *raw_out << dim << "│ " << ansi_exit << pad("", content_w) << dim << " │" << ansi_exit << "\x1B[K";
         }
     }
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "└" << repeat_str("─", global_box_width >= 2 ? global_box_width - 2 : 0) << "┘" << ansi_exit << "\x1B[K";
+    *raw_out << dim << "└" << repeat_str("─", global_box_width >= 2 ? global_box_width - 2 : 0) << "┘" << ansi_exit << "\x1B[K";
 
     setCursorSafe(right_x, draw_y++);
     std::string exc_controls = "Use Left/Right arrows to scroll (" +
         std::to_string(exceptions.empty() ? 0 : exc_scroll_index + 1) + "/" +
         std::to_string(exceptions.size()) + ")";
-    *raw_out << TH_DIM << " " << exc_controls << " " << ansi_exit << "\x1B[K";
+    *raw_out << dim << " " << exc_controls << " " << ansi_exit << "\x1B[K";
 
     setCursorSafe(right_x, draw_y++);
     *raw_out << ansi_exit << "\x1B[K"; // gap
@@ -340,11 +334,11 @@ void TuiManager::redrawAllBoxes() {
         SHORT text_x = bracket_x + 3;
 
         setCursorSafe(text_x, static_cast<SHORT>(mid_y - 1));
-        *raw_out << TH_DIM << "s: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_std << ansi_exit << "\x1B[K";
+        *raw_out << dim << "s: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_std << ansi_exit << "\x1B[K";
         setCursorSafe(text_x, mid_y);
-        *raw_out << TH_DIM << "h: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_hyp << ansi_exit << "\x1B[K";
+        *raw_out << dim << "h: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_hyp << ansi_exit << "\x1B[K";
         setCursorSafe(text_x, static_cast<SHORT>(mid_y + 1));
-        *raw_out << TH_DIM << "e: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_ext << ansi_exit << "\x1B[K";
+        *raw_out << dim << "e: " << white << "0x" << std::hex << std::setfill('0') << std::setw(8) << g_max_ext << ansi_exit << "\x1B[K";
     }
 
     g_right_bottom_y = draw_y;
@@ -361,28 +355,27 @@ SHORT TuiManager::drawBoxInternal(SHORT startY, size_t box_width, const std::str
     size_t dash_count = (box_width >= 5 + title_len) ? (box_width - 5 - title_len) : 0;
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "┌─ " << white << title << " " << TH_DIM << repeat_str("─", dash_count) << "┐" << ansi_exit << "\x1B[K" << std::flush;
+    *raw_out << dim << "┌─ " << white << title << " " << dim << repeat_str("─", dash_count) << "┐" << ansi_exit << "\x1B[K" << std::flush;
 
     size_t limit = box_height - 2;
     for (size_t i = 0; i < limit; i++) {
         setCursorSafe(right_x, draw_y++);
         if (scroll_idx + i < items.size()) {
-            *raw_out << TH_DIM << "│ " << ansi_exit << pad(items[scroll_idx + i], content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K" << std::flush;
-        }
-        else {
-            *raw_out << TH_DIM << "│ " << ansi_exit << pad("", content_w) << TH_DIM << " │" << ansi_exit << "\x1B[K" << std::flush;
+            *raw_out << dim << "│ " << ansi_exit << pad(items[scroll_idx + i], content_w) << dim << " │" << ansi_exit << "\x1B[K" << std::flush;
+        } else {
+            *raw_out << dim << "│ " << ansi_exit << pad("", content_w) << dim << " │" << ansi_exit << "\x1B[K" << std::flush;
         }
     }
 
     setCursorSafe(right_x, draw_y++);
-    *raw_out << TH_DIM << "└" << repeat_str("─", box_width >= 2 ? box_width - 2 : 0) << "┘" << ansi_exit << "\x1B[K" << std::flush;
+    *raw_out << dim << "└" << repeat_str("─", box_width >= 2 ? box_width - 2 : 0) << "┘" << ansi_exit << "\x1B[K" << std::flush;
 
     setCursorSafe(right_x, draw_y++);
     std::string controls = controls_base + " (" +
         std::to_string(items.empty() ? 0 : scroll_idx + 1) + "/" +
         std::to_string(items.size()) + ")";
 
-    *raw_out << TH_DIM << " " << controls << " " << ansi_exit << "\x1B[K" << std::flush;
+    *raw_out << dim << " " << controls << " " << ansi_exit << "\x1B[K" << std::flush;
     return draw_y;
 }
 
@@ -414,6 +407,7 @@ void TuiManager::addCycle(const std::string& line) {
         if (cycles.size() > static_cast<size_t>(box_height - 2)) {
             cyc_scroll_index = cycles.size() - static_cast<size_t>(box_height - 2);
         }
+
         if (this->updateBoxWidth(visible_length(line) + 4)) {
             resized = true;
         }
@@ -431,10 +425,9 @@ void TuiManager::addDebug(const std::string& line) {
     size_t pos = line.find(": ");
 
     if (pos != std::string::npos) {
-        colored_line = white + line.substr(0, pos) + TH_DIM + line.substr(pos) + ansi_exit;
-    }
-    else {
-        colored_line = TH_DIM + line + ansi_exit;
+        colored_line = white + line.substr(0, pos) + dim + line.substr(pos) + ansi_exit;
+    } else {
+        colored_line = dim + line + ansi_exit;
     }
 
     {
@@ -443,10 +436,12 @@ void TuiManager::addDebug(const std::string& line) {
         if (debugs.size() > static_cast<size_t>(box_height - 2)) {
             dbg_scroll_index = debugs.size() - static_cast<size_t>(box_height - 2);
         }
+
         if (this->updateBoxWidth(visible_length(colored_line) + 4)) {
             resized = true;
         }
     }
+
     std::lock_guard<std::mutex> draw_lock(mtx);
     if (resized) clearBoxes();
     redrawAllBoxes();
@@ -534,15 +529,15 @@ void TuiManager::drawSummaryBox(const std::vector<std::string>& lines) {
     }
 
     setCursorSafe(left_margin, draw_y++);
-    *raw_out << TH_DIM << "┌" << repeat_str("─", static_cast<size_t>(box_width)) << "┐" << ansi_exit << "\n";
+    *raw_out << dim << "┌" << repeat_str("─", static_cast<size_t>(box_width)) << "┐" << ansi_exit << "\n";
 
     for (const auto& line : lines) {
         setCursorSafe(left_margin, draw_y++);
-        *raw_out << TH_DIM << "│ " << ansi_exit << pad(line, static_cast<size_t>(box_width - 2)) << TH_DIM << " │" << ansi_exit << "\n";
+        *raw_out << dim << "│ " << ansi_exit << pad(line, static_cast<size_t>(box_width - 2)) << dim << " │" << ansi_exit << "\n";
     }
 
     setCursorSafe(left_margin, draw_y++);
-    *raw_out << TH_DIM << "└" << repeat_str("─", static_cast<size_t>(box_width)) << "┘" << ansi_exit << "\n";
+    *raw_out << dim << "└" << repeat_str("─", static_cast<size_t>(box_width)) << "┘" << ansi_exit << "\n";
 
     left_y = draw_y;
 }
@@ -589,8 +584,7 @@ DebugInterceptor::int_type DebugInterceptor::overflow(int_type c) {
             msg = msg.substr(1);
         }
         g_tui.addDebug(msg);
-    }
-    else {
+    } else {
         if (g_tui.raw_out) {
             g_tui.setCursorSafe(g_tui.left_margin, g_tui.left_y);
             *(g_tui.raw_out) << buffer << "\x1B[K" << std::flush;
@@ -619,7 +613,7 @@ LONG WINAPI VehLogger(PEXCEPTION_POINTERS ep) {
     }
 
     std::string c_white = white;
-    std::string c_grey = TH_DIM;
+    std::string c_grey = dim;
     std::string c_rst = ansi_exit;
 
     auto to_hex = [](auto val) {
@@ -627,6 +621,7 @@ LONG WINAPI VehLogger(PEXCEPTION_POINTERS ep) {
         oss << "0x" << std::hex << std::uppercase << (uint64_t)val;
         return oss.str();
     };
+
     auto hex_pad = [&](auto val, int width) {
         return pad(to_hex(val), static_cast<size_t>(width));
     };
