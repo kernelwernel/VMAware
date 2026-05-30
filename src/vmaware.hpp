@@ -8324,16 +8324,18 @@ public:
 
             std::vector<u8> buffer(size);
             ssize_t read_size = 0;
-            const size_t off = 0;
+            size_t off = 0;
             for (;;) {
                 read_size = read(fd, buffer.data() + off, size - off);
                 if (read_size <= 0) { break; }
+                off += static_cast<size_t>(read_size);
+                if (off >= static_cast<size_t>(size)) { break; }
             }
 
             close(fd);
-            if (read_size < 0)
+            if (off != static_cast<size_t>(size))
             {
-                debug("BOOT_LOGO: read failed");
+                debug("BOOT_LOGO: read failed or partial");
                 return false;
             }
 
@@ -10323,7 +10325,7 @@ public:
             }
 
             // fetch buffer (multi-sz)
-            std::vector<BYTE> buffer(required_size);
+            std::vector<BYTE> buffer(required_size + (sizeof(wchar_t) * 2), 0);
             if (!SetupDiGetDevicePropertyW(handle_dev_info, &dev_info, &key, &prop_type,
                 buffer.data(), required_size, &required_size, 0))
             {
@@ -11451,7 +11453,7 @@ public:
                 }
 
                 // Read variables
-                if (var_name_view == L"PKDefault") 
+                if (var_name_view == L"PKDefault" && pk_default_buf == nullptr)
                     (void)read_variable_to_buffer(std::wstring(var_name_view), current_var->VendorGuid, pk_default_buf, pk_default_len);
 
                 if (current_var->NextEntryOffset == 0) break;
@@ -12331,16 +12333,16 @@ public:
         bool found = false;
         for (DWORD idx = 0; SetupDiEnumDeviceInfo(devs, idx, &dev_info); ++idx) {
             DWORD property_type = 0;
+            DWORD required = 0;
             if (!SetupDiGetDeviceRegistryPropertyW(devs, &dev_info, SPDRP_HARDWAREID,
                 &property_type, buffer, buf_bytes, nullptr))
             {
                 const DWORD err = GetLastError();
                 if (err == ERROR_INSUFFICIENT_BUFFER) {
-                    DWORD required = 0;
                     SetupDiGetDeviceRegistryPropertyW(devs, &dev_info, SPDRP_HARDWAREID,
                         &property_type, nullptr, 0, &required);
                     if (required > buf_bytes) {
-                        BYTE* new_buffer = static_cast<BYTE*>(realloc(buffer, required));
+                        BYTE* new_buffer = static_cast<BYTE*>(realloc(buffer, required + 4));
                         if (!new_buffer) { 
                             found = false; 
                             break; 
@@ -12359,6 +12361,13 @@ public:
             }
 
             if (property_type != REG_MULTI_SZ) continue;
+
+            if (required <= buf_bytes) {
+                buffer[required] = 0;
+                buffer[required + 1] = 0;
+                buffer[required + 2] = 0;
+                buffer[required + 3] = 0;
+            }
 
             wchar_t* cur = reinterpret_cast<wchar_t*>(buffer);
             while (*cur) {
@@ -13118,20 +13127,21 @@ public:
         SIZE_T boundary_size = 0x10000ULL;
         NTSTATUS alloc_status = nt_allocate_virtual_memory(current_process, &boundary_base, 0, &boundary_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
-        if (alloc_status >= 0 && boundary_base == reinterpret_cast<PVOID>(0xFFFF0000ULL)) {
-            // inject cpuid at the strict end of the compat-mode space
-            u8* execution_target = reinterpret_cast<u8*>(0xFFFFFFFEULL);
-            execution_target[0] = 0x0F;
-            execution_target[1] = 0xA2;
+        if (alloc_status >= 0) {
+            if (boundary_base == reinterpret_cast<PVOID>(0xFFFF0000ULL)) {
+                // inject cpuid at the strict end of the compat-mode space
+                u8* execution_target = reinterpret_cast<u8*>(0xFFFFFFFEULL);
+                execution_target[0] = 0x0F;
+                execution_target[1] = 0xA2;
 
-            iretq_frame frame = {};
-            frame.ip = 0xFFFFFFFEULL;
-            frame.cs = 0x23;
+                iretq_frame frame = {};
+                frame.ip = 0xFFFFFFFEULL;
+                frame.cs = 0x23;
 
-            // dispatch hardware context switch shellcode
-            auto switch_func = reinterpret_cast<void(*)(iretq_frame*, uintptr_t, u64*)>(code_ptr);
-            switch_func(&frame, stack32_ptr, &g_saved_rsp);
-
+                // dispatch hardware context switch shellcode
+                auto switch_func = reinterpret_cast<void(*)(iretq_frame*, uintptr_t, u64*)>(code_ptr);
+                switch_func(&frame, stack32_ptr, &g_saved_rsp);
+            }
             SIZE_T free_size = 0;
             nt_free_virtual_memory(current_process, &boundary_base, &free_size, MEM_RELEASE);
         }
