@@ -159,16 +159,6 @@ target_compile_options(${TARGET} PRIVATE
     $<$<AND:$<CONFIG:Release>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-g0;-O2>
 )
 
-# Architecture-specific optimizations
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
-    target_compile_options(${TARGET} PRIVATE
-        $<$<AND:$<CONFIG:Release>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-march=native;-mtune=native>
-    )
-elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
-    target_compile_options(${TARGET} PRIVATE
-        $<$<AND:$<CONFIG:Release>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-mcpu=native>
-    )
-endif()
 
 # extra flags
 option(DEBUG_OUTPUT "Force __VMAWARE_DEBUG__ define" OFF)
