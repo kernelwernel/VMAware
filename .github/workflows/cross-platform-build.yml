@@ -298,14 +298,51 @@ jobs:
           chmod +x build/vmaware
           bash auxiliary/test_cli.sh build/vmaware
 
+  cli-test-macos:
+    needs: [macos]
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware-macos-aarch64
+          path: build
+
+      - name: Run CLI test suite
+        run: |
+          chmod +x build/vmaware
+          bash auxiliary/test_cli.sh build/vmaware
+
+  cli-test-windows:
+    needs: [windows]
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware64_release.exe
+          path: build
+
+      - name: Run CLI test suite
+        shell: bash
+        run: |
+          BIN=$(find build -name "*.exe" | head -1)
+          bash auxiliary/test_cli.sh "$BIN"
+
   platform-builds:
-    needs: [linux, macos, windows]
+    needs: [cli-test, cli-test-macos, cli-test-windows]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All platform builds completed"
 
   completed:
-    needs: [platform-builds, cli-test]
+    needs: [platform-builds]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All checks passed"
