@@ -9,6 +9,7 @@ on:
       - '.github/workflows/cross-platform-build.yml'
       - 'CMakeLists.txt'
       - 'auxiliary/test_cli.sh'
+      - 'auxiliary/test_cli.ps1'
   pull_request:
     branches: ["main"]
     paths:
@@ -17,6 +18,7 @@ on:
       - '.github/workflows/cross-platform-build.yml'
       - 'CMakeLists.txt'
       - 'auxiliary/test_cli.sh'
+      - 'auxiliary/test_cli.ps1'
   workflow_dispatch:
 
 env:
@@ -280,7 +282,7 @@ jobs:
     steps:
       - run: echo "Windows builds completed"
 
-  cli-test:
+  cli-test-linux:
     needs: [linux]
     runs-on: ubuntu-latest
 
@@ -330,19 +332,25 @@ jobs:
           path: build
 
       - name: Run CLI test suite
-        shell: bash
+        shell: pwsh
         run: |
-          BIN=$(find build -name "*.exe" | head -1)
-          bash auxiliary/test_cli.sh "$BIN"
+          $bin = Get-ChildItem build -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          pwsh auxiliary/test_cli.ps1 -BIN $bin
 
   platform-builds:
-    needs: [cli-test, cli-test-macos, cli-test-windows]
+    needs: [linux, macos, windows]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All platform builds completed"
 
+  cli-tests:
+    needs: [cli-test-linux, cli-test-macos, cli-test-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All CLI tests completed"
+
   completed:
-    needs: [platform-builds]
+    needs: [platform-builds, cli-tests]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All checks passed"
