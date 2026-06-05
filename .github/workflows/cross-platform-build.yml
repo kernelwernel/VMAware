@@ -352,7 +352,7 @@ jobs:
         shell: pwsh
         run: |
           $bin = Get-ChildItem build -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
-          pwsh auxiliary/test_cli.ps1 -BIN $bin
+          pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 10
 
   platform-builds:
     needs: [linux, macos, windows]

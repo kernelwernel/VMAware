@@ -93,78 +93,78 @@ Extra:
 
 [[noreturn]] static void brand_list() {
     std::cout <<
-        R"(VirtualBox
-        VMware
-        VMware Express
-        VMware ESX
-        VMware GSX
-        VMware Workstation
-        VMware Fusion
-        bhyve
-        QEMU
-        KVM
-        KVM Hyper-V Enlightenment
-        QEMU+KVM Hyper-V Enlightenment
-        QEMU+KVM
-        Virtual PC
-        Microsoft Hyper-V
-        Microsoft Virtual PC/Hyper-V
-        Parallels
-        Xen HVM
-        ACRN
-        QNX hypervisor
-        Hybrid Analysis
-        Sandboxie
-        Docker
-        Wine
-        Anubis
-        JoeBox
-        ThreatExpert
-        CWSandbox
-        Comodo
-        Bochs
-        Lockheed Martin LMHS
-        NVMM
-        OpenBSD VMM
-        Intel HAXM
-        Unisys s-Par
-        Cuckoo
-        BlueStacks
-        Jailhouse
-        Apple VZ
-        Intel KGT (Trusty)
-        Microsoft Azure Hyper-V
-        Xbox NanoVisor (Hyper-V)
-        SimpleVisor
-        Hyper-V artifact (host with Hyper-V enabled)
-        User-mode Linux
-        IBM PowerVM
-        Google Compute Engine (KVM)
-        OpenStack (KVM)
-        KubeVirt (KVM)
-        AWS Nitro System (KVM-based)
-        Podman
-        WSL
-        OpenVZ
-        ANY.RUN
-        Barevisor
-        HyperPlatform
-        MiniVisor
-        Intel TDX
-        LKVM
-        AMD SEV
-        AMD SEV-ES
-        AMD SEV-SNP
-        Neko Project II
-        NoirVisor
-        Qihoo 360 Sandbox
-        DBVM
-        UTM
-        Compaq FX!32
-        Insignia RealPC
-        Connectix Virtual PC
-        Containerd
-        )";
+R"(VirtualBox
+VMware
+VMware Express
+VMware ESX
+VMware GSX
+VMware Workstation
+VMware Fusion
+bhyve
+QEMU
+KVM
+KVM Hyper-V Enlightenment
+QEMU+KVM Hyper-V Enlightenment
+QEMU+KVM
+Virtual PC
+Microsoft Hyper-V
+Microsoft Virtual PC/Hyper-V
+Parallels
+Xen HVM
+ACRN
+QNX hypervisor
+Hybrid Analysis
+Sandboxie
+Docker
+Wine
+Anubis
+JoeBox
+ThreatExpert
+CWSandbox
+Comodo
+Bochs
+Lockheed Martin LMHS
+NVMM
+OpenBSD VMM
+Intel HAXM
+Unisys s-Par
+Cuckoo
+BlueStacks
+Jailhouse
+Apple VZ
+Intel KGT (Trusty)
+Microsoft Azure Hyper-V
+Xbox NanoVisor (Hyper-V)
+SimpleVisor
+Hyper-V artifact (host with Hyper-V enabled)
+User-mode Linux
+IBM PowerVM
+Google Compute Engine (KVM)
+OpenStack (KVM)
+KubeVirt (KVM)
+AWS Nitro System (KVM-based)
+Podman
+WSL
+OpenVZ
+ANY.RUN
+Barevisor
+HyperPlatform
+MiniVisor
+Intel TDX
+LKVM
+AMD SEV
+AMD SEV-ES
+AMD SEV-SNP
+Neko Project II
+NoirVisor
+Qihoo 360 Sandbox
+DBVM
+UTM
+Compaq FX!32
+Insignia RealPC
+Connectix Virtual PC
+Containerd
+)";
     std::exit(0);
 }
 

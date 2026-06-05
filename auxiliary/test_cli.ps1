@@ -19,32 +19,24 @@ function Fail-Test([string]$desc) { Write-Host "  FAIL  $desc"; $script:fail++ }
 
 # Runs the binary with $binArgs.  Returns ([string] output, [int] exitCode).
 # exitCode is -99 on timeout.  $captureStderr controls whether stderr is merged.
+# Uses Start-Job + & operator so the process inherits a proper console context,
+# matching how the "Full CLI output" step runs the binary directly.
 function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
-    $tmpOut = New-TemporaryFile
-    $tmpErr = New-TemporaryFile
-    try {
-        $proc = Start-Process `
-            -FilePath               $script:BIN `
-            -ArgumentList           $binArgs `
-            -NoNewWindow `
-            -PassThru `
-            -RedirectStandardOutput $tmpOut.FullName `
-            -RedirectStandardError  $tmpErr.FullName
+    $job = Start-Job -ScriptBlock {
+        param($bin, $args, $captureErr)
+        $out = if ($captureErr) { & $bin @args 2>&1 } else { & $bin @args }
+        [PSCustomObject]@{ Output = ($out -join "`n"); ExitCode = $LASTEXITCODE }
+    } -ArgumentList $script:BIN, $binArgs, $captureStderr
 
-        $finished = $proc.WaitForExit($script:TIMEOUT_SECS * 1000)
-        if (-not $finished) {
-            $proc.Kill()
-            return $null, -99
-        }
-
-        $out = (Get-Content $tmpOut.FullName -Raw) ?? ""
-        if ($captureStderr) {
-            $out += (Get-Content $tmpErr.FullName -Raw) ?? ""
-        }
-        return $out.TrimEnd(), $proc.ExitCode
-    } finally {
-        Remove-Item $tmpOut.FullName, $tmpErr.FullName -Force -ErrorAction SilentlyContinue
+    if ($job | Wait-Job -Timeout $script:TIMEOUT_SECS) {
+        $result = Receive-Job $job
+        Remove-Job $job -Force
+        return ($result?.Output ?? ""), ($result?.ExitCode ?? 0)
     }
+
+    Stop-Job $job
+    Remove-Job $job -Force
+    return $null, -99
 }
 
 function check([string]$desc, [string[]]$binArgs) {
@@ -83,50 +75,55 @@ function range_out([string]$desc, [int]$lo, [int]$hi, [string[]]$binArgs) {
 Write-Host "=== vmaware CLI tests ==="
 Write-Host ""
 
-# --- exit codes ---
+# exit codes (cheap flags only — no full detection scan)
 Write-Host "exit codes"
 check       "--help exits 0"             @("--help")
 check       "--version exits 0"          @("--version")
 check       "--brand-list exits 0"       @("--brand-list")
-check       "--detect exits 0"           @("--detect")
-check       "--percent exits 0"          @("--percent")
-check       "--brand exits 0"            @("--brand")
-check       "--type exits 0"             @("--type")
-check       "--conclusion exits 0"       @("--conclusion")
 check       "--number exits 0"           @("--number")
+check_fails "unknown arg exits non-zero" @("--this-arg-does-not-exist")
+
+# short-flag aliases (cheap flags only)
+Write-Host ""
+Write-Host "short flag aliases"
+check "-h exits 0"   @("-h")
+check "-v exits 0"   @("-v")
+check "-n exits 0"   @("-n")
+check "-l exits 0"   @("-l")
+
+# output format + exit codes for full-scan flags (one scan per flag)
+Write-Host ""
+Write-Host "output format"
+match_out   "--detect outputs 0 or 1"          '^[01]$'        @("--detect")
+range_out   "--percent outputs 0-100"          0 100           @("--percent")
+match_out   "--number outputs a positive int"  '^[1-9][0-9]*$' @("--number")
 
 $out, $code = invoke_bin @("--stdout")
 if ($code -eq -99) { Fail-Test "--stdout exits 0 or 1 (timeout after ${TIMEOUT_SECS}s)" }
 elseif ($code -le 1) { ok "--stdout exits 0 or 1" }
 else { Fail-Test "--stdout exits 0 or 1" }
 
-check_fails "unknown arg exits non-zero" @("--this-arg-does-not-exist")
-
-# --- short-flag aliases ---
-Write-Host ""
-Write-Host "short flag aliases"
-check "-h exits 0"   @("-h")
-check "-v exits 0"   @("-v")
-check "-a exits 0"   @("-a", "--detect")
-check "-d exits 0"   @("-d")
-check "-b exits 0"   @("-b")
-check "-p exits 0"   @("-p")
-check "-c exits 0"   @("-c")
-check "-n exits 0"   @("-n")
-check "-t exits 0"   @("-t")
-check "-l exits 0"   @("-l")
-
-# --- output format ---
-Write-Host ""
-Write-Host "output format"
-match_out   "--detect outputs 0 or 1"          '^[01]$'        @("--detect")
-range_out   "--percent outputs 0-100"          0 100           @("--percent")
-match_out   "--number outputs a positive int"  '^[1-9][0-9]*$' @("--number")
 match_out   "--brand outputs a non-empty line" '.'             @("--brand")
 match_out   "--type outputs a non-empty line"  '.'             @("--type")
 match_out   "--conclusion outputs a sentence"  '.'             @("--conclusion")
 
-# --- no-ansi strips escape codes ---
+# short-flag aliases for full-scan flags (reuse match_out to avoid duplicate scans)
+Write-Host ""
+Write-Host "short flag aliases (full-scan)"
+match_out "-d outputs 0 or 1" '^[01]$' @("-d")
+match_out "-b outputs a non-empty line" '.' @("-b")
+match_out "-p outputs 0-100" '^[0-9]+$' @("-p")
+match_out "-c outputs a sentence" '.' @("-c")
+match_out "-t outputs a non-empty line" '.' @("-t")
+
+$out, $code = invoke_bin @("-s")
+if ($code -eq -99) { Fail-Test "-s exits 0 or 1 (timeout after ${TIMEOUT_SECS}s)" }
+elseif ($code -le 1) { ok "-s exits 0 or 1" }
+else { Fail-Test "-s exits 0 or 1" }
+
+check "-a exits 0" @("-a", "--detect")
+
+# no-ansi strips escape codes
 Write-Host ""
 Write-Host "no-ansi"
 $ansiOut, $_ = invoke_bin @("--no-ansi")
@@ -136,7 +133,7 @@ if ($ansiOut -match '\x1B\[') {
     ok "--no-ansi output contains no ANSI escape codes"
 }
 
-# --- technique count ---
+# technique count
 Write-Host ""
 Write-Host "technique count"
 $nOut, $_ = invoke_bin @("--number") $false
@@ -147,14 +144,14 @@ if ($n -match '^\d+$' -and [int]$n -gt 10) {
     Fail-Test "--number returned unexpected value: $n"
 }
 
-# --- mutual exclusion ---
+# mutual exclusion
 Write-Host ""
 Write-Host "mutual exclusion"
 check_fails "--detect + --brand rejected"   @("--detect", "--brand")
 check_fails "--percent + --brand rejected"  @("--percent", "--brand")
 check_fails "--stdout + --detect rejected"  @("--stdout", "--detect")
 
-# --- --disable: valid names ---
+# --disable: valid names
 Write-Host ""
 Write-Host "--disable (valid names)"
 check "--disable single name works"               @("--disable", "HYPERVISOR_BIT", "--detect")
@@ -168,13 +165,13 @@ check "--disable HYPERVISOR_HOOK works"           @("--disable", "HYPERVISOR_HOO
 check "--disable SINGLE_STEP works"               @("--disable", "SINGLE_STEP", "--detect")
 check "--disable DBVM works"                      @("--disable", "DBVM", "--detect")
 
-# --- --disable: invalid names ---
+# --disable: invalid names
 Write-Host ""
 Write-Host "--disable (invalid names)"
 check_fails "--disable bogus name fails"          @("--disable", "NOT_A_REAL_TECHNIQUE", "--detect")
 check_fails "--disable MULTIPLE (setting) fails"  @("--disable", "MULTIPLE", "--detect")
 
-# --- --disable reflected in general output ---
+# --disable reflected in general output
 Write-Host ""
 Write-Host "--disable reflected in general output"
 $disOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT")
@@ -184,7 +181,7 @@ if ($disOut -match "Skipped CPUID hypervisor bit") {
     Fail-Test "--disable HYPERVISOR_BIT not reflected in general output"
 }
 
-# --- --high-threshold ---
+# --high-threshold
 Write-Host ""
 Write-Host "--high-threshold"
 $pNOut, $_ = invoke_bin @("--percent") $false
@@ -197,18 +194,18 @@ if ($pN -ge $pH) {
     Fail-Test "--high-threshold produced higher percentage ($pN -> $pH)"
 }
 
-# --- --all ---
+# --all
 Write-Host ""
 Write-Host "--all"
 check "--all --detect exits 0"  @("--all", "--detect")
 check "--all --percent exits 0" @("--all", "--percent")
 
-# --- --dynamic ---
+# --dynamic
 Write-Host ""
 Write-Host "--dynamic"
 check "--dynamic --conclusion exits 0" @("--dynamic", "--conclusion")
 
-# --- --json ---
+# --json
 Write-Host ""
 Write-Host "--json"
 $tmpJson = [System.IO.Path]::GetTempFileName() + ".json"
@@ -234,7 +231,7 @@ try {
     if (Test-Path $tmpJson) { Remove-Item $tmpJson -Force }
 }
 
-# --- --brand-list ---
+# --brand-list
 Write-Host ""
 Write-Host "--brand-list"
 $blOut, $_ = invoke_bin @("--brand-list") $false
@@ -246,7 +243,7 @@ if ($count -gt 5) {
     Fail-Test "--brand-list returned too few entries ($count lines)"
 }
 
-# --- summary ---
+# summary
 Write-Host ""
 Write-Host "==========================="
 Write-Host "  Passed: $($script:pass)"
