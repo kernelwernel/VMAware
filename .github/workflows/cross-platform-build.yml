@@ -32,52 +32,59 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            platform: linux/amd64
-            image: debian:bookworm
+            compiler: g++
           - arch: arm64
-            platform: linux/arm64
-            image: debian:bookworm
+            compiler: aarch64-linux-gnu-g++
+            package: g++-aarch64-linux-gnu
+            processor: aarch64
           - arch: armhf
-            platform: linux/arm/v7
-            image: debian:bookworm
+            compiler: arm-linux-gnueabihf-g++
+            package: g++-arm-linux-gnueabihf
+            processor: arm
           - arch: armel
-            platform: linux/arm/v6
-            image: debian:bookworm
+            compiler: arm-linux-gnueabi-g++
+            package: g++-arm-linux-gnueabi
+            processor: arm
           - arch: i386
-            platform: linux/386
-            image: debian:bookworm
+            compiler: i686-linux-gnu-g++
+            package: g++-i686-linux-gnu
+            processor: i686
           - arch: mips64el
-            platform: linux/mips64le
-            image: debian:bookworm
+            compiler: mips64el-linux-gnuabi64-g++
+            package: g++-mips64el-linux-gnuabi64
+            processor: mips64
           - arch: ppc64el
-            platform: linux/ppc64le
-            image: debian:bookworm
+            compiler: powerpc64le-linux-gnu-g++
+            package: g++-powerpc64le-linux-gnu
+            processor: powerpc64le
           - arch: riscv64
-            platform: linux/riscv64
-            image: debian:sid
+            compiler: riscv64-linux-gnu-g++
+            package: g++-riscv64-linux-gnu
+            processor: riscv64
           - arch: s390x
-            platform: linux/s390x
-            image: debian:bookworm
+            compiler: s390x-linux-gnu-g++
+            package: g++-s390x-linux-gnu
+            processor: s390x
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+      - name: Install tools (${{ matrix.arch }})
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends cmake ${{ matrix.package }}
 
       - name: Build (${{ matrix.arch }})
         run: |
-          docker run --rm \
-            --platform ${{ matrix.platform }} \
-            -v ${{ github.workspace }}:/src \
-            -w /src \
-            ${{ matrix.image }} \
-            bash -c "
-              apt-get update -q &&
-              apt-get install -y --no-install-recommends cmake g++ build-essential &&
-              cmake -B build -DCMAKE_BUILD_TYPE=Release &&
-              cmake --build build --config Release
-            "
+          CROSS_ARGS=""
+          if [ -n "${{ matrix.processor }}" ]; then
+            CROSS_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.processor }}"
+          fi
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+            $CROSS_ARGS
+          cmake --build build --config Release
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
