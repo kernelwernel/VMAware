@@ -170,32 +170,22 @@ Extra:
 
 int main(int argc, char* argv[]) {
 #if (CLI_WINDOWS)
-    bool relaunched = false;
-    int new_argc = 1;
-    static char* new_argv[256];
-    new_argv[0] = argv[0];
-
+    bool rich_requested = false;
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--no-relaunch") == 0) {
-            relaunched = true;
-        } else {
-            if (new_argc < 255) {
-                new_argv[new_argc++] = argv[i];
-            }
+        if (std::strcmp(argv[i], "--rich") == 0) {
+            rich_requested = true;
+            break;
         }
     }
 
-    argc = new_argc;
-    argv = new_argv;
-
-    if (!relaunched) {        
+    if (rich_requested) {
         char exePath[MAX_PATH];
         GetModuleFileNameA(NULL, exePath, MAX_PATH);
 
         char currentDir[MAX_PATH];
         GetCurrentDirectoryA(MAX_PATH, currentDir);
 
-        std::string args = "\"" + std::string(exePath) + "\" --no-relaunch";
+        std::string args = "\"" + std::string(exePath) + "\"";
         for (int i = 1; i < argc; ++i) {
             args += " \"";
             args += argv[i];

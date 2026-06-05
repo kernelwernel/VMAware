@@ -17,10 +17,6 @@ $script:fail = 0
 function ok([string]$desc)        { Write-Host "  PASS  $desc"; $script:pass++ }
 function Fail-Test([string]$desc) { Write-Host "  FAIL  $desc"; $script:fail++ }
 
-# --no-relaunch prevents the binary from re-spawning itself via conhost.exe,
-# which would make every invocation exit 0 with no capturable output.
-$NR = @("--no-relaunch")
-
 # Runs the binary with $binArgs.  Returns ([string] output, [int] exitCode).
 # exitCode is -99 on timeout.  $captureStderr controls whether stderr is merged.
 function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
@@ -52,28 +48,28 @@ function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
 }
 
 function check([string]$desc, [string[]]$binArgs) {
-    $out, $code = invoke_bin ($script:NR + $binArgs)
+    $out, $code = invoke_bin $binArgs
     if ($code -eq -99) { Fail-Test "$desc (timeout after ${TIMEOUT_SECS}s)" }
     elseif ($code -eq 0) { ok $desc }
     else { Fail-Test $desc }
 }
 
 function check_fails([string]$desc, [string[]]$binArgs) {
-    $out, $code = invoke_bin ($script:NR + $binArgs)
+    $out, $code = invoke_bin $binArgs
     if ($code -eq -99) { Fail-Test "$desc (timeout after ${TIMEOUT_SECS}s)" }
     elseif ($code -ne 0) { ok $desc }
     else { Fail-Test $desc }
 }
 
 function match_out([string]$desc, [string]$pattern, [string[]]$binArgs) {
-    $out, $code = invoke_bin ($script:NR + $binArgs)
+    $out, $code = invoke_bin $binArgs
     if ($code -eq -99) { Fail-Test "$desc (timeout after ${TIMEOUT_SECS}s)"; return }
     if ($out -match $pattern) { ok $desc }
     else { Fail-Test "$desc  (got: $(($out -split "`n")[0]))" }
 }
 
 function range_out([string]$desc, [int]$lo, [int]$hi, [string[]]$binArgs) {
-    $out, $code = invoke_bin ($script:NR + $binArgs) $false
+    $out, $code = invoke_bin $binArgs $false
     if ($code -eq -99) { Fail-Test "$desc (timeout after ${TIMEOUT_SECS}s)"; return }
     if ($code -ne 0) { Fail-Test "$desc (non-zero exit)"; return }
     $val = $out.Trim()
@@ -99,7 +95,7 @@ check       "--type exits 0"             @("--type")
 check       "--conclusion exits 0"       @("--conclusion")
 check       "--number exits 0"           @("--number")
 
-$out, $code = invoke_bin ($NR + @("--stdout"))
+$out, $code = invoke_bin @("--stdout")
 if ($code -eq -99) { Fail-Test "--stdout exits 0 or 1 (timeout after ${TIMEOUT_SECS}s)" }
 elseif ($code -le 1) { ok "--stdout exits 0 or 1" }
 else { Fail-Test "--stdout exits 0 or 1" }
@@ -133,7 +129,7 @@ match_out   "--conclusion outputs a sentence"  '.'             @("--conclusion")
 # --- no-ansi strips escape codes ---
 Write-Host ""
 Write-Host "no-ansi"
-$ansiOut, $_ = invoke_bin ($NR + @("--no-ansi"))
+$ansiOut, $_ = invoke_bin @("--no-ansi")
 if ($ansiOut -match '\x1B\[') {
     Fail-Test "--no-ansi still contains ANSI escape codes"
 } else {
@@ -143,7 +139,7 @@ if ($ansiOut -match '\x1B\[') {
 # --- technique count ---
 Write-Host ""
 Write-Host "technique count"
-$nOut, $_ = invoke_bin ($NR + @("--number")) $false
+$nOut, $_ = invoke_bin @("--number") $false
 $n = $nOut.Trim()
 if ($n -match '^\d+$' -and [int]$n -gt 10) {
     ok "--number returns plausible technique count ($n)"
@@ -181,7 +177,7 @@ check_fails "--disable MULTIPLE (setting) fails"  @("--disable", "MULTIPLE", "--
 # --- --disable reflected in general output ---
 Write-Host ""
 Write-Host "--disable reflected in general output"
-$disOut, $_ = invoke_bin ($NR + @("--no-ansi", "--disable", "HYPERVISOR_BIT"))
+$disOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT")
 if ($disOut -match "Skipped CPUID hypervisor bit") {
     ok "--disable HYPERVISOR_BIT shows as skipped in general output"
 } else {
@@ -191,8 +187,8 @@ if ($disOut -match "Skipped CPUID hypervisor bit") {
 # --- --high-threshold ---
 Write-Host ""
 Write-Host "--high-threshold"
-$pNOut, $_ = invoke_bin ($NR + @("--percent")) $false
-$pHOut, $_ = invoke_bin ($NR + @("--percent", "--high-threshold")) $false
+$pNOut, $_ = invoke_bin @("--percent") $false
+$pHOut, $_ = invoke_bin @("--percent", "--high-threshold") $false
 $pN = if ($pNOut.Trim() -match '^\d+$') { [int]$pNOut.Trim() } else { 0 }
 $pH = if ($pHOut.Trim() -match '^\d+$') { [int]$pHOut.Trim() } else { 0 }
 if ($pN -ge $pH) {
@@ -217,7 +213,7 @@ Write-Host ""
 Write-Host "--json"
 $tmpJson = [System.IO.Path]::GetTempFileName() + ".json"
 try {
-    $out, $code = invoke_bin ($NR + @("--json", "--output", $tmpJson))
+    $out, $code = invoke_bin @("--json", "--output", $tmpJson)
     if ($code -eq -99) {
         Fail-Test "--json timed out"
         Fail-Test "--json output missing expected keys"
@@ -241,7 +237,7 @@ try {
 # --- --brand-list ---
 Write-Host ""
 Write-Host "--brand-list"
-$blOut, $_ = invoke_bin ($NR + @("--brand-list")) $false
+$blOut, $_ = invoke_bin @("--brand-list") $false
 $brandLines = ($blOut -split "`n") | Where-Object { $_.Trim() -ne "" }
 $count = $brandLines.Count
 if ($count -gt 5) {

@@ -346,7 +346,7 @@ jobs:
         shell: pwsh
         run: |
           $bin = Get-ChildItem build -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
-          & $bin --no-relaunch; $true
+          & $bin; $true
 
       - name: Run CLI test suite
         shell: pwsh
