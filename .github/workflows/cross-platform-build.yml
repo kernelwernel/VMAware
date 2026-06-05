@@ -295,6 +295,11 @@ jobs:
           name: vmaware-linux-amd64
           path: build
 
+      - name: Full CLI output
+        run: |
+          chmod +x build/vmaware
+          build/vmaware || true
+
       - name: Run CLI test suite
         run: |
           chmod +x build/vmaware
@@ -313,6 +318,11 @@ jobs:
           name: vmaware-macos-aarch64
           path: build
 
+      - name: Full CLI output
+        run: |
+          chmod +x build/vmaware
+          build/vmaware || true
+
       - name: Run CLI test suite
         run: |
           chmod +x build/vmaware
@@ -321,6 +331,7 @@ jobs:
   cli-test-windows:
     needs: [windows]
     runs-on: windows-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -330,6 +341,12 @@ jobs:
         with:
           name: vmaware64_release.exe
           path: build
+
+      - name: Full CLI output
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          & $bin --no-relaunch; $true
 
       - name: Run CLI test suite
         shell: pwsh
