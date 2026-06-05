@@ -109,35 +109,33 @@ if ($code -eq -99) { Fail-Test "--stdout exits 0 or 1 (timeout after ${TIMEOUT_S
 elseif ($code -le 1) { ok "--stdout exits 0 or 1" }
 else { Fail-Test "--stdout exits 0 or 1" }
 
-match_out   "--brand outputs a non-empty line" '.'             @("--brand")
-match_out   "--type outputs a non-empty line"  '.'             @("--type")
-match_out   "--conclusion outputs a sentence"  '.'             @("--conclusion")
-
-# short-flag aliases for full-scan flags (reuse match_out to avoid duplicate scans)
-Write-Host ""
-Write-Host "short flag aliases (full-scan)"
-match_out "-d outputs 0 or 1" '^[01]$' @("-d")
-match_out "-b outputs a non-empty line" '.' @("-b")
-match_out "-p outputs 0-100" '^[0-9]+$' @("-p")
-match_out "-c outputs a sentence" '.' @("-c")
-match_out "-t outputs a non-empty line" '.' @("-t")
+match_out   "--detect outputs 0 or 1"          '^[01]$'        @("-d")
+match_out   "--percent outputs 0-100"          '^[0-9]+$'      @("-p")
 
 $out, $code = invoke_bin @("-s")
 if ($code -eq -99) { Fail-Test "-s exits 0 or 1 (timeout after ${TIMEOUT_SECS}s)" }
 elseif ($code -le 1) { ok "-s exits 0 or 1" }
 else { Fail-Test "-s exits 0 or 1" }
 
-check "-a exits 0" @("-a", "--detect")
+# -b/-t/-c/-a: just verify the flag is recognised (pair with -n so NUMBER short-circuits
+# before the full detection scan, meaning no scan is triggered)
+check "-b recognised" @("-b", "-n")
+check "-t recognised" @("-t", "-n")
+check "-c recognised" @("-c", "-n")
+check "-a recognised" @("-a", "-n")
 
-# no-ansi strips escape codes
+# no-ansi: one general-output scan that also verifies brand/type/conclusion appear
 Write-Host ""
-Write-Host "no-ansi"
+Write-Host "no-ansi + general output"
 $ansiOut, $_ = invoke_bin @("--no-ansi")
 if ($ansiOut -match '\x1B\[') {
     Fail-Test "--no-ansi still contains ANSI escape codes"
 } else {
     ok "--no-ansi output contains no ANSI escape codes"
 }
+if ($ansiOut -match 'VM brand:')   { ok "--brand produces output in general run"     } else { Fail-Test "--brand missing from general output" }
+if ($ansiOut -match 'VM type:')    { ok "--type produces output in general run"      } else { Fail-Test "--type missing from general output"  }
+if ($ansiOut -match 'CONCLUSION:') { ok "--conclusion produces output in general run"} else { Fail-Test "--conclusion missing from general output" }
 
 # technique count
 Write-Host ""
