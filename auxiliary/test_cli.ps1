@@ -124,18 +124,24 @@ check "-t recognised" @("-t", "-n")
 check "-c recognised" @("-c", "-n")
 check "-a recognised" @("-a", "-n")
 
-# no-ansi: one general-output scan that also verifies brand/type/conclusion appear
+# One general-output scan covers: no-ansi, brand/type/conclusion presence, and
+# --disable reflection — combining these avoids a second full-scan invocation.
 Write-Host ""
-Write-Host "no-ansi + general output"
-$ansiOut, $_ = invoke_bin @("--no-ansi")
-if ($ansiOut -match '\x1B\[') {
+Write-Host "no-ansi + general output + disable reflection"
+$genOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT")
+if ($genOut -match '\x1B\[') {
     Fail-Test "--no-ansi still contains ANSI escape codes"
 } else {
     ok "--no-ansi output contains no ANSI escape codes"
 }
-if ($ansiOut -match 'VM brand:')   { ok "--brand produces output in general run"     } else { Fail-Test "--brand missing from general output" }
-if ($ansiOut -match 'VM type:')    { ok "--type produces output in general run"      } else { Fail-Test "--type missing from general output"  }
-if ($ansiOut -match 'CONCLUSION:') { ok "--conclusion produces output in general run"} else { Fail-Test "--conclusion missing from general output" }
+if ($genOut -match 'VM brand:')   { ok "--brand produces output in general run"      } else { Fail-Test "--brand missing from general output"      }
+if ($genOut -match 'VM type:')    { ok "--type produces output in general run"       } else { Fail-Test "--type missing from general output"       }
+if ($genOut -match 'CONCLUSION:') { ok "--conclusion produces output in general run" } else { Fail-Test "--conclusion missing from general output" }
+if ($genOut -match "Skipped CPUID hypervisor bit") {
+    ok "--disable HYPERVISOR_BIT shows as skipped in general output"
+} else {
+    Fail-Test "--disable HYPERVISOR_BIT not reflected in general output"
+}
 
 # technique count
 Write-Host ""
@@ -174,16 +180,6 @@ Write-Host ""
 Write-Host "--disable (invalid names)"
 check_fails "--disable bogus name fails"          @("--disable", "NOT_A_REAL_TECHNIQUE", "--detect")
 check_fails "--disable MULTIPLE (setting) fails"  @("--disable", "MULTIPLE", "--detect")
-
-# --disable reflected in general output
-Write-Host ""
-Write-Host "--disable reflected in general output"
-$disOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT")
-if ($disOut -match "Skipped CPUID hypervisor bit") {
-    ok "--disable HYPERVISOR_BIT shows as skipped in general output"
-} else {
-    Fail-Test "--disable HYPERVISOR_BIT not reflected in general output"
-}
 
 # --high-threshold
 Write-Host ""
