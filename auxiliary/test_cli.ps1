@@ -203,7 +203,7 @@ check "--all --percent exits 0" @("--all", "--percent")
 # --dynamic
 Write-Host ""
 Write-Host "--dynamic"
-check "--dynamic --conclusion exits 0" @("--dynamic", "--conclusion")
+check "--dynamic --detect exits 0" @("--dynamic", "--detect")
 
 # --json
 Write-Host ""
