@@ -14,28 +14,32 @@ $script:fail = 0
 function ok([string]$desc) { Write-Host "  PASS  $desc"; $script:pass++ }
 function Fail-Test([string]$desc) { Write-Host "  FAIL  $desc"; $script:fail++ }
 
+# --no-relaunch prevents the binary from re-spawning itself via conhost.exe,
+# which would make every invocation exit 0 with no capturable output.
+$NR = @("--no-relaunch")
+
 # Runs $BIN with the given args, expects exit 0
 function check([string]$desc, [string[]]$binArgs) {
-    $null = & $BIN @binArgs 2>&1
+    $null = & $BIN @script:NR @binArgs 2>&1
     if ($LASTEXITCODE -eq 0) { ok $desc } else { Fail-Test $desc }
 }
 
 # Runs $BIN with the given args, expects a non-zero exit code
 function check_fails([string]$desc, [string[]]$binArgs) {
-    $null = & $BIN @binArgs 2>&1
+    $null = & $BIN @script:NR @binArgs 2>&1
     if ($LASTEXITCODE -ne 0) { ok $desc } else { Fail-Test $desc }
 }
 
 # Captures stdout+stderr, expects output to match $pattern (regex)
 function match_out([string]$desc, [string]$pattern, [string[]]$binArgs) {
-    $out = (& $BIN @binArgs 2>&1) -join "`n"
+    $out = (& $BIN @script:NR @binArgs 2>&1) -join "`n"
     if ($out -match $pattern) { ok $desc }
     else { Fail-Test "$desc  (got: $(($out -split "`n")[0]))" }
 }
 
 # Captures stdout, expects an integer in [$lo, $hi]
 function range_out([string]$desc, [int]$lo, [int]$hi, [string[]]$binArgs) {
-    $out = (& $BIN @binArgs 2>$null) -join ""
+    $out = (& $BIN @script:NR @binArgs 2>$null) -join ""
     if ($LASTEXITCODE -ne 0) { Fail-Test "$desc (non-zero exit)"; return }
     if ($out -match '^\d+$' -and [int]$out -ge $lo -and [int]$out -le $hi) {
         ok $desc
@@ -60,7 +64,7 @@ check       "--conclusion exits 0"       @("--conclusion")
 check       "--number exits 0"           @("--number")
 
 # --stdout
-$null = & $BIN "--stdout" 2>&1
+$null = & $BIN @NR "--stdout" 2>&1
 if ($LASTEXITCODE -le 1) { ok "--stdout exits 0 or 1" } else { Fail-Test "--stdout exits 0 or 1" }
 
 check_fails "unknown arg exits non-zero" @("--this-arg-does-not-exist")
@@ -92,7 +96,7 @@ match_out   "--conclusion outputs a sentence"  '.'             @("--conclusion")
 # no-ansi strips escape codes
 Write-Host ""
 Write-Host "no-ansi"
-$ansiOut = (& $BIN "--no-ansi" 2>&1) -join "`n"
+$ansiOut = (& $BIN @NR "--no-ansi" 2>&1) -join "`n"
 if ($ansiOut -match '\x1B\[') {
     Fail-Test "--no-ansi still contains ANSI escape codes"
 } else {
@@ -102,7 +106,7 @@ if ($ansiOut -match '\x1B\[') {
 # technique count
 Write-Host ""
 Write-Host "technique count"
-$n = (& $BIN "--number" 2>$null) -join ""
+$n = (& $BIN @NR "--number" 2>$null) -join ""
 if ($n -match '^\d+$' -and [int]$n -gt 10) {
     ok "--number returns plausible technique count ($n)"
 } else {
@@ -139,7 +143,7 @@ check_fails "--disable MULTIPLE (setting) fails"  @("--disable", "MULTIPLE", "--
 # --disable reflected in general output
 Write-Host ""
 Write-Host "--disable reflected in general output"
-$disOut = (& $BIN "--no-ansi", "--disable", "HYPERVISOR_BIT" 2>&1) -join "`n"
+$disOut = (& $BIN @NR "--no-ansi" "--disable" "HYPERVISOR_BIT" 2>&1) -join "`n"
 if ($disOut -match "Skipped CPUID hypervisor bit") {
     ok "--disable HYPERVISOR_BIT shows as skipped in general output"
 } else {
@@ -149,8 +153,8 @@ if ($disOut -match "Skipped CPUID hypervisor bit") {
 # --high-threshold
 Write-Host ""
 Write-Host "--high-threshold"
-$pNormal = [string]((& $BIN "--percent" 2>$null) -join "")
-$pHigh   = [string]((& $BIN "--percent", "--high-threshold" 2>$null) -join "")
+$pNormal = [string]((& $BIN @NR "--percent" 2>$null) -join "")
+$pHigh   = [string]((& $BIN @NR "--percent" "--high-threshold" 2>$null) -join "")
 $pNormal = if ($pNormal -match '^\d+$') { [int]$pNormal } else { 0 }
 $pHigh   = if ($pHigh   -match '^\d+$') { [int]$pHigh   } else { 0 }
 if ($pNormal -ge $pHigh) {
@@ -175,7 +179,7 @@ Write-Host ""
 Write-Host "--json"
 $tmpJson = [System.IO.Path]::GetTempFileName() + ".json"
 try {
-    $null = & $BIN "--json", "--output", $tmpJson 2>$null
+    $null = & $BIN @NR "--json" "--output" $tmpJson 2>$null
     if ((Test-Path $tmpJson) -and (Get-Item $tmpJson).Length -gt 0) {
         ok "--json creates a non-empty output file"
     } else {
@@ -194,7 +198,7 @@ try {
 # --brand-list
 Write-Host ""
 Write-Host "--brand-list"
-$brandLines = (& $BIN "--brand-list" 2>$null) | Where-Object { $_ -ne "" }
+$brandLines = (& $BIN @NR "--brand-list" 2>$null) | Where-Object { $_ -ne "" }
 $count = $brandLines.Count
 if ($count -gt 5) {
     ok "--brand-list returns multiple entries ($count lines)"
