@@ -5955,12 +5955,14 @@ public:
                 u64 r_pre, r_post, v_pre, v_post, sync;
 
                 // this is done as a counter to both legitimate and malicious hypervisors interrupts that may pause the counter thread while we measure
-                sync = state.counter; while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
+                sync = state.counter; 
+                while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
 
                 // SERIALIZE/LFENCE check is before CPUID on purpose, so that possible pauses when cpuid is executed do not affect SERIALIZE/LFENCE too. The hv needs to wait for cpuid to pause the thread
                 // the amount of instructions (8 in case of LFENCE) are enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race so that the counter thread sees an increment
                 if (is_intel) {
-                    sync = state.counter; while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
+                    sync = state.counter; 
+                    while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
                     r_pre = state.counter;
                     std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
                     _serialize();
@@ -5968,7 +5970,8 @@ public:
                     r_post = state.counter;
                 }
                 else {
-                    sync = state.counter; while (state.counter == sync);
+                    sync = state.counter;
+                    while (state.counter == sync);
                     r_pre = state.counter;
                     std::atomic_signal_fence(std::memory_order_seq_cst); 
                     LFENCE_8
@@ -5976,8 +5979,10 @@ public:
                     r_post = state.counter;
                 }
 
-                sync = state.counter; while (state.counter == sync); // sync to our counter tick again
-                sync = state.counter; while (state.counter == sync); // and again
+                sync = state.counter; 
+                while (state.counter == sync); // sync to our counter tick again
+                sync = state.counter; 
+                while (state.counter == sync); // and again
 
                 v_pre = state.counter;
                 std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences

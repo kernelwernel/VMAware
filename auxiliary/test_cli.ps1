@@ -19,24 +19,30 @@ function Fail-Test([string]$desc) { Write-Host "  FAIL  $desc"; $script:fail++ }
 
 # Runs the binary with $binArgs.  Returns ([string] output, [int] exitCode).
 # exitCode is -99 on timeout.  $captureStderr controls whether stderr is merged.
-# Uses Start-Job + & operator so the process inherits a proper console context,
-# matching how the "Full CLI output" step runs the binary directly.
+#
+# Uses ProcessStartInfo with CreateNoWindow=$false (the default) so the child
+# inherits the parent console — same as "& $bin" — while still allowing a
+# timeout.  Async reads on both streams prevent deadlock on large output.
 function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
-    $job = Start-Job -ScriptBlock {
-        param($bin, $args, $captureErr)
-        $out = if ($captureErr) { & $bin @args 2>&1 } else { & $bin @args }
-        [PSCustomObject]@{ Output = ($out -join "`n"); ExitCode = $LASTEXITCODE }
-    } -ArgumentList $script:BIN, $binArgs, $captureStderr
+    $psi = [System.Diagnostics.ProcessStartInfo]::new($script:BIN)
+    foreach ($a in $binArgs) { $psi.ArgumentList.Add($a) }
+    $psi.UseShellExecute        = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    # CreateNoWindow defaults to $false — child inherits the parent console
 
-    if ($job | Wait-Job -Timeout $script:TIMEOUT_SECS) {
-        $result = Receive-Job $job
-        Remove-Job $job -Force
-        return ($result?.Output ?? ""), ($result?.ExitCode ?? 0)
+    $proc    = [System.Diagnostics.Process]::Start($psi)
+    $outTask = $proc.StandardOutput.ReadToEndAsync()
+    $errTask = $proc.StandardError.ReadToEndAsync()
+
+    if (-not $proc.WaitForExit($script:TIMEOUT_SECS * 1000)) {
+        $proc.Kill()
+        return $null, -99
     }
 
-    Stop-Job $job
-    Remove-Job $job -Force
-    return $null, -99
+    $out = $outTask.Result
+    if ($captureStderr) { $out += $errTask.Result }
+    return $out.TrimEnd(), $proc.ExitCode
 }
 
 function check([string]$desc, [string[]]$binArgs) {
