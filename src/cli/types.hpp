@@ -8,7 +8,7 @@ using u32 = std::uint32_t;
 using u64 = std::uint64_t;
 using i32 = std::int32_t;
 
-#if (defined(__GNUC__) || defined(__linux__))
+#if defined(__linux__)
     #define CLI_LINUX 1
 #else
     #define CLI_LINUX 0

@@ -44,7 +44,7 @@ const char* color(const u8 score, const bool is_hardened) {
 }
 
 bool is_admin() {
-#if (CLI_LINUX)
+#if (CLI_LINUX || CLI_APPLE)
     const uid_t uid = getuid();
     const uid_t euid = geteuid();
     const bool is_root = ((uid != euid) || (euid == 0));
