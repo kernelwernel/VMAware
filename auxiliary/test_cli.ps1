@@ -24,7 +24,9 @@ function Fail-Test([string]$desc) { Write-Host "  FAIL  $desc"; $script:fail++ }
 # runtime uses WriteFile (not WriteConsoleW) for std::cout.  Without it, when
 # the parent process has a console, the CRT routes output through WriteConsoleW
 # which silently fails on a pipe handle and the captured output is empty.
-function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
+function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true, [int]$timeoutMs = -1) {
+    if ($timeoutMs -lt 0) { $timeoutMs = $script:TIMEOUT_SECS * 1000 }
+
     $psi = [System.Diagnostics.ProcessStartInfo]::new($script:BIN)
     foreach ($a in $binArgs) { $psi.ArgumentList.Add($a) }
     $psi.UseShellExecute        = $false
@@ -36,7 +38,7 @@ function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
     $outTask = $proc.StandardOutput.ReadToEndAsync()
     $errTask = $proc.StandardError.ReadToEndAsync()
 
-    if (-not $proc.WaitForExit($script:TIMEOUT_SECS * 1000)) {
+    if (-not $proc.WaitForExit($timeoutMs)) {
         $proc.Kill()
         return $null, -99
     }
@@ -211,7 +213,7 @@ Write-Host ""
 Write-Host "--json"
 $tmpJson = [System.IO.Path]::GetTempFileName() + ".json"
 try {
-    $out, $code = invoke_bin @("--json", "--output", $tmpJson)
+    $out, $code = invoke_bin @("--json", "--output", $tmpJson) $true 30000
     if ($code -eq -99) {
         Fail-Test "--json timed out"
         Fail-Test "--json output missing expected keys"

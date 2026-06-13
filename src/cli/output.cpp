@@ -318,28 +318,24 @@ bool parse_disable_token(const char* token) {
 }
 
 void generate_json(const char* output) {
+    const VM::vmaware vm(VM::MULTIPLE);
+
     std::vector<std::string> json;
 
     json.emplace_back("{");
     json.emplace_back("\n\t\"is_detected\": ");
-
-    if (VM::detect()) {
-        json.emplace_back("true,");
-    }
-    else {
-        json.emplace_back("false,");
-    }
+    json.emplace_back(vm.is_vm ? "true," : "false,");
 
     json.emplace_back("\n\t\"brand\": \"");
-    json.push_back(VM::brand());
+    json.push_back(vm.brand);
     json.emplace_back("\",");
 
     json.emplace_back("\n\t\"conclusion\": \"");
-    json.push_back(VM::conclusion());
+    json.push_back(vm.conclusion);
     json.emplace_back("\",");
 
     json.emplace_back("\n\t\"percentage\": ");
-    json.push_back(std::to_string(static_cast<int>(VM::percentage())));
+    json.push_back(std::to_string(static_cast<int>(vm.percentage)));
     json.emplace_back(",");
 
     json.emplace_back("\n\t\"detected_technique_count\": ");
@@ -347,29 +343,22 @@ void generate_json(const char* output) {
     json.emplace_back(",");
 
     json.emplace_back("\n\t\"vm_type\": \"");
-    json.push_back(VM::type());
+    json.push_back(vm.type);
     json.emplace_back("\",");
 
     json.emplace_back("\n\t\"is_hardened\": ");
-
-    if (VM::is_hardened()) {
-        json.emplace_back("true,");
-    } else {
-        json.emplace_back("false,");
-    }
+    json.emplace_back(vm.is_hardened ? "true," : "false,");
 
     json.emplace_back("\n\t\"detected_techniques\": [");
 
-    const auto detected_status = VM::detected_enums();
-
-    if (detected_status.empty()) {
+    if (vm.detected_techniques.empty()) {
         json.emplace_back("]\n}");
     } else {
-        for (size_t i = 0; i < detected_status.size(); i++) {
+        for (size_t i = 0; i < vm.detected_techniques.size(); i++) {
             json.emplace_back("\n\t\t\"");
-            json.push_back(VM::flag_to_string(detected_status[i]));
+            json.push_back(VM::flag_to_string(vm.detected_techniques[i]));
 
-            if (i == detected_status.size() - 1) {
+            if (i == vm.detected_techniques.size() - 1) {
                 json.emplace_back("\"");
             } else {
                 json.emplace_back("\",");
