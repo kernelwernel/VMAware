@@ -782,6 +782,7 @@ public:
     // get the total number of techniques that detected a VM
     static std::atomic<u8> detected_count_num;
     static std::atomic<u16> technique_count; // get total number of techniques
+    static std::vector<enum_flags> technique_vector; // get a list of enums of all techniques
 
     static std::vector<enum_flags> disabled_techniques;
 
@@ -6101,6 +6102,7 @@ public:
      * @implements VM::CVENDOR
      */
     [[nodiscard]] static bool chassis_vendor() {
+        return true; // TEMPORARY
         const char* vendor_file = "/sys/devices/virtual/dmi/id/chassis_vendor";
 
         if (!util::exists(vendor_file)) {
@@ -14557,6 +14559,15 @@ std::vector<VM::enum_flags> VM::disabled_techniques = []() {
 
 // this value is incremented each time VM::add_custom is called
 std::atomic<VM::u16> VM::technique_count{VM::base_technique_count};
+
+std::vector<VM::enum_flags> VM::technique_vector = []() {
+    std::vector<VM::enum_flags> v;
+    v.reserve(VM::base_technique_count);
+    for (VM::u8 i = VM::technique_begin; i < VM::technique_end; ++i) {
+        v.push_back(static_cast<VM::enum_flags>(i));
+    }
+    return v;
+}();
 
 // this is initialised as empty, because this is where custom techniques can be added at runtime 
 std::vector<VM::core::custom_technique> VM::core::custom_table = {

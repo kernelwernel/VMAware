@@ -1,0 +1,11 @@
+CompileFlags:
+  Add:
+    - -std=c++20
+    - -I/usr/include/qt
+    - -I/usr/include/qt/QtWidgets
+    - -I/usr/include/qt/QtGui
+    - -I/usr/include/qt/QtCore
+
+Diagnostics:
+  ClangTidy:
+    Remove: ["*"]
