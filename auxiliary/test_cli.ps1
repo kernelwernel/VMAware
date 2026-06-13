@@ -20,16 +20,17 @@ function Fail-Test([string]$desc) { Write-Host "  FAIL  $desc"; $script:fail++ }
 # Runs the binary with $binArgs.  Returns ([string] output, [int] exitCode).
 # exitCode is -99 on timeout.  $captureStderr controls whether stderr is merged.
 #
-# Uses ProcessStartInfo with CreateNoWindow=$false (the default) so the child
-# inherits the parent console — same as "& $bin" — while still allowing a
-# timeout.  Async reads on both streams prevent deadlock on large output.
+# CreateNoWindow=$true detaches the child from any attached console so the MSVC
+# runtime uses WriteFile (not WriteConsoleW) for std::cout.  Without it, when
+# the parent process has a console, the CRT routes output through WriteConsoleW
+# which silently fails on a pipe handle and the captured output is empty.
 function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
     $psi = [System.Diagnostics.ProcessStartInfo]::new($script:BIN)
     foreach ($a in $binArgs) { $psi.ArgumentList.Add($a) }
     $psi.UseShellExecute        = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
-    # CreateNoWindow defaults to $false — child inherits the parent console
+    $psi.CreateNoWindow         = $true
 
     $proc    = [System.Diagnostics.Process]::Start($psi)
     $outTask = $proc.StandardOutput.ReadToEndAsync()
