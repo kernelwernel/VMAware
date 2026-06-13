@@ -63,7 +63,7 @@ function check_fails([string]$desc, [string[]]$binArgs) {
 }
 
 function match_out([string]$desc, [string]$pattern, [string[]]$binArgs) {
-    $out, $code = invoke_bin $binArgs
+    $out, $code = invoke_bin $binArgs $false
     if ($code -eq -99) { Fail-Test "$desc (timeout after ${TIMEOUT_SECS}s)"; return }
     if ($out -match $pattern) { ok $desc }
     else { Fail-Test "$desc  (got: $(($out -split "`n")[0]))" }
