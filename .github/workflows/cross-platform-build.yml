@@ -108,7 +108,7 @@ jobs:
       - name: Install g++-14
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends g++-14 cmake
+          sudo apt-get install -y --no-install-recommends g++-14
 
       - name: Configure (C++${{ matrix.std }})
         run: |
@@ -146,7 +146,7 @@ jobs:
       - name: Install ${{ matrix.compiler }}
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends cmake ${{ matrix.package }}
+          sudo apt-get install -y --no-install-recommends ${{ matrix.package }}
 
       - name: Configure (${{ matrix.compiler }})
         run: |

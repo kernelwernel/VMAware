@@ -131,7 +131,7 @@ check "-a recognised" @("-a", "-n")
 # --disable reflection — combining these avoids a second full-scan invocation.
 Write-Host ""
 Write-Host "no-ansi + general output + disable reflection"
-$genOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT")
+$genOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT") $true 30000
 if ($genOut -match '\x1B\[') {
     Fail-Test "--no-ansi still contains ANSI escape codes"
 } else {

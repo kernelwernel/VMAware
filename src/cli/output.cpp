@@ -242,8 +242,54 @@ static void checker(const VM::enum_flags flag, const char* message) {
 
     supported_count++;
 
+#ifdef __VMAWARE_DEBUG__
+    std::cerr << "[DBG] starting: " << message << " (VM::" << VM::flag_to_string(flag) << ")\n" << std::flush;
+#endif
+
     auto start_time = std::chrono::high_resolution_clock::now();
+
+#if (CLI_WINDOWS)
+    // Some Windows API calls (e.g. SetupDiGetClassDevsW device enumeration) can
+    // stall indefinitely on certain hypervisors.  Run each technique in a worker
+    // thread so we can abort it and continue if it takes too long.
+    constexpr DWORD TECHNIQUE_TIMEOUT_MS = 3000;
+
+    struct technique_runner {
+        VM::enum_flags flag;
+        bool result = false;
+
+        static DWORD WINAPI run(LPVOID lp) noexcept {
+            auto* self = static_cast<technique_runner*>(lp);
+            self->result = VM::check(self->flag);
+            return 0;
+        }
+    };
+
+    technique_runner runner{ flag, false };
+    HANDLE hThread = CreateThread(nullptr, 0, technique_runner::run, &runner, 0, nullptr);
+
+    bool result = false;
+
+    if (hThread) {
+        if (WaitForSingleObject(hThread, TECHNIQUE_TIMEOUT_MS) == WAIT_TIMEOUT) {
+            TerminateThread(hThread, 0);
+            CloseHandle(hThread);
+            // Prevent VM::vmaware constructor from re-running this technique.
+            VM::disabled_techniques.push_back(flag);
+            std::cerr << "[TIMEOUT] \"" << message << "\" (VM::" << VM::flag_to_string(flag)
+                      << ") did not finish within " << (TECHNIQUE_TIMEOUT_MS / 1000)
+                      << "s, skipping\n" << std::flush;
+            return;
+        }
+        CloseHandle(hThread);
+        result = runner.result;
+    } else {
+        result = VM::check(flag);
+    }
+#else
     const bool result = VM::check(flag);
+#endif
+
     auto end_time = std::chrono::high_resolution_clock::now();
 
     const double ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
