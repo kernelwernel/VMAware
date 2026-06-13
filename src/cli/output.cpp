@@ -242,10 +242,6 @@ static void checker(const VM::enum_flags flag, const char* message) {
 
     supported_count++;
 
-#ifdef __VMAWARE_DEBUG__
-    std::cerr << "[DBG] starting: " << message << " (VM::" << VM::flag_to_string(flag) << ")\n" << std::flush;
-#endif
-
     auto start_time = std::chrono::high_resolution_clock::now();
 
 #if (CLI_WINDOWS)
