@@ -133,6 +133,9 @@ target_link_options(${TARGET} PRIVATE
     $<$<AND:$<CONFIG:Debug>,$<PLATFORM_ID:Darwin>>:-fsanitize=address>
 )
 
+# DbgHelp for stack traces on timeout (Windows only)
+target_link_libraries(${TARGET} PRIVATE $<$<PLATFORM_ID:Windows>:DbgHelp>)
+
 # detect x86
 set(IS_X86 FALSE)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")

@@ -214,9 +214,17 @@ Write-Host "--json"
 $tmpJson = [System.IO.Path]::GetTempFileName() + ".json"
 try {
     $out, $code = invoke_bin @("--json", "--output", $tmpJson) $true 30000
+    if ($out -and $out.Trim() -ne "") {
+        Write-Host "  [binary output]"
+        $out -split "`n" | ForEach-Object { Write-Host "    $_" }
+    }
     if ($code -eq -99) {
         Fail-Test "--json timed out"
         Fail-Test "--json output missing expected keys"
+        if (Test-Path $tmpJson) {
+            $partial = Get-Content $tmpJson -Raw -ErrorAction SilentlyContinue
+            if ($partial) { Write-Host "  [partial json]`n$partial" }
+        }
     } else {
         if ((Test-Path $tmpJson) -and (Get-Item $tmpJson).Length -gt 0) {
             ok "--json creates a non-empty output file"
@@ -228,6 +236,7 @@ try {
             ok "--json output contains expected keys"
         } else {
             Fail-Test "--json output missing expected keys"
+            Write-Host "  [json content] $jsonContent"
         }
     }
 } finally {
