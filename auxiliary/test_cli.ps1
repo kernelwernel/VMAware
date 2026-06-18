@@ -20,22 +20,25 @@ function Fail-Test([string]$desc) { Write-Host "  FAIL  $desc"; $script:fail++ }
 # Runs the binary with $binArgs.  Returns ([string] output, [int] exitCode).
 # exitCode is -99 on timeout.  $captureStderr controls whether stderr is merged.
 #
-# Uses ProcessStartInfo with CreateNoWindow=$false (the default) so the child
-# inherits the parent console — same as "& $bin" — while still allowing a
-# timeout.  Async reads on both streams prevent deadlock on large output.
-function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true) {
+# CreateNoWindow=$true detaches the child from any attached console so the MSVC
+# runtime uses WriteFile (not WriteConsoleW) for std::cout.  Without it, when
+# the parent process has a console, the CRT routes output through WriteConsoleW
+# which silently fails on a pipe handle and the captured output is empty.
+function invoke_bin([string[]]$binArgs, [bool]$captureStderr = $true, [int]$timeoutMs = -1) {
+    if ($timeoutMs -lt 0) { $timeoutMs = $script:TIMEOUT_SECS * 1000 }
+
     $psi = [System.Diagnostics.ProcessStartInfo]::new($script:BIN)
     foreach ($a in $binArgs) { $psi.ArgumentList.Add($a) }
     $psi.UseShellExecute        = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
-    # CreateNoWindow defaults to $false — child inherits the parent console
+    $psi.CreateNoWindow         = $true
 
     $proc    = [System.Diagnostics.Process]::Start($psi)
     $outTask = $proc.StandardOutput.ReadToEndAsync()
     $errTask = $proc.StandardError.ReadToEndAsync()
 
-    if (-not $proc.WaitForExit($script:TIMEOUT_SECS * 1000)) {
+    if (-not $proc.WaitForExit($timeoutMs)) {
         $proc.Kill()
         return $null, -99
     }
@@ -60,7 +63,7 @@ function check_fails([string]$desc, [string[]]$binArgs) {
 }
 
 function match_out([string]$desc, [string]$pattern, [string[]]$binArgs) {
-    $out, $code = invoke_bin $binArgs
+    $out, $code = invoke_bin $binArgs $false
     if ($code -eq -99) { Fail-Test "$desc (timeout after ${TIMEOUT_SECS}s)"; return }
     if ($out -match $pattern) { ok $desc }
     else { Fail-Test "$desc  (got: $(($out -split "`n")[0]))" }
@@ -128,7 +131,7 @@ check "-a recognised" @("-a", "-n")
 # --disable reflection — combining these avoids a second full-scan invocation.
 Write-Host ""
 Write-Host "no-ansi + general output + disable reflection"
-$genOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT")
+$genOut, $_ = invoke_bin @("--no-ansi", "--disable", "HYPERVISOR_BIT") $true 30000
 if ($genOut -match '\x1B\[') {
     Fail-Test "--no-ansi still contains ANSI escape codes"
 } else {
@@ -210,10 +213,18 @@ Write-Host ""
 Write-Host "--json"
 $tmpJson = [System.IO.Path]::GetTempFileName() + ".json"
 try {
-    $out, $code = invoke_bin @("--json", "--output", $tmpJson)
+    $out, $code = invoke_bin @("--json", "--output", $tmpJson) $true 30000
+    if ($out -and $out.Trim() -ne "") {
+        Write-Host "  [binary output]"
+        $out -split "`n" | ForEach-Object { Write-Host "    $_" }
+    }
     if ($code -eq -99) {
         Fail-Test "--json timed out"
         Fail-Test "--json output missing expected keys"
+        if (Test-Path $tmpJson) {
+            $partial = Get-Content $tmpJson -Raw -ErrorAction SilentlyContinue
+            if ($partial) { Write-Host "  [partial json]`n$partial" }
+        }
     } else {
         if ((Test-Path $tmpJson) -and (Get-Item $tmpJson).Length -gt 0) {
             ok "--json creates a non-empty output file"
@@ -225,6 +236,7 @@ try {
             ok "--json output contains expected keys"
         } else {
             Fail-Test "--json output missing expected keys"
+            Write-Host "  [json content] $jsonContent"
         }
     }
 } finally {

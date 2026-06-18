@@ -3647,19 +3647,19 @@ public:
                 constexpr const char* blue = "\x1B[38;2;00;59;193m";
                 constexpr const char* ansiexit = "\x1B[0m";
 
-                std::cout.setf(std::ios::fixed, std::ios::floatfield);
-                std::cout.setf(std::ios::showpoint);
+                std::cerr.setf(std::ios::fixed, std::ios::floatfield);
+                std::cerr.setf(std::ios::showpoint);
 
-                std::cout << black_bg
+                std::cerr << black_bg
                     << bold << "["
                     << blue << "DEBUG"
                     << ansiexit << bold << black_bg << "]"
                     << ansiexit << " ";
             #else
-                std::cout << "[DEBUG] ";
+                std::cerr << "[DEBUG] ";
             #endif
-                std::cout << msg_content;
-                std::cout << std::dec << "\n";
+                std::cerr << msg_content;
+                std::cerr << std::dec << "\n";
 
                 printed_messages.insert(std::move(msg_content));
             }

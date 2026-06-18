@@ -14,6 +14,82 @@
     #include <unistd.h>
 #endif
 
+#if (CLI_WINDOWS)
+    #include <dbghelp.h>
+
+static void print_thread_stacktrace(HANDLE hThread, const std::string& label) {
+    // Freeze the thread so GetThreadContext returns a consistent snapshot.
+    SuspendThread(hThread);
+
+    CONTEXT ctx = {};
+    ctx.ContextFlags = CONTEXT_FULL;
+    if (!GetThreadContext(hThread, &ctx)) {
+        std::cerr << "[STACKTRACE] GetThreadContext failed (err " << GetLastError() << ")\n" << std::flush;
+        return; // caller will TerminateThread; no Resume needed
+    }
+
+    HANDLE hProc = GetCurrentProcess();
+
+    // SymInitialize must be called once per process.
+    static bool sym_ready = false;
+    if (!sym_ready) {
+        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
+        sym_ready = SymInitialize(hProc, nullptr, TRUE) != FALSE;
+    }
+
+    STACKFRAME64 sf = {};
+    DWORD machine;
+
+#if defined(_M_X64)
+    machine             = IMAGE_FILE_MACHINE_AMD64;
+    sf.AddrPC.Offset    = ctx.Rip; sf.AddrPC.Mode    = AddrModeFlat;
+    sf.AddrFrame.Offset = ctx.Rbp; sf.AddrFrame.Mode = AddrModeFlat;
+    sf.AddrStack.Offset = ctx.Rsp; sf.AddrStack.Mode = AddrModeFlat;
+#elif defined(_M_IX86)
+    machine             = IMAGE_FILE_MACHINE_I386;
+    sf.AddrPC.Offset    = ctx.Eip; sf.AddrPC.Mode    = AddrModeFlat;
+    sf.AddrFrame.Offset = ctx.Ebp; sf.AddrFrame.Mode = AddrModeFlat;
+    sf.AddrStack.Offset = ctx.Esp; sf.AddrStack.Mode = AddrModeFlat;
+#else
+    std::cerr << "[STACKTRACE] unsupported architecture\n" << std::flush;
+    return;
+#endif
+
+    std::cerr << "[STACKTRACE] hung in " << label << ":\n";
+
+    alignas(SYMBOL_INFO) char sym_buf[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
+    SYMBOL_INFO* sym = reinterpret_cast<SYMBOL_INFO*>(sym_buf);
+
+    IMAGEHLP_LINE64 line_info = {};
+    line_info.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
+
+    for (int n = 0; n < 32; ++n) {
+        if (!StackWalk64(machine, hProc, hThread, &sf, &ctx,
+                         nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr)) {
+            break;
+        }
+        if (sf.AddrPC.Offset == 0) { break; }
+
+        std::cerr << "  #" << std::dec << n
+                  << "  0x" << std::hex << std::setw(16) << std::setfill('0') << sf.AddrPC.Offset;
+
+        sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+        sym->MaxNameLen   = MAX_SYM_NAME;
+        DWORD64 sym_disp  = 0;
+        if (sym_ready && SymFromAddr(hProc, sf.AddrPC.Offset, &sym_disp, sym)) {
+            std::cerr << "  " << sym->Name << "+" << std::dec << sym_disp;
+            DWORD line_disp = 0;
+            if (SymGetLineFromAddr64(hProc, sf.AddrPC.Offset, &line_disp, &line_info)) {
+                std::cerr << "  (" << line_info.FileName << ":" << line_info.LineNumber << ")";
+            }
+        }
+        std::cerr << "\n";
+    }
+    std::cerr << std::dec << std::setfill(' ') << std::flush;
+    // Caller TerminateThread; intentionally not ResumeThread here.
+}
+#endif
+
 const char* color(const u8 score, const bool is_hardened) {
     if (arg_bitset.test(NO_ANSI)) {
         return "";
@@ -218,6 +294,60 @@ const char* get_vm_description(const std::string& vm_brand) {
     return "";
 }
 
+#if (CLI_WINDOWS)
+// Run a single technique in a worker thread and wait up to TECHNIQUE_TIMEOUT_MS.
+// Returns {result, timed_out}.  On timeout the flag is pushed to
+// VM::disabled_techniques so the VM::vmaware constructor won't re-run it.
+static constexpr DWORD TECHNIQUE_TIMEOUT_MS = 3000;
+
+struct win_run_result { bool result; bool timed_out; };
+
+static win_run_result win_run_technique(const VM::enum_flags flag) {
+    struct runner_t {
+        VM::enum_flags flag;
+        bool result = false;
+        static DWORD WINAPI run(LPVOID lp) noexcept {
+            auto* self = static_cast<runner_t*>(lp);
+            self->result = VM::check(self->flag);
+            return 0;
+        }
+    };
+
+    runner_t runner { 
+        flag, 
+        false 
+    };
+
+    HANDLE h = CreateThread(nullptr, 0, runner_t::run, &runner, 0, nullptr);
+    if (!h) {
+        return { 
+            VM::check(flag), 
+            false 
+        };
+    }
+
+    if (WaitForSingleObject(h, TECHNIQUE_TIMEOUT_MS) == WAIT_TIMEOUT) {
+        TerminateThread(h, 0);
+        CloseHandle(h);
+        VM::disabled_techniques.push_back(flag);
+        std::cerr << "[TIMEOUT] VM::" << VM::flag_to_string(flag)
+                  << " did not finish within " << (TECHNIQUE_TIMEOUT_MS / 1000)
+                  << "s, skipping\n" << std::flush;
+
+        return { 
+            false, 
+            true 
+        };
+    }
+
+    CloseHandle(h);
+    return { 
+        runner.result, 
+        false
+    };
+}
+#endif
+
 static void checker(const VM::enum_flags flag, const char* message) {
     std::string enum_name;
 
@@ -243,7 +373,15 @@ static void checker(const VM::enum_flags flag, const char* message) {
     supported_count++;
 
     auto start_time = std::chrono::high_resolution_clock::now();
+
+#if (CLI_WINDOWS)
+    const win_run_result wres = win_run_technique(flag);
+    if (wres.timed_out) { return; }
+    const bool result = wres.result;
+#else
     const bool result = VM::check(flag);
+#endif
+
     auto end_time = std::chrono::high_resolution_clock::now();
 
     const double ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
@@ -318,28 +456,37 @@ bool parse_disable_token(const char* token) {
 }
 
 void generate_json(const char* output) {
+#if (CLI_WINDOWS)
+    // Warm the memo cache with per-technique timeouts before constructing
+    // VM::vmaware, so that any technique that hangs (e.g. CPU_HEURISTIC on
+    // Azure Hyper-V) is aborted and disabled rather than blocking indefinitely.
+    for (u8 i = VM::technique_begin; i < static_cast<u8>(VM::technique_end); ++i) {
+        const VM::enum_flags flag = static_cast<VM::enum_flags>(i);
+        if (is_disabled(flag) || is_unsupported(flag)) { 
+            continue; 
+        }
+        win_run_technique(flag);
+    }
+#endif
+
+    const VM::vmaware vm(VM::MULTIPLE);
+
     std::vector<std::string> json;
 
     json.emplace_back("{");
     json.emplace_back("\n\t\"is_detected\": ");
-
-    if (VM::detect()) {
-        json.emplace_back("true,");
-    }
-    else {
-        json.emplace_back("false,");
-    }
+    json.emplace_back(vm.is_vm ? "true," : "false,");
 
     json.emplace_back("\n\t\"brand\": \"");
-    json.push_back(VM::brand());
+    json.push_back(vm.brand);
     json.emplace_back("\",");
 
     json.emplace_back("\n\t\"conclusion\": \"");
-    json.push_back(VM::conclusion());
+    json.push_back(vm.conclusion);
     json.emplace_back("\",");
 
     json.emplace_back("\n\t\"percentage\": ");
-    json.push_back(std::to_string(static_cast<int>(VM::percentage())));
+    json.push_back(std::to_string(static_cast<int>(vm.percentage)));
     json.emplace_back(",");
 
     json.emplace_back("\n\t\"detected_technique_count\": ");
@@ -347,29 +494,22 @@ void generate_json(const char* output) {
     json.emplace_back(",");
 
     json.emplace_back("\n\t\"vm_type\": \"");
-    json.push_back(VM::type());
+    json.push_back(vm.type);
     json.emplace_back("\",");
 
     json.emplace_back("\n\t\"is_hardened\": ");
-
-    if (VM::is_hardened()) {
-        json.emplace_back("true,");
-    } else {
-        json.emplace_back("false,");
-    }
+    json.emplace_back(vm.is_hardened ? "true," : "false,");
 
     json.emplace_back("\n\t\"detected_techniques\": [");
 
-    const auto detected_status = VM::detected_enums();
-
-    if (detected_status.empty()) {
+    if (vm.detected_techniques.empty()) {
         json.emplace_back("]\n}");
     } else {
-        for (size_t i = 0; i < detected_status.size(); i++) {
+        for (size_t i = 0; i < vm.detected_techniques.size(); i++) {
             json.emplace_back("\n\t\t\"");
-            json.push_back(VM::flag_to_string(detected_status[i]));
+            json.push_back(VM::flag_to_string(vm.detected_techniques[i]));
 
-            if (i == detected_status.size() - 1) {
+            if (i == vm.detected_techniques.size() - 1) {
                 json.emplace_back("\"");
             } else {
                 json.emplace_back("\",");

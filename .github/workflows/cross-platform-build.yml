@@ -108,7 +108,7 @@ jobs:
       - name: Install g++-14
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends g++-14 cmake
+          sudo apt-get install -y --no-install-recommends g++-14
 
       - name: Configure (C++${{ matrix.std }})
         run: |
@@ -146,7 +146,7 @@ jobs:
       - name: Install ${{ matrix.compiler }}
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends cmake ${{ matrix.package }}
+          sudo apt-get install -y --no-install-recommends ${{ matrix.package }}
 
       - name: Configure (${{ matrix.compiler }})
         run: |
@@ -205,7 +205,7 @@ jobs:
         run: cmake --build build --config Release
 
   windows-compilation:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 5
     strategy:
       fail-fast: true
@@ -255,7 +255,7 @@ jobs:
           path: build\Release\vmaware_${{ github.run_number }}_${{ env.SHORT_SHA }}.exe
 
   windows-cpp-standard:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 10
     strategy:
       fail-fast: true
@@ -337,28 +337,86 @@ jobs:
 
   cli-test-windows:
     needs: [windows]
-    runs-on: windows-latest
-    timeout-minutes: 10
+    runs-on: windows-2022
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Windows binary
+      - name: Download vmaware64_release
         uses: actions/download-artifact@v4
         with:
           name: vmaware64_release.exe
-          path: build
+          path: build\vmaware64_release
 
-      - name: Full CLI output
+      - name: Download vmaware64_debug
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware64_debug.exe
+          path: build\vmaware64_debug
+
+      - name: Download vmaware32_release
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware32_release.exe
+          path: build\vmaware32_release
+
+      - name: Download vmaware32_debug
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware32_debug.exe
+          path: build\vmaware32_debug
+
+      - name: Full CLI output (vmaware64_release)
         shell: pwsh
         run: |
-          $bin = Get-ChildItem build -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          $bin = Get-ChildItem build\vmaware64_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "=== vmaware64_release ==="
           & $bin; $true
 
-      - name: Run CLI test suite
+      - name: Run CLI test suite (vmaware64_release)
         shell: pwsh
         run: |
-          $bin = Get-ChildItem build -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          $bin = Get-ChildItem build\vmaware64_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 10
+
+      - name: Full CLI output (vmaware64_debug)
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware64_debug -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "=== vmaware64_debug ==="
+          & $bin; $true
+
+      - name: Run CLI test suite (vmaware64_debug)
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware64_debug -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 10
+
+      - name: Full CLI output (vmaware32_release)
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware32_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "=== vmaware32_release ==="
+          & $bin; $true
+
+      - name: Run CLI test suite (vmaware32_release)
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware32_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 10
+
+      - name: Full CLI output (vmaware32_debug)
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware32_debug -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "=== vmaware32_debug ==="
+          & $bin; $true
+
+      - name: Run CLI test suite (vmaware32_debug)
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware32_debug -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
           pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 10
 
   platform-builds:
