@@ -3413,11 +3413,9 @@ public:
         };
     };
 
-    // timer helper functionalities
 #if (WINDOWS)
+    // timer helper functionalities
     struct timer {
-        #define LFENCE_8 _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence();
-
         #define VMAWARE_STR2(x) #x
         #define VMAWARE_STR(x) VMAWARE_STR2(x)
 
@@ -3554,7 +3552,7 @@ public:
             auto pick_by_ordinal = [&](size_t ord0) -> DWORD_PTR {
                 if (ord0 >= n) return 0ull;
                 return 1ull << idxs[ord0];
-                };
+            };
 
             DWORD_PTR choices = 0ull;
 
@@ -3591,10 +3589,12 @@ public:
                 // this will affect latency if cache lines from trigger_thread and counter_thread are separated enough due to cores being too distant
                 // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
                 choices &= ~trigger_mask;
+
                 if (trigger_pos0 >= 1)
                     choices &= ~(1ull << idxs[trigger_pos0 - 1]); // adjacent left
                 if (trigger_pos0 + 1 < n)
                     choices &= ~(1ull << idxs[trigger_pos0 + 1]); // adjacent right
+
                 choices &= ~(1ull << idxs[0]);       // first core
                 choices &= ~(1ull << idxs[n - 1]);   // last core
                 choices &= ~core_mask[trigger_core_id]; // avoid SMT siblings of the trigger core
@@ -3637,7 +3637,7 @@ public:
         }
 
         // we dont use cpu::cpuid on purpose
-        static void trigger_vmexit() {
+        static VMAWARE_FORCE_INLINE void trigger_vmexit() {
         #if (GCC || CLANG)
             u32 a = 0, c = 0, d = 0;
             #if (x86_64)
@@ -3815,7 +3815,30 @@ public:
             return result;
         }
 
-        #undef LFENCE_8
+        static VMAWARE_FORCE_INLINE void burn_random_cycles(u64 ct_seed, u64 v_post, u64 r_post) {
+            u64 seed = ct_seed;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&v_post)) << 1;
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&r_post)) << 2;
+            seed ^= seed >> 33;
+            seed *= 0xff51afd7ed558ccdULL;
+            seed ^= seed >> 33;
+            seed *= 0xc4ceb9fe1a85ec53ULL;
+            seed ^= seed >> 33;
+
+            // 64u is the minimum amount of work every time, 0x1FFu controls how much the count varies
+            const u32 rounds = 64u + static_cast<u32>(seed & 0x7FFu); // variable per iteration
+            volatile u64 x = seed | 1ULL;
+
+            for (u32 i = 0; i < rounds; ++i) {
+                x = x * 6364136223846793005ULL + 1ULL;
+                x ^= x >> 17;
+            }
+
+        #if (CLANG || GCC)
+            __asm__ volatile("" :: "r"(x) : "memory");
+        #endif
+        }
     };
 #endif
 
@@ -5928,7 +5951,7 @@ public:
         using timer_t = struct timer;
 
         // calculation of minimum threshold
-        bool is_intel = cpu::is_intel();
+        const bool is_intel = cpu::is_intel();
         double threshold = 2.5;
         if (util::hyper_x() != HYPERV_UNKNOWN) {
             if (is_intel) { // intel is typically faster on nested
@@ -5982,8 +6005,7 @@ public:
         #endif
         {
             if (is_intel) {
-                // SERIALIZE (CPUID leaf 7, subleaf 0, EDX bit 14) requires Ice Lake or newer.
-                // Older Intel CPUs in Azure/Hyper-V environments crash with STATUS_ILLEGAL_INSTRUCTION.
+                // SERIALIZE requires Ice Lake or newer
                 u32 l7_eax = 0, l7_ebx = 0, l7_ecx = 0, l7_edx = 0;
                 cpu::cpuid(l7_eax, l7_ebx, l7_ecx, l7_edx, 7, 0);
                 if (!(l7_edx & (1u << 14))) {
@@ -6095,24 +6117,7 @@ public:
                     }
 
                     // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
-                    seed = ct_seed;
-                    seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
-                    seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&v_post)) << 1;
-                    seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&r_post)) << 2;
-                    seed ^= seed >> 33;
-                    seed *= 0xff51afd7ed558ccdULL;
-                    seed ^= seed >> 33;
-                    seed *= 0xc4ceb9fe1a85ec53ULL;
-                    seed ^= seed >> 33;
-
-                    // 64u is the minimum amount of work every time, 0x1FFu controls how much the count varies
-                    const u32 rounds = 64u + static_cast<u32>(seed & 0x7FFu); // variable per iteration
-                    volatile u64 x = seed | 1ULL;
-
-                    for (u32 i = 0; i < rounds; ++i) {
-                        x = x * 6364136223846793005ULL + 1ULL;
-                        x ^= x >> 17;
-                    }
+                    timer_t::burn_random_cycles(ct_seed, v_post, r_post);
 
                 #if (CLANG || GCC)
                     __asm__ volatile("" :: "r"(x) : "memory");
@@ -6162,26 +6167,9 @@ public:
                     }
 
                     // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
-                    seed = ct_seed;
-                    seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
-                    seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&v_post)) << 1;
-                    seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&r_post)) << 2;
-                    seed ^= seed >> 33;
-                    seed *= 0xff51afd7ed558ccdULL;
-                    seed ^= seed >> 33;
-                    seed *= 0xc4ceb9fe1a85ec53ULL;
-                    seed ^= seed >> 33;
+                    timer_t::burn_random_cycles(ct_seed, v_post, r_post);
 
-                    // 64u is the minimum amount of work every time, 0x1FFu controls how much the count varies
-                    const u32 rounds = 64u + static_cast<u32>(seed & 0x7FFu); // variable per iteration
-                    volatile u64 x = seed | 1ULL;
-
-                    for (u32 i = 0; i < rounds; ++i) {
-                        x = x * 6364136223846793005ULL + 1ULL;
-                        x ^= x >> 17;
-                    }
-
-            #if (CLANG || GCC)
+                #if (CLANG || GCC)
                     __asm__ volatile("" :: "r"(x) : "memory");
                 #endif
                 }
