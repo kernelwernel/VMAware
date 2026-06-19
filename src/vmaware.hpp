@@ -3414,6 +3414,7 @@ public:
     };
 
     // timer helper functionalities
+#if (WINDOWS)
     struct timer {
         #define LFENCE_8 _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence();
 
@@ -3816,6 +3817,7 @@ public:
 
         #undef LFENCE_8
     };
+#endif
 
     // miscellaneous functionalities
     struct util {
