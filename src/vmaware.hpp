@@ -5948,7 +5948,7 @@ public:
             return false;
         }
 
-        using timer_t = struct timer;
+        using timer = struct timer;
 
         // calculation of minimum threshold
         bool is_intel = cpu::is_intel();
@@ -5963,17 +5963,17 @@ public:
         }
 
         // Shared state and results
-        timer_t::cache_state state;
+        timer::cache_state state;
         bool hypervisor_detected = false;
 
-        const u32 ct_seed = timer_t::get_ct_seed();
+        const u32 ct_seed = timer::get_ct_seed();
 
-        const DWORD_PTR trigger_affinity = timer_t::get_trigger_mask();
+        const DWORD_PTR trigger_affinity = timer::get_trigger_mask();
         if (!trigger_affinity) {
             return false;
         }
 
-        const DWORD_PTR target_affinity = timer_t::get_counter_mask(ct_seed, trigger_affinity);
+        const DWORD_PTR target_affinity = timer::get_counter_mask(ct_seed, trigger_affinity);
         if (!target_affinity) {
             return false;
         }
@@ -6070,7 +6070,7 @@ public:
                 // when AMD has configured it to be dispatch-serializing via MSR C001_1029[1]=1 (or when LFenceAlwaysSerializing is set)
                 if (is_intel) _serialize();
                 else LFENCE_8
-                timer_t::trigger_vmexit();
+                timer::trigger_vmexit();
             }
 
             // inside the timing windows, there must be zero memory output (no stack arrays can be written to), zero conditional branches and zero stack spilling (no register push/pops)
@@ -6104,7 +6104,7 @@ public:
                     // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
                     // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
                     // this is why the score of this technique is not enough to determine a VM
-                    timer_t::trigger_vmexit();
+                    timer::trigger_vmexit();
 
                     std::atomic_signal_fence(std::memory_order_seq_cst);
                     v_post = state.counter;
@@ -6117,7 +6117,7 @@ public:
                     }
 
                     // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
-                    timer_t::burn_random_cycles(ct_seed, v_post, r_post);
+                    timer::burn_random_cycles(ct_seed, v_post, r_post);
 
                 #if (CLANG || GCC)
                     __asm__ volatile("" :: "r"(x) : "memory");
@@ -6154,7 +6154,7 @@ public:
                     // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
                     // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
                     // this is why the score of this technique is not enough to determine a VM
-                    timer_t::trigger_vmexit();
+                    timer::trigger_vmexit();
 
                     std::atomic_signal_fence(std::memory_order_seq_cst);
                     v_post = state.counter;
@@ -6167,7 +6167,7 @@ public:
                     }
 
                     // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
-                    timer_t::burn_random_cycles(ct_seed, v_post, r_post);
+                    timer::burn_random_cycles(ct_seed, v_post, r_post);
 
                 #if (CLANG || GCC)
                     __asm__ volatile("" :: "r"(x) : "memory");
@@ -6177,8 +6177,8 @@ public:
 
             state.test_done.store(true, std::memory_order_release);
 
-            const u64 cpuid_l = timer_t::calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can't detect (SMIs, NMIs, etc)
-            const u64 ref_l = timer_t::calculate_latency(ref_samples);
+            const u64 cpuid_l = timer::calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can't detect (SMIs, NMIs, etc)
+            const u64 ref_l = timer::calculate_latency(ref_samples);
             const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
 
             // VMM = Time spent in hypervisor; nVMM = Time spent in baremetal
