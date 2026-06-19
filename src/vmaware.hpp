@@ -536,8 +536,6 @@ namespace brands { // TODO, remove this in the 2.8.0 or any release after the 2.
     LEGACY(CONTAINERD, "Containerd");
 }
 
-
-
 #if (VMA_CPP >= 17)
     #define VMAWARE_CONSTEXPR constexpr
 #else
@@ -548,6 +546,14 @@ namespace brands { // TODO, remove this in the 2.8.0 or any release after the 2.
     #define VMAWARE_CONSTEXPR_14 constexpr
 #else
     #define VMAWARE_CONSTEXPR_14
+#endif
+
+#if (MSVC)
+    #define VMAWARE_FORCE_INLINE __forceinline
+#elif (CLANG || GCC)
+    #define VMAWARE_FORCE_INLINE inline __attribute__((always_inline))
+#else
+    #define VMAWARE_FORCE_INLINE inline
 #endif
 
 struct VM {
@@ -5518,8 +5524,8 @@ public:
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         #if (MSVC)
-        #pragma warning(push)
-        #pragma warning(disable: 4324) 
+            #pragma warning(push)
+            #pragma warning(disable: 4324) 
         #endif
         struct alignas(64) cache_state {
             alignas(64) volatile u64 counter { 0 };
@@ -5527,7 +5533,7 @@ public:
             alignas(64) std::atomic<bool> test_done{ false };
         };
         #if (MSVC)
-        #pragma warning(pop)
+            #pragma warning(pop)
         #endif
 
         // Shared state and results
@@ -5693,9 +5699,9 @@ public:
                 // this will affect latency if cache lines from trigger_thread and counter_thread are separated enough due to cores being too distant
                 // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
                 choices &= ~trigger_mask;
-                if (trigger_pos0 >= 1) 
+                if (trigger_pos0 >= 1)
                     choices &= ~(1ull << idxs[trigger_pos0 - 1]); // adjacent left
-                if (trigger_pos0 + 1 < n) 
+                if (trigger_pos0 + 1 < n)
                     choices &= ~(1ull << idxs[trigger_pos0 + 1]); // adjacent right
                 choices &= ~(1ull << idxs[0]);       // first core
                 choices &= ~(1ull << idxs[n - 1]);   // last core
@@ -5706,7 +5712,7 @@ public:
 
                 DWORD pick[64]{}, m = 0;
                 for (DWORD i = 0; i < 64; ++i) {
-                    if (choices & (1ull << i)) 
+                    if (choices & (1ull << i))
                         pick[m++] = i;
                 }
                 if (!m) return 0ull;
@@ -5724,8 +5730,8 @@ public:
                 seed ^= seed >> 33;
                 seed *= 0xc4ceb9fe1a85ec53ULL;
                 seed ^= seed >> 33;
-                std::seed_seq seq { 
-                    static_cast<u32>(seed), static_cast<u32>(seed >> 32), static_cast<u32>(seed ^ 0x9e3779b9u), ct_seed 
+                std::seed_seq seq{
+                    static_cast<u32>(seed), static_cast<u32>(seed >> 32), static_cast<u32>(seed ^ 0x9e3779b9u), ct_seed
                 };
 
                 // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
@@ -5753,23 +5759,23 @@ public:
         #if (GCC || CLANG)
             u32 a = 0, c = 0, d = 0;
             #if (x86_64)
-                __asm__ volatile (
-                    "pushq %%rbx\n\t" // better than doing something like xchgq %%rbx, %%rdi\n\t to swap rbx to rdi avoiding GCC pushing/popping rbx on the stack
-                    "cpuid\n\t"
-                    "popq %%rbx\n\t"
-                    : "+a"(a), "+c"(c), "=d"(d) // + mapping forces compiler to use registers, avoids stack spills
-                    :
-                    : "cc"
-                    );
+            __asm__ volatile (
+                "pushq %%rbx\n\t" // better than doing something like xchgq %%rbx, %%rdi\n\t to swap rbx to rdi avoiding GCC pushing/popping rbx on the stack
+                "cpuid\n\t"
+                "popq %%rbx\n\t"
+                : "+a"(a), "+c"(c), "=d"(d) // + mapping forces compiler to use registers, avoids stack spills
+                :
+                : "cc"
+                );
             #else
-                __asm__ volatile (
-                    "pushl %%ebx\n\t"
-                    "cpuid\n\t"
-                    "popl %%ebx\n\t"
-                    : "+a"(a), "+c"(c), "=d"(d)
-                    :
-                    : "cc"
-                    );
+            __asm__ volatile (
+                "pushl %%ebx\n\t"
+                "cpuid\n\t"
+                "popl %%ebx\n\t"
+                : "+a"(a), "+c"(c), "=d"(d)
+                :
+                : "cc"
+                );
             #endif
         #else
             i32 dummy[4];
@@ -5790,17 +5796,17 @@ public:
                 const u64 current = state.counter; // to silence warnings about incrementing volatile stuff
                 state.counter = current + 1; // better than calling incq in inline assembly, standard increment forces the correct cache behavior we want
 
-            #if (GCC || CLANG)
+                #if (GCC || CLANG)
                 // prevents aggressive loop unrolling/batching of volatile stores
-                __asm__ volatile("" ::: "memory"); 
-            #endif
+                __asm__ volatile("" ::: "memory");
+                #endif
             }
         };
 
         // it will execute cpuid and serialize or lfence, and compare its latency
-        auto trigger_thread = [&]() 
+        auto trigger_thread = [&]()
         #if ((CLANG || GCC))
-        __attribute__((__target__("serialize")))
+            __attribute__((__target__("serialize")))
         #endif
         {
             auto calculate_latency = [&](const std::vector<u64>& samples_in) -> u64 {
@@ -5825,7 +5831,7 @@ public:
                     return (v[mid - 1] + v[mid]) / 2;
                 };
 
-                // the robust center: median M and MAD -> approximate sigma
+                // center: median M and MAD -> approximate sigma
                 const u64 M = median_of_sorted(s, 0, s.size());
 
                 // select the median deviation in linear time instead of sorting all deviations
@@ -5953,7 +5959,7 @@ public:
                 return result;
             };
 
-            bool is_intel = cpu::is_intel();
+            const bool is_intel = cpu::is_intel();
 
             if (is_intel) {
                 // SERIALIZE (CPUID leaf 7, subleaf 0, EDX bit 14) requires Ice Lake or newer.
@@ -6020,87 +6026,108 @@ public:
                 // serialize is a good candidate as it's the closest architectural match to CPUID's pipeline-stall behavior AND can't be intercepted in VCMB/VMCS
                 // in AMD the serialize intrinsic triggers a illegal instruction exception, so the closest AMD native substitute that is not one of the standard direct instruction exit controls is LFENCE
                 // when AMD has configured it to be dispatch-serializing via MSR C001_1029[1]=1 (or when LFenceAlwaysSerializing is set)
-                if (is_intel) _serialize(); 
+                if (is_intel) _serialize();
                 else LFENCE_8
                 trigger_vmexit();
             }
 
             // inside the timing windows, there must be zero memory output (no stack arrays can be written to), zero conditional branches and zero stack spilling (no register push/pops)
-            while (valid < BATCH_SIZE) {
-                // cpuid and serialize/lfence interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
-                u64 r_pre, r_post, v_pre, v_post, sync;
+            struct loop_runner {
+                template <bool is_intel, typename t_state, typename t_vm, typename t_ref, typename t_vmexit>
+                VMAWARE_FORCE_INLINE static void run(
+                    t_state& state,
+                    t_vm& vm_samples,
+                    t_ref& ref_samples,
+                    size_t& valid,
+                    const size_t BATCH_SIZE,
+                    u64& seed,
+                    const u32 ct_seed,
+                    t_vmexit trigger_vmexit
+                ) {
+                    while (valid < BATCH_SIZE) {
+                        // cpuid and serialize/lfence interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
+                        u64 r_pre, r_post, v_pre, v_post, sync;
 
-                // this is done as a counter to both legitimate and malicious hypervisors interrupts that may pause the counter thread while we measure
-                sync = state.counter; 
-                while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
+                        // this is done as a counter to both legitimate and malicious hypervisors interrupts that may pause the counter thread while we measure
+                        sync = state.counter;
+                        while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
 
-                // SERIALIZE/LFENCE check is before CPUID on purpose, so that possible pauses when cpuid is executed do not affect SERIALIZE/LFENCE too. The hv needs to wait for cpuid to pause the thread
-                // the amount of instructions (8 in case of LFENCE) are enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race so that the counter thread sees an increment
-                if (is_intel) {
-                    sync = state.counter; 
-                    while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
-                    r_pre = state.counter;
-                    std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
-                    _serialize();
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    r_post = state.counter;
+                        // SERIALIZE/LFENCE check is before CPUID on purpose, so that possible pauses when cpuid is executed do not affect SERIALIZE/LFENCE too. The hv needs to wait for cpuid to pause the thread
+                        // the amount of instructions (8 in case of LFENCE) are enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race so that the counter thread sees an increment
+                        if (is_intel) {
+                            sync = state.counter;
+                            while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
+                            r_pre = state.counter;
+                            std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
+                            _serialize();
+                            std::atomic_signal_fence(std::memory_order_seq_cst);
+                            r_post = state.counter;
+                        }
+                        else {
+                            sync = state.counter;
+                            while (state.counter == sync);
+                            r_pre = state.counter;
+                            std::atomic_signal_fence(std::memory_order_seq_cst);
+                            LFENCE_8
+                                std::atomic_signal_fence(std::memory_order_seq_cst);
+                            r_post = state.counter;
+                        }
+
+                        sync = state.counter;
+                        while (state.counter == sync); // sync to our counter tick again
+                        sync = state.counter;
+                        while (state.counter == sync); // and again
+
+                        v_pre = state.counter;
+                        std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
+
+                        // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
+                        // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
+                        // this is why the score of this technique is not enough to determine a VM
+                        trigger_vmexit();
+
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                        v_post = state.counter;
+
+                        // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not use TSC or any other clock
+                        if (v_post > v_pre && r_post > r_pre) {
+                            vm_samples[valid] = v_post - v_pre;
+                            ref_samples[valid] = r_post - r_pre;
+                            valid++;
+                        }
+
+                        // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
+                        seed = ct_seed;
+                        seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
+                        seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&v_post)) << 1;
+                        seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&r_post)) << 2;
+                        seed ^= seed >> 33;
+                        seed *= 0xff51afd7ed558ccdULL;
+                        seed ^= seed >> 33;
+                        seed *= 0xc4ceb9fe1a85ec53ULL;
+                        seed ^= seed >> 33;
+
+                        // 64u is the minimum amount of work every time, 0x1FFu controls how much the count varies
+                        const u32 rounds = 64u + static_cast<u32>(seed & 0x7FFu); // variable per iteration
+                        volatile u64 x = seed | 1ULL;
+
+                        for (u32 i = 0; i < rounds; ++i) {
+                            x = x * 6364136223846793005ULL + 1ULL;
+                            x ^= x >> 17;
+                        }
+
+                    #if (CLANG || GCC)
+                        __asm__ volatile("" :: "r"(x) : "memory");
+                    #endif
+                    }
                 }
-                else {
-                    sync = state.counter;
-                    while (state.counter == sync);
-                    r_pre = state.counter;
-                    std::atomic_signal_fence(std::memory_order_seq_cst); 
-                    LFENCE_8
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    r_post = state.counter;
-                }
+            };
 
-                sync = state.counter; 
-                while (state.counter == sync); // sync to our counter tick again
-                sync = state.counter; 
-                while (state.counter == sync); // and again
-
-                v_pre = state.counter;
-                std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
-
-                // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
-                // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
-                // this is why the score of this technique is not enough to determine a VM
-                trigger_vmexit();
-
-                std::atomic_signal_fence(std::memory_order_seq_cst);
-                v_post = state.counter;
-
-                // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not use TSC or any other clock
-                if (v_post > v_pre && r_post > r_pre) {
-                    vm_samples[valid] = v_post - v_pre;
-                    ref_samples[valid] = r_post - r_pre;
-                    valid++;
-                }
-
-                // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
-                seed = ct_seed;
-                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
-                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&v_post)) << 1;
-                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&r_post)) << 2;
-                seed ^= seed >> 33;
-                seed *= 0xff51afd7ed558ccdULL;
-                seed ^= seed >> 33;
-                seed *= 0xc4ceb9fe1a85ec53ULL;
-                seed ^= seed >> 33;
-
-                // 64u is the minimum amount of work every time, 0x1FFu controls how much the count varies
-                const u32 rounds = 64u + static_cast<u32>(seed & 0x7FFu); // variable per iteration
-                volatile u64 x = seed | 1ULL;
-
-                for (u32 i = 0; i < rounds; ++i) {
-                    x = x * 6364136223846793005ULL + 1ULL;
-                    x ^= x >> 17;
-                }
-
-            #if (CLANG || GCC)
-                __asm__ volatile("" :: "r"(x) : "memory");
-            #endif
+            if (is_intel) {
+                loop_runner::run<true>(state, vm_samples, ref_samples, valid, BATCH_SIZE, seed, ct_seed, trigger_vmexit);
+            }
+            else {
+                loop_runner::run<false>(state, vm_samples, ref_samples, valid, BATCH_SIZE, seed, ct_seed, trigger_vmexit);
             }
 
             state.test_done.store(true, std::memory_order_release);
@@ -6110,7 +6137,7 @@ public:
             const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
 
             // VMM = Time spent in hypervisor; nVMM = Time spent in baremetal
-            debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ",  ref_l, " | Ratio -> ", latency_ratio); // those are NOT cycles
+            debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ", ref_l, " | Ratio -> ", latency_ratio); // those are NOT cycles
             if (latency_ratio >= threshold) hypervisor_detected = true;
 
             // Detect IPI-based counter pausing bypasses
