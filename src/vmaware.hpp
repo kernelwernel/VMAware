@@ -14130,7 +14130,7 @@ public:
         // run all the techniques, which will set the detected_count variable 
         core::run_all(flags);
 
-        return detected_count_num;
+        return detected_count_num.load();
     }
 
 

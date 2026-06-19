@@ -10,6 +10,7 @@ on:
       - 'CMakeLists.txt'
       - 'auxiliary/test_cli.sh'
       - 'auxiliary/test_cli.ps1'
+      - 'auxiliary/memoize_test.cpp'
   pull_request:
     branches: ["main"]
     paths:
@@ -19,6 +20,7 @@ on:
       - 'CMakeLists.txt'
       - 'auxiliary/test_cli.sh'
       - 'auxiliary/test_cli.ps1'
+      - 'auxiliary/memoize_test.cpp'
   workflow_dispatch:
 
 env:
@@ -372,7 +374,7 @@ jobs:
         run: |
           $bin = Get-ChildItem build\vmaware64_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
           Write-Host "=== vmaware64_release ==="
-          & $bin; $true
+          & $bin; $true | Out-Null
 
       - name: Run CLI test suite (vmaware64_release)
         shell: pwsh
@@ -385,7 +387,7 @@ jobs:
         run: |
           $bin = Get-ChildItem build\vmaware64_debug -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
           Write-Host "=== vmaware64_debug ==="
-          & $bin; $true
+          & $bin; $true | Out-Null
 
       - name: Run CLI test suite (vmaware64_debug)
         shell: pwsh
@@ -398,7 +400,7 @@ jobs:
         run: |
           $bin = Get-ChildItem build\vmaware32_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
           Write-Host "=== vmaware32_release ==="
-          & $bin; $true
+          & $bin; $true | Out-Null
 
       - name: Run CLI test suite (vmaware32_release)
         shell: pwsh
@@ -411,13 +413,35 @@ jobs:
         run: |
           $bin = Get-ChildItem build\vmaware32_debug -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
           Write-Host "=== vmaware32_debug ==="
-          & $bin; $true
+          & $bin; $true | Out-Null
 
       - name: Run CLI test suite (vmaware32_debug)
         shell: pwsh
         run: |
           $bin = Get-ChildItem build\vmaware32_debug -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
           pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 10
+
+  memoize-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install g++
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends g++
+
+      - name: Compile memoize test
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Wconversion -Wdouble-promotion \
+              -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion \
+              -Werror -D__VMAWARE_RELEASE__ \
+              -o memoize_test auxiliary/memoize_test.cpp
+
+      - name: Run memoize test
+        run: ./memoize_test
 
   platform-builds:
     needs: [linux, macos, windows]
@@ -432,7 +456,7 @@ jobs:
       - run: echo "All CLI tests completed"
 
   completed:
-    needs: [platform-builds, cli-tests]
+    needs: [platform-builds, cli-tests, memoize-test]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All checks passed"
