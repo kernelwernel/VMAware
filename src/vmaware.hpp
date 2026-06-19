@@ -5951,7 +5951,7 @@ public:
         using timer_t = struct timer;
 
         // calculation of minimum threshold
-        const bool is_intel = cpu::is_intel();
+        bool is_intel = cpu::is_intel();
         double threshold = 2.5;
         if (util::hyper_x() != HYPERV_UNKNOWN) {
             if (is_intel) { // intel is typically faster on nested
