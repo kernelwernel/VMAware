@@ -5553,7 +5553,9 @@ public:
             const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
 
             DWORD_PTR proc_mask = 0, sys_mask = 0;
-            GetProcessAffinityMask(current_process, &proc_mask, &sys_mask);
+            if (!GetProcessAffinityMask(current_process, &proc_mask, &sys_mask) || !proc_mask) {
+                return 0ull;
+            }
 
             DWORD idxs[64]{};
             DWORD n = 0;
@@ -5563,19 +5565,52 @@ public:
                 }
             }
 
-            if (!n) return 1ull;
+            if (n < 2) return 0ull; // single-core abort
 
-            // middle available logical CPU because statistically it normally has less DPCs/interrupts, we could query the windows api to fetch the interrupt count or DPC time
-            // 20 available CPUs -> idxs[10] -> core 11 in 1-based numbering
-            const DWORD middle_pos = n / 2;
-            return 1ull << idxs[middle_pos];
+            // (1-indexed)
+            // 2 cores  -> trigger 1
+            // 3 cores  -> trigger 1
+            // 4 cores  -> trigger 1
+            // 5 cores  -> trigger 4
+            // 6 cores  -> trigger 5
+            // >6 cores  -> middle available logical CPU
+            size_t trigger_pos0 = 0; // 0-based ordinal
+
+            if (n == 2 || n == 3 || n == 4) {
+                trigger_pos0 = 0;
+            }
+            else if (n == 5) {
+                trigger_pos0 = 3;
+            }
+            else if (n == 6) {
+                trigger_pos0 = 4;
+            }
+            else {
+                trigger_pos0 = n / 2;
+            }
+
+            if (trigger_pos0 >= n) return 0ull;
+            return 1ull << idxs[trigger_pos0];
         };
 
         // random logical CPU, but exclude the trigger_thread, first, second and last available logical CPUs, avoiding SMT siblings
-        auto get_counter_mask = [ct_seed]() -> DWORD_PTR {
+        auto get_counter_mask = [ct_seed](DWORD_PTR trigger_mask) -> DWORD_PTR {
             const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
+
             DWORD_PTR proc_mask = 0, sys_mask = 0;
-            GetProcessAffinityMask(current_process, &proc_mask, &sys_mask);
+            if (!GetProcessAffinityMask(current_process, &proc_mask, &sys_mask) || !proc_mask) {
+                return 0ull;
+            }
+
+            DWORD idxs[64]{};
+            DWORD n = 0;
+            for (DWORD i = 0; i < 64; ++i) {
+                if (proc_mask & (1ull << i)) {
+                    idxs[n++] = i;
+                }
+            }
+
+            if (n < 2) return 0ull; // single-core abort
 
             // get topology to identify SMT siblings
             DWORD len = 0;
@@ -5595,10 +5630,10 @@ public:
             }
 
             if (!GetLogicalProcessorInformationEx(RelationProcessorCore, info, &len)) {
-                return 1ull; // fallback, it won't match the trigger_thread core
+                return 0ull; // no valid topology data, fail closed
             }
 
-            // map logical processor index to its physical core ID
+            // logical processor index to its physical core ID
             DWORD logical_to_core[64] = { 0 };
             DWORD_PTR core_mask[64] = { 0 };
             size_t offset = 0;
@@ -5618,57 +5653,100 @@ public:
                 core_idx++;
             }
 
-            // available logical processors
-            DWORD idxs[64]{}, n = 0;
-            for (DWORD i = 0; i < 64; ++i) {
-                if (proc_mask & (1ull << i)) idxs[n++] = i;
+            auto pick_by_ordinal = [&](size_t ord0) -> DWORD_PTR {
+                if (ord0 >= n) return 0ull;
+                return 1ull << idxs[ord0];
+            };
+
+            DWORD_PTR choices = 0ull;
+
+            // exact placement rules:
+            // 2 cores  -> counter 2
+            // 3 cores  -> counter 3
+            // 4 cores  -> counter 3
+            // 5 cores  -> counter 2
+            // 6 cores  -> counter 3
+            if (n == 2) {
+                choices = pick_by_ordinal(1);
             }
-            if (!n) return 1ull;
-
-            // exclusions of cores that statistically have a lot of DPCs/interrupts, we could fetch them with the windows api too by DPC time and interrupt count
-            const DWORD middle_pos = n / 2;
-            DWORD_PTR choices = proc_mask;
-
-            if (n >= 1) choices &= ~(1ull << idxs[0]);         // first
-            if (n >= 2) choices &= ~(1ull << idxs[1]);         // second
-            if (n >= 1) choices &= ~(1ull << idxs[n - 1]);     // last
-
-            // exclude middle core (because it is where the trigger_thread runs) + avoid SMT siblings of that core
-            DWORD middle_logical = idxs[middle_pos];
-            DWORD middle_core_id = logical_to_core[middle_logical];
-            choices &= ~core_mask[middle_core_id];
-
-            // if exclusions leave nothing, fall back to the full mask
-            if (!choices) choices = proc_mask;
-
-            // random selection
-            DWORD pick[64]{}, m = 0;
-            for (DWORD i = 0; i < 64; ++i) {
-                if (choices & (1ull << i)) pick[m++] = i;
+            else if (n == 3 || n == 4) {
+                choices = pick_by_ordinal(2);
             }
-            if (!m) return 1ull;
+            else if (n == 5) {
+                choices = pick_by_ordinal(1);
+            }
+            else if (n == 6) {
+                choices = pick_by_ordinal(2);
+            }
+            else {
+                // > 6 cores:
+                // trigger in the middle available logical CPU
+                size_t trigger_pos0 = n / 2;
+                if (trigger_pos0 >= n) return 0ull;
 
-            // random so that the hypervisor doesn't know where the counter thread is
-            // this will affect latency if cache lines from trigger_thread and counter_thread are separated enough due to cores being too distant
-            // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
-            u64 seed = 0;
-            seed ^= static_cast<u64>(ct_seed);
-            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&current_process));
-            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&proc_mask)) << 1;
-            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&sys_mask)) << 2;
-            seed ^= seed >> 33;
-            seed *= 0xff51afd7ed558ccdULL;
-            seed ^= seed >> 33;
-            seed *= 0xc4ceb9fe1a85ec53ULL;
-            seed ^= seed >> 33;
-            std::seed_seq seq{ static_cast<u32>(seed), static_cast<u32>(seed >> 32), static_cast<u32>(seed ^ 0x9e3779b9u), ct_seed };
+                DWORD trigger_logical = idxs[trigger_pos0];
+                DWORD trigger_core_id = logical_to_core[trigger_logical];
 
-            // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
-            // we use our own compile-time seed that cannot be taken by examining PE/Linux binary properties and would need static/dynamic analysis
-            // this changes per build and per process session due to hardware ASLR
-            std::mt19937 gen(seq);
-            return 1ull << pick[std::uniform_int_distribution<u32>(0, m - 1)(gen)];
+                choices = proc_mask;
+
+                // random so that the hypervisor doesn't know where the counter thread is
+                // this will affect latency if cache lines from trigger_thread and counter_thread are separated enough due to cores being too distant
+                // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
+                choices &= ~trigger_mask;
+                if (trigger_pos0 >= 1) 
+                    choices &= ~(1ull << idxs[trigger_pos0 - 1]); // adjacent left
+                if (trigger_pos0 + 1 < n) 
+                    choices &= ~(1ull << idxs[trigger_pos0 + 1]); // adjacent right
+                choices &= ~(1ull << idxs[0]);       // first core
+                choices &= ~(1ull << idxs[n - 1]);   // last core
+                choices &= ~core_mask[trigger_core_id]; // avoid SMT siblings of the trigger core
+
+                // if exclusions leave nothing, fail closed
+                if (!choices) return 0ull;
+
+                DWORD pick[64]{}, m = 0;
+                for (DWORD i = 0; i < 64; ++i) {
+                    if (choices & (1ull << i)) 
+                        pick[m++] = i;
+                }
+                if (!m) return 0ull;
+
+                // random so that the hypervisor doesn't know where the counter thread is
+                // this will affect latency if cache lines from trigger_thread and counter_thread are separated enough due to cores being too distant
+                // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
+                u64 seed = 0;
+                seed ^= static_cast<u64>(ct_seed);
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&current_process));
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&proc_mask)) << 1;
+                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&sys_mask)) << 2;
+                seed ^= seed >> 33;
+                seed *= 0xff51afd7ed558ccdULL;
+                seed ^= seed >> 33;
+                seed *= 0xc4ceb9fe1a85ec53ULL;
+                seed ^= seed >> 33;
+                std::seed_seq seq { 
+                    static_cast<u32>(seed), static_cast<u32>(seed >> 32), static_cast<u32>(seed ^ 0x9e3779b9u), ct_seed 
+                };
+
+                // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
+                // we use our own compile-time seed that cannot be taken by examining PE/Linux binary properties and would need static/dynamic analysis
+                // this changes per build and per process session due to hardware ASLR
+                std::mt19937 gen(seq);
+                return 1ull << pick[std::uniform_int_distribution<u32>(0, m - 1)(gen)];
+            }
+
+            return choices;
         };
+
+        const DWORD_PTR trigger_affinity = get_trigger_mask();
+        if (!trigger_affinity) {
+            return false;
+        }
+
+        const DWORD_PTR target_affinity = get_counter_mask(trigger_affinity);
+        if (!target_affinity) {
+            return false;
+        }
 
         // we dont use cpu::cpuid on purpose
         auto trigger_vmexit = []() {
@@ -5698,8 +5776,6 @@ public:
             __cpuidex(dummy, 0x0, 0); // leaf 0 because it's the most stable one for making ratio checks, even if at first glance it may be abusable because it's the fastest one
         #endif
         };
-
-        const DWORD_PTR target_affinity = get_counter_mask();
 
         // our software clock, it will count how many cycles a vmexit takes
         auto counter_thread = [&]() {
@@ -6129,7 +6205,12 @@ public:
         const char* chassis = "/sys/devices/virtual/dmi/id/chassis_type";
 
         if (util::exists(chassis)) {
-            return (stoi(util::read_file(chassis)) == 1);
+            try {
+                return (std::stoi(util::read_file(chassis)) == 1);
+            }
+            catch (...) {
+                return false;
+            }
         }
 
         debug("CTYPE: ", "file doesn't exist");
@@ -8420,14 +8501,23 @@ public:
         // helper to detect QEMU instances based on default hard drive serial patterns
         // QEMU drives often start with "QM000" followed by digits
         auto is_qemu_serial = [](const char* str) noexcept -> bool {
-            if ((str[0] & 0xDF) != 'Q') { 
-                return false; 
+            if (!str) {
+                return false;
             }
-            
-            if ((str[1] & 0xDF) != 'M') { 
-                return false; 
+            for (int i = 0; i < 6; ++i) {
+                if (str[i] == '\0') {
+                    return false;
+                }
             }
-            
+
+            if ((str[0] & 0xDF) != 'Q') {
+                return false;
+            }
+
+            if ((str[1] & 0xDF) != 'M') {
+                return false;
+            }
+
             // we check byte-by-byte to be safe regarding alignment,
             // though a 32-bit integer check (0x30303030) could be used if alignment is guaranteed
             // we also essentially check for null termination safety here because '\0' != '0'
@@ -13435,6 +13525,11 @@ public:
 
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
+            for (size_t i = 0; i < MAX_BRANDS; ++i) {
+                brand_scoreboard.at(i).score = 0;
+            }
+            detected_count_num.store(0);
+
             u16 points = 0;
 
             u16 threshold_points = threshold_score;
@@ -13464,6 +13559,10 @@ public:
 
                     if (data.result) {
                         points += data.points;
+                        detected_count_num++; 
+                        if (data.brand_name != brand_enum::NULL_BRAND) {
+                            core::add(data.brand_name, data.points);
+                        }
                     }
 
                     continue;
