@@ -211,9 +211,9 @@ int main(int argc, char* argv[]) {
 #endif
 
     const std::vector<std::string> args(argv + 1, argv + argc);
-    const u32 arg_count = static_cast<u32>(argc - 1);
+    const u32 argument_count = static_cast<u32>(argc - 1);
 
-    if (arg_count == 0) {
+    if (argument_count == 0) {
         general(false, false, false);
         return 0;
     }
