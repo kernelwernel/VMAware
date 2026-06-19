@@ -5515,12 +5515,22 @@ public:
     [[nodiscard]] static bool timer() {
     #if (x86 && WINDOWS)
         // The timing attack uses our own software-based clock, meaning a hypervisor can't hide time by offsetting TSC or controlling any other timer
-        double threshold = 2.5;
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-        if (util::hyper_x() != HYPERV_UNKNOWN) threshold = 35.0;
+
+        // calculation of minimum threshold
+        const bool is_intel = cpu::is_intel();
+        double threshold = 2.5;
+        if (util::hyper_x() != HYPERV_UNKNOWN) {
+            if (is_intel) { // intel is typically faster on nested
+                threshold = 20.0;
+            }
+            else {
+                threshold = 35.0;
+            }
+        }
 
         // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         #if (MSVC)
@@ -5958,8 +5968,6 @@ public:
 
                 return result;
             };
-
-            const bool is_intel = cpu::is_intel();
 
             if (is_intel) {
                 // SERIALIZE (CPUID leaf 7, subleaf 0, EDX bit 14) requires Ice Lake or newer.
