@@ -179,31 +179,40 @@ int main(int argc, char* argv[]) {
     }
 
     if (rich_requested) {
-        char exePath[MAX_PATH];
-        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        char env_buf[4];
+        bool already_spawned = GetEnvironmentVariableA("VMAWARE_RICH_SPAWN", env_buf, sizeof(env_buf)) > 0;
 
-        char currentDir[MAX_PATH];
-        GetCurrentDirectoryA(MAX_PATH, currentDir);
+        if (!already_spawned) {
+            char exePath[MAX_PATH];
+            GetModuleFileNameA(NULL, exePath, MAX_PATH);
 
-        std::string args = "\"" + std::string(exePath) + "\"";
-        for (int i = 1; i < argc; ++i) {
-            args += " \"";
-            args += argv[i];
-            args += "\"";
+            char currentDir[MAX_PATH];
+            GetCurrentDirectoryA(MAX_PATH, currentDir);
+
+            std::string args = "\"" + std::string(exePath) + "\"";
+            for (int i = 1; i < argc; ++i) {
+                args += " \"";
+                args += argv[i];
+                args += "\"";
+            }
+
+            SHELLEXECUTEINFOA sei = { sizeof(sei) };
+            sei.fMask = 0;
+            sei.hwnd = NULL;
+            sei.lpVerb = "open";
+            sei.lpFile = "conhost.exe";
+            sei.lpParameters = args.c_str();
+            sei.lpDirectory = currentDir;
+            sei.nShow = SW_SHOWNORMAL;
+
+            SetEnvironmentVariableA("VMAWARE_RICH_SPAWN", "1");
+
+            if (!IsDebuggerPresent() && ShellExecuteExA(&sei)) {
+                ExitProcess(0);
+            }
+
+            SetEnvironmentVariableA("VMAWARE_RICH_SPAWN", nullptr);
         }
-
-        SHELLEXECUTEINFOA sei = { sizeof(sei) };
-        sei.fMask = 0;
-        sei.hwnd = NULL;
-        sei.lpVerb = "open";
-        sei.lpFile = "conhost.exe";
-        sei.lpParameters = args.c_str();
-        sei.lpDirectory = currentDir;
-        sei.nShow = SW_SHOWNORMAL;
-
-        if (!IsDebuggerPresent() && ShellExecuteExA(&sei)) {
-            ExitProcess(0);
-        }        
     }
 
     win_ansi_enabler_t ansi_enabler;
