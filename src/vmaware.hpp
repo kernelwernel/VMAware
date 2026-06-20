@@ -12483,41 +12483,66 @@ public:
             return nullptr;
         };
 
-        const HDEVINFO devs = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
-        if (devs == INVALID_HANDLE_VALUE) return false;
+        const HDEVINFO devs =
+            SetupDiGetClassDevsW(nullptr, nullptr, nullptr,
+                DIGCF_PRESENT | DIGCF_ALLCLASSES);
+
+        if (devs == INVALID_HANDLE_VALUE)
+            return false;
 
         SP_DEVINFO_DATA dev_info{};
         dev_info.cbSize = sizeof(SP_DEVINFO_DATA);
 
-        DWORD buf_bytes = 4096;
-        BYTE* buffer = static_cast<BYTE*>(malloc(buf_bytes));
+        DWORD alloc_size = 4096 + 4;
+        BYTE* buffer = static_cast<BYTE*>(malloc(alloc_size));
+
         if (!buffer) {
             SetupDiDestroyDeviceInfoList(devs);
             return false;
         }
 
         bool found = false;
+
         for (DWORD idx = 0; SetupDiEnumDeviceInfo(devs, idx, &dev_info); ++idx) {
             DWORD property_type = 0;
             DWORD required = 0;
-            if (!SetupDiGetDeviceRegistryPropertyW(devs, &dev_info, SPDRP_HARDWAREID,
-                &property_type, buffer, buf_bytes, nullptr))
+
+            if (!SetupDiGetDeviceRegistryPropertyW(
+                devs,
+                &dev_info,
+                SPDRP_HARDWAREID,
+                &property_type,
+                buffer,
+                alloc_size > 4 ? alloc_size - 4 : 0,
+                &required))
             {
                 const DWORD err = GetLastError();
+
                 if (err == ERROR_INSUFFICIENT_BUFFER) {
-                    SetupDiGetDeviceRegistryPropertyW(devs, &dev_info, SPDRP_HARDWAREID,
-                        &property_type, nullptr, 0, &required);
-                    if (required > buf_bytes) {
-                        BYTE* new_buffer = static_cast<BYTE*>(realloc(buffer, required + 4));
-                        if (!new_buffer) { 
-                            found = false; 
-                            break; 
-                        } 
+                    const DWORD needed_size = required + 4;
+
+                    if (needed_size > alloc_size) {
+                        BYTE* new_buffer =
+                            static_cast<BYTE*>(realloc(buffer, needed_size));
+
+                        if (!new_buffer) {
+                            found = false;
+                            break;
+                        }
+
                         buffer = new_buffer;
-                        buf_bytes = required;
+                        alloc_size = needed_size;
                     }
-                    if (!SetupDiGetDeviceRegistryPropertyW(devs, &dev_info, SPDRP_HARDWAREID,
-                        &property_type, buffer, buf_bytes, nullptr)) {
+
+                    if (!SetupDiGetDeviceRegistryPropertyW(
+                        devs,
+                        &dev_info,
+                        SPDRP_HARDWAREID,
+                        &property_type,
+                        buffer,
+                        alloc_size > 4 ? alloc_size - 4 : 0,
+                        &required))
+                    {
                         continue;
                     }
                 }
@@ -12526,30 +12551,35 @@ public:
                 }
             }
 
-            if (property_type != REG_MULTI_SZ) continue;
+            if (property_type != REG_MULTI_SZ)
+                continue;
 
-            if (required <= buf_bytes) {
-                buffer[required] = 0;
+            if (required + 4 <= alloc_size) {
+                buffer[required + 0] = 0;
                 buffer[required + 1] = 0;
                 buffer[required + 2] = 0;
                 buffer[required + 3] = 0;
             }
 
             wchar_t* cur = reinterpret_cast<wchar_t*>(buffer);
+
             while (*cur) {
                 if (wcsstr_ci_ascii(cur)) {
                     found = true;
                     break;
                 }
+
                 cur += wcslen(cur) + 1;
             }
-            if (found) break;
+
+            if (found)
+                break;
         }
 
-		free(buffer);
-		SetupDiDestroyDeviceInfoList(devs);
-		
-		return !found;
+        free(buffer);
+        SetupDiDestroyDeviceInfoList(devs);
+
+        return !found;
     #endif  
     }
 
@@ -13596,11 +13626,6 @@ public:
 
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
-            for (size_t i = 0; i < MAX_BRANDS; ++i) {
-                brand_scoreboard.at(i).score = 0;
-            }
-            detected_count_num.store(0);
-
             u16 points = 0;
 
             u16 threshold_points = threshold_score;
@@ -13630,10 +13655,6 @@ public:
 
                     if (data.result) {
                         points += data.points;
-                        detected_count_num++; 
-                        if (data.brand_name != brand_enum::NULL_BRAND) {
-                            core::add(data.brand_name, data.points);
-                        }
                     }
 
                     continue;
