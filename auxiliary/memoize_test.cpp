@@ -42,24 +42,31 @@ static bool scoreboard_non_decreasing(
 }
 
 int main() {
-    std::cout << "=== Mixed-flag: detected_count_num contamination ===\n";
+    // Phase 1: Mixed-flag behavior (MUST run first, cold caches)
+    //
+    // run_all() resets detected_count_num and brand_scoreboard to zero at the
+    // start of every call, then re-accumulates from the technique cache for
+    // only the enabled techniques. This means values are per-call scoped, not
+    // globally accumulated. These tests verify that invariant.
+
+    std::cout << "=== Mixed-flag: detected_count_num per-call scoping ===\n";
     {
         VM::detected_count(VM::HYPERVISOR_BIT);
-        const auto num_after_single = VM::detected_count_num.load();
+        const auto num_single = VM::detected_count_num.load();
 
         VM::detected_count();
-        const auto num_after_full = VM::detected_count_num.load();
+        const auto num_full = VM::detected_count_num.load();
 
         VM::detected_count(VM::HYPERVISOR_BIT);
-        const auto num_after_single_again = VM::detected_count_num.load();
+        const auto num_single_again = VM::detected_count_num.load();
 
-        check(num_after_full >= num_after_single,
-              "detected_count_num non-decreasing: full run >= single-technique run");
-        check(num_after_single_again == num_after_full,
-              "detected_count_num from restricted call reflects full accumulated count (contamination)");
+        check(num_full >= num_single,
+              "detected_count_num for full run >= single-technique run");
+        check(num_single_again == num_single,
+              "detected_count_num recalculated per-call: restricted call matches first restricted call");
     }
 
-    std::cout << "\n=== Mixed-flag: brand_scoreboard contamination ===\n";
+    std::cout << "\n=== Mixed-flag: brand_scoreboard per-call scoping ===\n";
     {
         VM::brand(VM::HYPERVISOR_BIT);
         const auto scoreboard_after_single_brand = VM::core::brand_scoreboard;
@@ -71,10 +78,15 @@ int main() {
         const auto scoreboard_after_single_brand_again = VM::core::brand_scoreboard;
 
         check(scoreboard_non_decreasing(scoreboard_after_single_brand, scoreboard_after_full_detect),
-              "brand_scoreboard scores only increase across different arg calls (monotonic)");
+              "brand_scoreboard scores >= after full run vs single-technique run");
         check(scoreboards_equal(scoreboard_after_full_detect, scoreboard_after_single_brand_again),
               "brand_scoreboard unchanged when brand() returns from single_brand cache");
     }
+
+    // Phase 2: Same-flag stability tests (caches fully warmed from Phase 1)
+    //
+    // run_all() re-accumulates all enabled techniques from cache on every call,
+    // so repeated calls with the same flags must produce identical results.
 
     std::cout << "\n=== VM::detected_count() consistency ===\n";
     {
