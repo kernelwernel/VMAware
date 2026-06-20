@@ -13626,11 +13626,6 @@ public:
 
         // run every VM detection mechanism in the technique table
         static u16 run_all(const flagset& flags, const bool shortcut = false) {
-            for (size_t i = 0; i < MAX_BRANDS; ++i) {
-                brand_scoreboard.at(i).score = 0;
-            }
-            detected_count_num.store(0);
-
             u16 points = 0;
 
             u16 threshold_points = threshold_score;
@@ -13660,10 +13655,6 @@ public:
 
                     if (data.result) {
                         points += data.points;
-                        detected_count_num++; 
-                        if (data.brand_name != brand_enum::NULL_BRAND) {
-                            core::add(data.brand_name, data.points);
-                        }
                     }
 
                     continue;
