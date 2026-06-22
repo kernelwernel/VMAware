@@ -8394,16 +8394,21 @@ public:
             void* functions[1] = { nullptr };
             util::get_function_address(ntdll, function_names, functions, 1);
 
-            using NtQuerySysInfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
-            NtQuerySysInfo_t nt_query = reinterpret_cast<NtQuerySysInfo_t>(functions[0]);
+            using nt_query_sysinfo_t = NTSTATUS(__stdcall*)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+            nt_query_sysinfo_t nt_query = reinterpret_cast<nt_query_sysinfo_t>(functions[0]);
             if (!nt_query)
                 return false;
+
+            // parse header to locate the bitmap
+            struct boot_logo_info { ULONG flags, bitmap_offset; };
 
             // determine required buffer size
             const SYSTEM_INFORMATION_CLASS sys_boot_info = static_cast<SYSTEM_INFORMATION_CLASS>(140);
             ULONG needed = 0;
             NTSTATUS st = nt_query(sys_boot_info, nullptr, 0, &needed);
-            if (st != static_cast<NTSTATUS>(0xC0000023) && st != static_cast<NTSTATUS>(0x80000005) && st != static_cast<NTSTATUS>(0xC0000004))
+            if (st != static_cast<NTSTATUS>(0xC0000023) &&
+                st != static_cast<NTSTATUS>(0x80000005) &&
+                st != static_cast<NTSTATUS>(0xC0000004))
                 return false;
 
             std::vector<u8> buffer(needed);
@@ -8416,10 +8421,10 @@ public:
             if (needed < sizeof(boot_logo_info))
                 return false;
 
-            // parse header to locate the bitmap
-            struct boot_logo_info { ULONG flags, bitmap_offset; };
-            const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
-            if (info->bitmap_offset >= needed) return false;
+            const auto* info = reinterpret_cast<const boot_logo_info*>(buffer.data());
+            if (info->bitmap_offset >= needed)
+                return false;
+
             const u8* bmp = buffer.data() + info->bitmap_offset;
             const size_t size = static_cast<size_t>(needed) - info->bitmap_offset;
         #else
