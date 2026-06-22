@@ -12366,165 +12366,110 @@ public:
             return false;
         }
 
-        // Surface Pro models typically do not have PIT, some devices might have it but not expose it due to firmware bugs (i.e. Lenovo 83AG)
-        {
-            const char* manufacturer = nullptr;
-            const char* model = nullptr;
-            if (util::get_manufacturer_model(&manufacturer, &model)) {
-                auto ci_contains = [](const char* hay, const char* needle) noexcept -> bool {
-                    if (!hay || !needle || !*hay || !*needle) return false;
+        // Surface Pro models typically do not have PIT, some devices might have it but not expose it due to firmware bugs (i.e. Lenovo 83AG)       
+        const char* manufacturer = nullptr;
+        const char* model = nullptr;
 
-                    const unsigned char* h =
-                        reinterpret_cast<const unsigned char*>(hay);
-                    const unsigned char* n =
-                        reinterpret_cast<const unsigned char*>(needle);
+        if (util::get_manufacturer_model(&manufacturer, &model)) {
+            auto ci_contains = [](const char* hay, const char* needle) noexcept -> bool {
+                if (!hay || !needle || !*hay || !*needle) return false;
 
-                    for (; *h; ++h) {
-                        size_t i = 0;
-                        for (;; ++i) {
-                            unsigned char hc = h[i];
-                            unsigned char nc = n[i];
+                for (const char* h = hay; *h; ++h) {
+                    const char* a = h;
+                    const char* b = needle;
 
-                            if (!nc) return true; 
-                            if (!hc) break;
+                    while (*a && *b) {
+                        unsigned char ca = static_cast<unsigned char>(*a);
+                        unsigned char cb = static_cast<unsigned char>(*b);
 
-                            if (hc >= 'A' && hc <= 'Z') hc += 32;
-                            if (nc >= 'A' && nc <= 'Z') nc += 32;
+                        if (ca >= 'A' && ca <= 'Z') ca += 32;
+                        if (cb >= 'A' && cb <= 'Z') cb += 32;
 
-                            if (hc != nc) break;
-                        }
+                        if (ca != cb) break;
+                        ++a;
+                        ++b;
                     }
-                    return false;
-                };
 
-                const bool model_has_surface = ci_contains(model, "surface");
-                const bool model_has_pro = ci_contains(model, "pro");
-                const bool man_is_microsoft = ci_contains(manufacturer, "microsoft");
-
-                if (model_has_surface && (model_has_pro || man_is_microsoft)) {
-                    return false;
+                    if (!*b)
+                        return true;
                 }
+
+                return false;
+            };
+
+            const bool is_surface_pro = ci_contains(model, "surface pro");
+            const bool is_microsoft = ci_contains(manufacturer, "microsoft");
+
+            if (is_surface_pro && is_microsoft) {
+                return false;
             }
         }
-
+        
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
         // The HPET (PNP0103) timer presence check was removed, more info at: https://github.com/kernelwernel/VMAware/pull/616
         // Here, we check for the PIT/AT timer (PC-class System Timer)
-        constexpr wchar_t pattern[] = L"pnp0100"; 
-        constexpr size_t patLen = (sizeof(pattern) / sizeof(wchar_t)) - 1;
-
-        auto wcsstr_ci_ascii = [&](const wchar_t* hay) noexcept -> const wchar_t* {
-            if (!hay) return nullptr;
-
-            for (; *hay; ++hay) {
-                wchar_t h = *hay;
-                if (h >= L'A' && h <= L'Z') h += 32;
-
-                if (h != pattern[0]) continue;
-
-                size_t i = 1;
-                for (; i < patLen; ++i) {
-                    wchar_t next_h = hay[i];
-
-                    if (next_h == L'\0') return nullptr;
-
-                    if (next_h >= L'A' && next_h <= L'Z') next_h += 32;
-
-                    if (next_h != pattern[i]) break;
-                }
-
-                if (i == patLen) return hay; 
-            }
-            return nullptr;
-        };
-
-        const HDEVINFO devs =
-            SetupDiGetClassDevsW(nullptr, nullptr, nullptr,
-                DIGCF_PRESENT | DIGCF_ALLCLASSES);
+        const HDEVINFO devs = SetupDiGetClassDevsW(
+            nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
 
         if (devs == INVALID_HANDLE_VALUE)
             return false;
 
         SP_DEVINFO_DATA dev_info{};
-        dev_info.cbSize = sizeof(SP_DEVINFO_DATA);
+        dev_info.cbSize = sizeof(dev_info);
 
-        DWORD alloc_size = 4096 + 4;
-        BYTE* buffer = static_cast<BYTE*>(malloc(alloc_size));
-
-        if (!buffer) {
-            SetupDiDestroyDeviceInfoList(devs);
-            return false;
-        }
-
+        BYTE* buffer = nullptr;
+        DWORD buffer_size = 0;
         bool found = false;
 
-        for (DWORD idx = 0; SetupDiEnumDeviceInfo(devs, idx, &dev_info); ++idx) {
-            DWORD property_type = 0;
-            DWORD required = 0;
+        for (DWORD i = 0; SetupDiEnumDeviceInfo(devs, i, &dev_info); ++i) {
+            DWORD type = 0;
+            DWORD needed = 0;
 
-            if (!SetupDiGetDeviceRegistryPropertyW(
-                devs,
-                &dev_info,
-                SPDRP_HARDWAREID,
-                &property_type,
-                buffer,
-                alloc_size > 4 ? alloc_size - 4 : 0,
-                &required))
+            if (SetupDiGetDeviceRegistryPropertyW(
+                devs, &dev_info, SPDRP_HARDWAREID,
+                &type, nullptr, 0, &needed))
             {
-                const DWORD err = GetLastError();
-
-                if (err == ERROR_INSUFFICIENT_BUFFER) {
-                    const DWORD needed_size = required + 4;
-
-                    if (needed_size > alloc_size) {
-                        BYTE* new_buffer =
-                            static_cast<BYTE*>(realloc(buffer, needed_size));
-
-                        if (!new_buffer) {
-                            found = false;
-                            break;
-                        }
-
-                        buffer = new_buffer;
-                        alloc_size = needed_size;
-                    }
-
-                    if (!SetupDiGetDeviceRegistryPropertyW(
-                        devs,
-                        &dev_info,
-                        SPDRP_HARDWAREID,
-                        &property_type,
-                        buffer,
-                        alloc_size > 4 ? alloc_size - 4 : 0,
-                        &required))
-                    {
-                        continue;
-                    }
-                }
-                else {
-                    continue;
-                }
+                continue;
             }
 
-            if (property_type != REG_MULTI_SZ)
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed == 0)
                 continue;
 
-            if (required + 4 <= alloc_size) {
-                buffer[required + 0] = 0;
-                buffer[required + 1] = 0;
-                buffer[required + 2] = 0;
-                buffer[required + 3] = 0;
+            if (needed > buffer_size) {
+                BYTE* new_buffer = static_cast<BYTE*>(
+                    realloc(buffer, needed + sizeof(wchar_t)));
+
+                if (!new_buffer) {
+                    free(buffer);
+                    SetupDiDestroyDeviceInfoList(devs);
+                    return false;
+                }
+
+                buffer = new_buffer;
+                buffer_size = needed + sizeof(wchar_t);
             }
 
-            wchar_t* cur = reinterpret_cast<wchar_t*>(buffer);
+            if (!SetupDiGetDeviceRegistryPropertyW(
+                devs, &dev_info, SPDRP_HARDWAREID,
+                &type, buffer, buffer_size, &needed))
+            {
+                continue;
+            }
 
-            while (*cur) {
-                if (wcsstr_ci_ascii(cur)) {
+            if (type != REG_MULTI_SZ)
+                continue;
+
+            reinterpret_cast<wchar_t*>(buffer)[needed / sizeof(wchar_t)] = L'\0';
+
+            for (const wchar_t* s = reinterpret_cast<const wchar_t*>(buffer); *s;
+                s += wcslen(s) + 1)
+            {
+                if (_wcsicmp(s, L"ACPI\\PNP0100") == 0 ||
+                    _wcsicmp(s, L"PNP0100") == 0)
+                {
                     found = true;
                     break;
                 }
-
-                cur += wcslen(cur) + 1;
             }
 
             if (found)
@@ -12533,7 +12478,6 @@ public:
 
         free(buffer);
         SetupDiDestroyDeviceInfoList(devs);
-
         return !found;
     #endif  
     }
