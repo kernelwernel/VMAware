@@ -982,14 +982,14 @@ public:
                 return "Unknown";
             }
 
-            alignas(16) char buffer[49]{};
-            u32* regs = reinterpret_cast<u32*>(buffer);
+            u32 regs[12] = { 0 };
 
-            // unrolled calls to fill buffer directly
             cpu::cpuid(regs[0], regs[1], regs[2], regs[3], cpu::leaf::brand1);
             cpu::cpuid(regs[4], regs[5], regs[6], regs[7], cpu::leaf::brand2);
             cpu::cpuid(regs[8], regs[9], regs[10], regs[11], cpu::leaf::brand3);
 
+            static char buffer[49];
+            memcpy(buffer, regs, sizeof(regs));
             buffer[48] = '\0';
 
             // do NOT touch trailing spaces for the AMD_THREAD_MISMATCH technique
@@ -1010,31 +1010,21 @@ public:
 
 
         [[nodiscard]] static std::string cpu_manufacturer(const u32 leaf_id) {
-            alignas(16) char buffer[13]{};
-            u32* regs = reinterpret_cast<u32*>(buffer);
-
-            u32 eax = 0;
-            u32 ebx = 0;
-            u32 ecx = 0;
-            u32 edx = 0;
-
+            u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
             cpu::cpuid(eax, ebx, ecx, edx, leaf_id);
 
-            if (ebx == 0 && ecx == 0 && edx == 0) {
-                return "";
-            }
+            if (ebx == 0 && ecx == 0 && edx == 0) return "";
 
+            u32 regs[3] = { 0 };
             if (leaf_id >= 0x40000000) {
-                regs[0] = ebx;
-                regs[1] = ecx;
-                regs[2] = edx;
+                regs[0] = ebx; regs[1] = ecx; regs[2] = edx;
             }
             else {
-                regs[0] = ebx;
-                regs[1] = edx;
-                regs[2] = ecx;
+                regs[0] = ebx; regs[1] = edx; regs[2] = ecx;
             }
 
+            char buffer[13];
+            memcpy(buffer, regs, sizeof(regs));
             buffer[12] = '\0';
             return { buffer };
         }
@@ -3153,38 +3143,6 @@ public:
             i++;
         }
         dest[i] = '\0';
-    }
-
-    static void str_cat(char* dest, const char* src, size_t max_len) {
-        size_t i = 0;
-        while (dest[i] != '\0') {
-            i++;
-        }
-
-        size_t j = 0;
-        while (src[j] != '\0' && i < max_len - 1) {
-            dest[i++] = src[j++];
-        }
-        dest[i] = '\0';
-    }
-
-    static bool str_eq(const char* a, const char* b) {
-        if (a == b) {
-            return true;
-        }
-
-        if (!a || !b) {
-            return false;
-        }
-
-        while (*a && *b) {
-            if (*a != *b) {
-                return false;
-            }
-
-            a++; b++;
-        }
-        return *a == *b;
     }
 
     // memoization
@@ -6391,8 +6349,8 @@ public:
         const struct ifreq* end = it + (ifc.ifc_len / sizeof(struct ifreq));
 
         for (; it != end; ++it) {
-            std::size_t const name_len = std::min<std::size_t>(sizeof(ifr.ifr_name) - 1, strlen(it->ifr_name));
-            std::memcpy(ifr.ifr_name, it->ifr_name, name_len);
+            std::size_t const name_len = std::min<std::size_t>(sizeof(ifr.ifr_name) - 1, strnlen(it->ifr_name, sizeof(it->ifr_name)));
+            memcpy(ifr.ifr_name, it->ifr_name, name_len);
             *(ifr.ifr_name + name_len) = '\0';
 
             if (ioctl(sockGuard.get(), SIOCGIFFLAGS, &ifr) != 0) {
@@ -6408,7 +6366,7 @@ public:
         }
 
         if (success) {
-            std::memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
+            memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
         }
         else {
             debug("MAC: ", "not successful");
@@ -8455,6 +8413,9 @@ public:
             if (!NT_SUCCESS(st))
                 return false;
 
+            if (needed < sizeof(boot_logo_info))
+                return false;
+
             // parse header to locate the bitmap
             struct boot_logo_info { ULONG flags, bitmap_offset; };
             const auto* info = reinterpret_cast<boot_logo_info*>(buffer.data());
@@ -8571,27 +8532,14 @@ public:
 
         // helper to detect QEMU instances based on default hard drive serial patterns
         // QEMU drives often start with "QM000" followed by digits
-        auto is_qemu_serial = [](const char* str) noexcept -> bool {
-            if (!str) {
-                return false;
-            }
-            for (int i = 0; i < 6; ++i) {
-                if (str[i] == '\0') {
-                    return false;
-                }
-            }
-
-            if ((str[0] & 0xDF) != 'Q') {
+        auto is_qemu_serial = [](const char* str, size_t len) noexcept -> bool {
+            if (!str || len < 6) {
                 return false;
             }
 
-            if ((str[1] & 0xDF) != 'M') {
-                return false;
-            }
+            if ((str[0] & 0xDF) != 'Q') return false;
+            if ((str[1] & 0xDF) != 'M') return false;
 
-            // we check byte-by-byte to be safe regarding alignment,
-            // though a 32-bit integer check (0x30303030) could be used if alignment is guaranteed
-            // we also essentially check for null termination safety here because '\0' != '0'
             return str[2] == '0' && str[3] == '0' && str[4] == '0' && str[5] == '0';
         };
         
@@ -8792,7 +8740,7 @@ public:
                 debug("DISK_SERIAL: ", serial);
 
                 // Check the retrieved serial number against known VM artifacts
-                if (is_qemu_serial(serial) || is_vbox_serial(serial, serialLen)) {
+                if (is_qemu_serial(serial, serialLen) || is_vbox_serial(serial, serialLen)) {
                     if (allocated_buffer) {
                         PVOID free_base = reinterpret_cast<PVOID>(allocated_buffer);
                         SIZE_T free_size = 0;
@@ -8859,7 +8807,7 @@ public:
                 }
 
                 debug("DISK_SERIAL: ", (const char*)serial);
-                if (is_qemu_serial(serial) || is_vbox_serial(serial, rsize)) {
+                if (is_qemu_serial(serial, static_cast<size_t>(rsize)) || is_vbox_serial(serial, static_cast<size_t>(rsize))) {
                     result = true;
                 }
             }
@@ -8913,7 +8861,7 @@ public:
      */
     [[nodiscard]] static bool hwmodel() {
         
-        //hw.model strings are short (like for example MacBookPro16,1), 128 bytes is plenty
+        // hw.model strings are short (like for example MacBookPro16,1), 128 bytes is plenty
         char buffer[128] = { 0 };
         size_t size = sizeof(buffer);
 
@@ -8923,6 +8871,8 @@ public:
             debug("HWMODEL: ", "failed to read hw.model");
             return false;
         }
+
+        buffer[127] = '\0';
 
         // sysctlbyname returns the raw value (usually without a trailing newline),
         // so no trimming is required
@@ -13487,7 +13437,7 @@ public:
             }
             else {
                 debug("SVM_EXCEPTIONS: Detected SVM hypervisor hiding CPU capabilities");
-                core::add(brand_enum::NULL_BRAND, 150);
+                return core::add(brand_enum::NULL_BRAND, 150);
             }
 
             return true;

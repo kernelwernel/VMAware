@@ -246,6 +246,7 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 
 </details>
 
+
 <details>
 <summary>What about using this for malware?</summary>
 <br>
@@ -253,6 +254,26 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 > This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyways and nothing is obfuscated to begin with. 
 >
 > We do not intentionally develop the library to try to stop or avoid EDR flags, such as using direct/indirect syscalling, inline hooking detection, and any other kind of malware evasion technique not related to hypervisor detection.
+
+</details>
+
+
+<details>
+<summary>Is a kernel-mode component planned to be developed?</summary>
+<br>
+
+> No. A kernel-component would require serious auditing and a digitally signed driver. It would also be a dead end for VM bypassing ( so it's not fun >:( )
+>
+> In summary, we can still detect your ass while being completely user-mode.
+
+</details>
+
+
+<details>
+<summary>Is it thread-safe?</summary>
+<br>
+
+> No. Don't call our library with multiple threads simultaneously, we don't take more than 1s to run.
 
 </details>
 
