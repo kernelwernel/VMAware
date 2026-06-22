@@ -14672,8 +14672,8 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
         // START OF TECHNIQUE TABLE
         #if (WINDOWS)
             {VM::TRAP, {100, VM::trap}},
-            {VM::KVM_INTERCEPTION, {100, VM::kvm_interception}},
-            {VM::SVM_EXCEPTIONS, {100, VM::svm_exceptions}},
+            {VM::KVM_INTERCEPTION, {150, VM::kvm_interception}},
+            {VM::SVM_EXCEPTIONS, {150, VM::svm_exceptions}},
             {VM::INTERRUPT_SHADOW, {100, VM::interrupt_shadow}},
             {VM::EIP_OVERFLOW, {100, VM::eip_overflow}},
             {VM::HYPERVISOR_HOOK, {100, VM::hypervisor_hook}},
