@@ -3374,24 +3374,29 @@ public:
 #if (WINDOWS)
     // timer helper functionalities
     struct timer {
-        #define VMAWARE_STR2(x) #x
-        #define VMAWARE_STR(x) VMAWARE_STR2(x)
+    #if (x86_64)
+        using timer_tick_t = u64;
+    #else
+        using timer_tick_t = u32;
+    #endif
 
-        // prevent false sharing when triggering hypervisor exits with the intentional data race condition
         #if (MSVC)
             #pragma warning(push)
             #pragma warning(disable: 4324) 
         #endif
+        // align to prevent false sharing when triggering hypervisor exits with the intentional data race condition
         struct alignas(64) cache_state {
-            alignas(64) volatile u64 counter { 0 };
-            alignas(64) std::atomic<bool> start_test{ false };
-            alignas(64) std::atomic<bool> test_done{ false };
+            alignas(64) volatile timer_tick_t counter { 0 };
+            alignas(64) std::atomic<bool> start_test { false };
+            alignas(64) std::atomic<bool> test_done  { false };
         };
         #if (MSVC)
             #pragma warning(pop)
         #endif
 
-        static u32 get_ct_seed() {
+        #define VMAWARE_STR2(x) #x
+        #define VMAWARE_STR(x) VMAWARE_STR2(x)
+        [[nodiscard]] static u32 get_ct_seed() {
             constexpr char s[] = __DATE__ " " __TIME__ " " __FILE__ " " VMAWARE_STR(__LINE__);
             u32 h = 2166136261u;
             for (char c : s) {
@@ -3402,8 +3407,28 @@ public:
             return h;
         }
 
-        // middle available logical CPU
-        static DWORD_PTR get_trigger_mask() {
+        /*
+            Golden Rules (must happen ALWAYS; if they don't happen the check should be aborted):
+            1. The check needs AT LEAST two different cores, so if one single core is detected, returns
+            2. The counter thread should always be in the middle available logical CPU when there's more than 2 cores, and in the core 2 (1-indexed) when there's 2 cores
+
+            Silver Rules (in order of priority):
+            1. The trigger and the counter thread must not be in the same physical core (avoid SMT siblings) WHENEVER POSSIBLE
+            2. The trigger and the counter thread should be within the same NUMA node or AMD CCD to minimize baseline latency WHENEVER POSSIBLE
+            3. The counter and trigger thread should not be in the first or last logical CPU WHENEVER POSSIBLE
+            4. If after reaching here, there are multiple valid candidates (core indexes), then randomize it to avoid hypervisors from predicting where the trigger thread is
+
+            Example: Imagine we have a CPU with 2 cores and 4 threads (with SMT enabled), then:
+            1. We process golden rules first:
+            - CPU has more than 1 core -> OK
+            - Counter thread is pinned to core 2
+
+            2. We process the silver rules, in order:
+            - Counter and trigger thread must not be in the same physical core -> Trigger thread is pinned to core 4
+            - Trigger and the counter thread should be within the same NUMA node -> FAILED
+            - Counter and trigger thread should not be in the first or last logical CPU -> FAILED, trigger thread had to be put in core 4 due to a silver rule with more priority
+        */
+        [[nodiscard]] static DWORD_PTR getmask(u32 ct_seed, bool trigger) {
             const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
 
             DWORD_PTR proc_mask = 0, sys_mask = 0;
@@ -3419,183 +3444,192 @@ public:
                 }
             }
 
-            if (n < 2) return 0ull; // single-core abort
-
-            // (1-indexed)
-            // 2 cores  -> trigger 1
-            // 3 cores  -> trigger 1
-            // 4 cores  -> trigger 1
-            // 5 cores  -> trigger 4
-            // 6 cores  -> trigger 5
-            // >6 cores  -> middle available logical CPU
-            size_t trigger_pos0 = 0; // 0-based ordinal
-
-            if (n == 2 || n == 3 || n == 4) {
-                trigger_pos0 = 0;
-            }
-            else if (n == 5) {
-                trigger_pos0 = 3;
-            }
-            else if (n == 6) {
-                trigger_pos0 = 4;
-            }
-            else {
-                trigger_pos0 = n / 2;
-            }
-
-            if (trigger_pos0 >= n) return 0ull;
-            return 1ull << idxs[trigger_pos0];
-        }
-
-        // random logical CPU, but exclude the trigger_thread, first, second and last available logical CPUs, avoiding SMT siblings
-        static DWORD_PTR get_counter_mask(u32 ct_seed, DWORD_PTR trigger_mask) {
-            const HANDLE current_process = reinterpret_cast<HANDLE>(-1LL);
-
-            DWORD_PTR proc_mask = 0, sys_mask = 0;
-            if (!GetProcessAffinityMask(current_process, &proc_mask, &sys_mask) || !proc_mask) {
+            if (n < 2) {
                 return 0ull;
             }
 
-            DWORD idxs[64]{};
-            DWORD n = 0;
-            for (DWORD i = 0; i < 64; ++i) {
-                if (proc_mask & (1ull << i)) {
-                    idxs[n++] = i;
-                }
-            }
-
-            if (n < 2) return 0ull; // single-core abort
-
-            // get topology to identify SMT siblings
+            // first null buffer then use size
             DWORD len = 0;
-            GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len);
-
-            // stack buffer fallback mechanism
-            BYTE stack_buf[1024]{};
-            std::vector<BYTE> heap_buf;
-            PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX info = nullptr;
-
-            if (len <= sizeof(stack_buf)) {
-                info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(stack_buf);
-            }
-            else {
-                heap_buf.resize(len);
-                info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(heap_buf.data());
+            SetLastError(ERROR_SUCCESS);
+            GetLogicalProcessorInformationEx(RelationAll, nullptr, &len);
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || !len) {
+                return 0ull;
             }
 
-            if (!GetLogicalProcessorInformationEx(RelationProcessorCore, info, &len)) {
-                return 0ull; // no valid topology data, fail closed
+            std::vector<BYTE> topo(len);
+            if (!GetLogicalProcessorInformationEx(
+                RelationAll,
+                reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(topo.data()),
+                &len)) {
+                return 0ull;
             }
 
-            // logical processor index to its physical core ID
-            DWORD logical_to_core[64] = { 0 };
-            DWORD_PTR core_mask[64] = { 0 };
+            constexpr DWORD INVALID_CPU = 0xFFFFFFFFu;
+
+            DWORD logical_to_core[64];
+            DWORD logical_to_numa[64];
+            std::fill_n(logical_to_core, 64, INVALID_CPU);
+            std::fill_n(logical_to_numa, 64, INVALID_CPU);
+
+            DWORD core_count = 0;
+
             size_t offset = 0;
-            DWORD core_idx = 0;
-            while (offset < len) {
-                auto ptr = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(reinterpret_cast<BYTE*>(info) + offset);
-                for (DWORD i = 0; i < ptr->Processor.GroupCount; ++i) {
-                    KAFFINITY mask = ptr->Processor.GroupMask[i].Mask;
-                    for (int b = 0; b < 64; ++b) {
-                        if (mask & (1ull << b)) {
-                            logical_to_core[b] = core_idx;
-                            core_mask[core_idx] |= (1ull << b);
+            while (offset + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) <= len) {
+                auto* ptr = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(topo.data() + offset);
+
+                switch (ptr->Relationship) {
+                case RelationProcessorCore: {
+                    const DWORD core_id = core_count++;
+
+                    for (DWORD g = 0; g < ptr->Processor.GroupCount; ++g) {
+                        const KAFFINITY mask = ptr->Processor.GroupMask[g].Mask;
+                        for (DWORD bit = 0; bit < 64; ++bit) {
+                            if (mask & (1ull << bit)) {
+                                logical_to_core[bit] = core_id;
+                            }
                         }
                     }
+                    break;
+                }
+
+                case RelationNumaNode: {
+                    const DWORD node_id = ptr->NumaNode.NodeNumber;
+                    const KAFFINITY mask = ptr->NumaNode.GroupMask.Mask;
+                    for (DWORD bit = 0; bit < 64; ++bit) {
+                        if (mask & (1ull << bit)) {
+                            logical_to_numa[bit] = node_id;
+                        }
+                    }
+                    break;
+                }
+
+                default:
+                    break;
+                }
+
+                if (!ptr->Size) {
+                    return 0ull;
                 }
                 offset += ptr->Size;
-                core_idx++;
             }
 
-            auto pick_by_ordinal = [&](size_t ord0) -> DWORD_PTR {
-                if (ord0 >= n) return 0ull;
-                return 1ull << idxs[ord0];
+            // abort if only one physical core exists in the allowed affinity set
+            {
+                bool seen_core[64]{};
+                DWORD physical_cores = 0;
+
+                for (DWORD i = 0; i < n; ++i) {
+                    const DWORD log = idxs[i];
+                    const DWORD core = logical_to_core[log];
+                    if (core == INVALID_CPU) {
+                        return 0ull;
+                    }
+                    if (!seen_core[core]) {
+                        seen_core[core] = true;
+                        ++physical_cores;
+                    }
+                }
+
+                if (physical_cores < 2) {
+                    return 0ull;
+                }
+            }
+
+            // counter: middle available logical CPU when >2, otherwise second available logical CPU
+            const DWORD counter_pos0 = (n == 2) ? 1u : (n / 2u);
+            if (counter_pos0 >= n) {
+                return 0ull;
+            }
+
+            const DWORD counter_logical = idxs[counter_pos0];
+            const DWORD counter_core = logical_to_core[counter_logical];
+            const DWORD counter_numa = logical_to_numa[counter_logical];
+
+            if (counter_core == INVALID_CPU || counter_numa == INVALID_CPU) {
+                return 0ull;
+            }
+
+            if (!trigger) {
+                return 1ull << counter_logical;
+            }
+
+            auto is_edge = [&](DWORD logical) -> bool {
+                return logical == idxs[0] || logical == idxs[n - 1];
             };
 
-            DWORD_PTR choices = 0ull;
+            auto same_numa = [&](DWORD logical) -> bool {
+                return logical_to_numa[logical] != INVALID_CPU && logical_to_numa[logical] == counter_numa;
+            };
 
-            // exact placement rules:
-            // 2 cores  -> counter 2
-            // 3 cores  -> counter 3
-            // 4 cores  -> counter 3
-            // 5 cores  -> counter 2
-            // 6 cores  -> counter 3
-            if (n == 2) {
-                choices = pick_by_ordinal(1);
-            }
-            else if (n == 3 || n == 4) {
-                choices = pick_by_ordinal(2);
-            }
-            else if (n == 5) {
-                choices = pick_by_ordinal(1);
-            }
-            else if (n == 6) {
-                choices = pick_by_ordinal(2);
-            }
-            else {
-                // > 6 cores:
-                // trigger in the middle available logical CPU
-                size_t trigger_pos0 = n / 2;
-                if (trigger_pos0 >= n) return 0ull;
+            auto build_candidates = [&](bool require_same_numa, bool avoid_edges) {
+                std::vector<DWORD> out;
+                out.reserve(n);
 
-                DWORD trigger_logical = idxs[trigger_pos0];
-                DWORD trigger_core_id = logical_to_core[trigger_logical];
+                for (DWORD i = 0; i < n; ++i) {
+                    const DWORD logical = idxs[i];
+                    if (logical == counter_logical) {
+                        continue;
+                    }
 
-                choices = proc_mask;
+                    // never same physical core when possible
+                    if (logical_to_core[logical] == counter_core) {
+                        continue;
+                    }
 
-                // random so that the hypervisor doesn't know where the counter thread is
-                // this will affect latency if cache lines from trigger_thread and counter_thread are separated enough due to cores being too distant
-                // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
-                choices &= ~trigger_mask;
+                    if (avoid_edges && is_edge(logical)) {
+                        continue;
+                    }
 
-                if (trigger_pos0 >= 1)
-                    choices &= ~(1ull << idxs[trigger_pos0 - 1]); // adjacent left
-                if (trigger_pos0 + 1 < n)
-                    choices &= ~(1ull << idxs[trigger_pos0 + 1]); // adjacent right
+                    if (require_same_numa && !same_numa(logical)) {
+                        continue;
+                    }
 
-                choices &= ~(1ull << idxs[0]);       // first core
-                choices &= ~(1ull << idxs[n - 1]);   // last core
-                choices &= ~core_mask[trigger_core_id]; // avoid SMT siblings of the trigger core
-
-                // if exclusions leave nothing, fail closed
-                if (!choices) return 0ull;
-
-                DWORD pick[64]{}, m = 0;
-                for (DWORD i = 0; i < 64; ++i) {
-                    if (choices & (1ull << i))
-                        pick[m++] = i;
+                    out.push_back(logical);
                 }
-                if (!m) return 0ull;
 
-                // random so that the hypervisor doesn't know where the counter thread is
-                // this will affect latency if cache lines from trigger_thread and counter_thread are separated enough due to cores being too distant
-                // however, we do a ratio based detection, so this wont affect the detection accuracy because the cache latency affects both samples
-                u64 seed = 0;
-                seed ^= static_cast<u64>(ct_seed);
-                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&current_process));
-                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&proc_mask)) << 1;
-                seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&sys_mask)) << 2;
-                seed ^= seed >> 33;
-                seed *= 0xff51afd7ed558ccdULL;
-                seed ^= seed >> 33;
-                seed *= 0xc4ceb9fe1a85ec53ULL;
-                seed ^= seed >> 33;
-                std::seed_seq seq{
-                    static_cast<u32>(seed), static_cast<u32>(seed >> 32), static_cast<u32>(seed ^ 0x9e3779b9u), ct_seed
-                };
+                return out;
+            };
 
-                // std::random_device{}() uses RDRAND/RDSEED which can be intercepted by hypervisors
-                // we use our own compile-time seed that cannot be taken by examining PE/Linux binary properties and would need static/dynamic analysis
-                // this changes per build and per process session due to hardware ASLR
-                std::mt19937 gen(seq);
-                return 1ull << pick[std::uniform_int_distribution<u32>(0, m - 1)(gen)];
+            // priority order
+            // 1) different physical core + same NUMA + not first/last
+            // 2) different physical core + same NUMA
+            // 3) different physical core + not first/last
+            // 4) different physical core
+            std::vector<DWORD> candidates = build_candidates(true, true);
+            if (candidates.empty()) candidates = build_candidates(true, false);
+            if (candidates.empty()) candidates = build_candidates(false, true);
+            if (candidates.empty()) candidates = build_candidates(false, false);
+
+            if (candidates.empty()) {
+                return 0ull;
             }
 
-            return choices;
+            u64 seed = 0;
+            seed ^= static_cast<u64>(ct_seed);
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&proc_mask));
+            seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&sys_mask)) << 1;
+            seed ^= static_cast<u64>(counter_logical) << 2;
+            seed ^= static_cast<u64>(counter_core) << 3;
+            seed ^= seed >> 33;
+            seed *= 0xff51afd7ed558ccdULL;
+            seed ^= seed >> 33;
+            seed *= 0xc4ceb9fe1a85ec53ULL;
+            seed ^= seed >> 33;
+
+            std::seed_seq seq{
+                static_cast<u32>(seed),
+                static_cast<u32>(seed >> 32),
+                static_cast<u32>(seed ^ 0x9e3779b9u),
+                ct_seed
+            };
+
+            std::mt19937 gen(seq);
+            const DWORD logical = candidates[std::uniform_int_distribution<size_t>(0, candidates.size() - 1)(gen)];
+            return 1ull << logical;
         }
 
         // we dont use cpu::cpuid on purpose
-        static VMAWARE_FORCE_INLINE void trigger_vmexit() {
+        static VMAWARE_FORCE_INLINE void vmexit() {
         #if (GCC || CLANG)
             u32 a = 0, c = 0, d = 0;
             #if (x86_64)
@@ -3623,157 +3657,36 @@ public:
         #endif
         }
 
-        static u64 calculate_latency(const std::vector<u64>& samples_in) {
+        [[nodiscard]] static timer_tick_t calculate_latency(const std::vector<timer_tick_t>& samples_in) {
             if (samples_in.empty()) return 0;
             const size_t N = samples_in.size();
             if (N == 1) return samples_in[0];
 
-            // local sorted copy
-            std::vector<u64> s = samples_in;
-            std::sort(s.begin(), s.end()); // ascending
+            // create a local copy to sort
+            std::vector<timer_tick_t> s = samples_in;
+            std::sort(s.begin(), s.end());
 
-            // tiny-sample short-circuits
-            if (N <= 4) return s.front();
+            // discard the lower 25% and upper 25%, leaving the middle 50%
+            const size_t low_idx = N / 4;
+            const size_t high_idx = (3 * N) / 4;
 
-            // median (and works for sorted input)
-            auto median_of_sorted = [](const std::vector<u64>& v, size_t lo, size_t hi) -> u64 {
-                // this is the median of v[lo..hi-1], requires 0 <= lo < hi
-                const size_t len = hi - lo;
-                if (len == 0) return 0;
-                const size_t mid = lo + (len / 2);
-                if (len & 1) return v[mid];
-                return (v[mid - 1] + v[mid]) / 2;
-            };
-
-            // the robust center: median M and MAD -> approximate sigma
-            const u64 M = median_of_sorted(s, 0, s.size());
-
-            // select the median deviation in linear time instead of sorting all deviations
-            std::vector<u64> absdev;
-            absdev.resize(N);
-            for (size_t i = 0; i < N; ++i) {
-                const u64 d = (s[i] > M) ? (s[i] - M) : (M - s[i]);
-                absdev[i] = d;
+            double sum = 0;
+            size_t count = 0;
+            for (size_t i = low_idx; i < high_idx; ++i) {
+                sum += s[i];
+                count++;
             }
 
-            const size_t mad_mid = N / 2;
-            std::nth_element(absdev.begin(), absdev.begin() + mad_mid, absdev.end());
+            // fallback to the median if the dataset is too small
+            if (count == 0) return s[N / 2];
 
-            u64 MAD = 0;
-            if (N & 1) {
-                MAD = absdev[mad_mid];
-            }
-            else {
-                const u64 upper = absdev[mad_mid];
-                const u64 lower = *std::max_element(absdev.begin(), absdev.begin() + mad_mid);
-                MAD = (lower + upper) / 2;
-            }
-
-            // convert MAD to an approximate standard-deviation-like measure
-            constexpr long double kmad_to_sigma = 1.4826L; // consistent for normal approx
-            const long double sigma = (MAD == 0) ? 1.0L : (static_cast<long double>(MAD) * kmad_to_sigma);
-
-            // find the densest small-valued cluster by sliding a fixed-count window
-            // this locates the most concentrated group of samples (likely it would be the true VMEXIT cluster)
-            // const size_t frac_win = (N * 8 + 99) / 100; // ceil(N * 0.08)
-            // const size_t win = std::min(N, std::max(MIN_WIN, frac_win));
-            const size_t MIN_WIN = 10;
-            // manual min/max calculation for win size
-            const size_t calc_frac = static_cast<size_t>(std::ceil(static_cast<double>(N) * 0.08));
-            const size_t inner_max = (MIN_WIN > calc_frac) ? MIN_WIN : calc_frac;
-            const size_t win = (N < inner_max) ? N : inner_max;
-
-            size_t best_i = 0;
-            u64 best_span = (s.back() - s.front()) + 1; // large initial
-            for (size_t i = 0; i + win <= N; ++i) {
-                const u64 span = s[i + win - 1] - s[i];
-                if (span < best_span) {
-                    best_span = span;
-                    best_i = i;
-                }
-            }
-
-            // expand the initial window greedily while staying "tight"
-            // allow expansion while adding samples does not more than multiply the span by EXPAND_FACTOR
-            constexpr long double EXPAND_FACTOR = 1.5L;
-            size_t cluster_lo = best_i;
-            size_t cluster_hi = best_i + win; // exclusive
-            // expand left
-            while (cluster_lo > 0) {
-                const u64 new_span = s[cluster_hi - 1] - s[cluster_lo - 1];
-                if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
-                    (s[cluster_hi - 1] <= (s[cluster_lo - 1] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
-                    --cluster_lo;
-                    // manual min calculation
-                    best_span = (best_span < new_span) ? best_span : new_span;
-                }
-                else break;
-            }
-            // expand right
-            while (cluster_hi < N) {
-                const u64 new_span = s[cluster_hi] - s[cluster_lo];
-                if (static_cast<long double>(new_span) <= EXPAND_FACTOR * static_cast<long double>(best_span) ||
-                    (s[cluster_hi] <= (s[cluster_lo] + static_cast<u64>(std::ceil(3.0L * sigma))))) {
-                    ++cluster_hi;
-                    best_span = (best_span < new_span) ? best_span : new_span;
-                }
-                else break;
-            }
-
-            const size_t cluster_size = (cluster_hi > cluster_lo) ? (cluster_hi - cluster_lo) : 0;
-
-            // cluster must be reasonably dense and cover a non-negligible portion of samples, so this is pure sanity checks
-            const double fraction_in_cluster = static_cast<double>(cluster_size) / static_cast<double>(N);
-
-            // min/max calculation for MIN_CLUSTER
-            const int val_n_50 = static_cast<int>(N / 50);
-            const size_t val_max = static_cast<size_t>((5 > val_n_50) ? 5 : val_n_50);
-            const size_t MIN_CLUSTER = (val_max < N) ? val_max : N; // at least 2% or 5 elements
-
-            if (cluster_size < MIN_CLUSTER || fraction_in_cluster < 0.02) {
-                // low-percentile (10th) trimmed median
-                // Manual max calculation for fallback_count
-                const size_t floor_val = static_cast<size_t>(std::floor(static_cast<double>(N) * 0.10));
-                const size_t fallback_count = (1 > floor_val) ? 1 : floor_val;
-
-                // median of lowest fallback_count elements (if fallback_count==1 that's smallest)
-                if (fallback_count == 1) return s.front();
-                const size_t mid = fallback_count / 2;
-                if (fallback_count & 1) return s[mid];
-                return (s[mid - 1] + s[mid]) / 2;
-            }
-
-            // now we try to get a robust estimate inside the cluster, trimmed mean (10% trim) centered on cluster
-            const size_t trim_count = static_cast<size_t>(std::floor(static_cast<double>(cluster_size) * 0.10));
-            const size_t lo = cluster_lo + trim_count;
-            const size_t hi = cluster_hi - trim_count; // exclusive
-            if (hi <= lo) {
-                // degenerate -> median of cluster
-                return median_of_sorted(s, cluster_lo, cluster_hi);
-            }
-
-            // sum with long double to avoid overflow and better rounding
-            long double sum = 0.0L;
-            for (size_t i = lo; i < hi; ++i) sum += static_cast<long double>(s[i]);
-            const long double avg = sum / static_cast<long double>(hi - lo);
-            u64 result = static_cast<u64>(std::llround(avg));
-
-            // final sanity adjustments:
-            // if the computed result is suspiciously far from the global median (e.g., > +6*sigma)
-            // clamp toward the median to avoid choosing a high noisy cluster by mistake
-            const long double diff_from_med = static_cast<long double>(result) - static_cast<long double>(M);
-            if (diff_from_med > 0 && diff_from_med > (6.0L * sigma)) {
-                // clamp to median + 4*sigma (conservative)
-                result = static_cast<u64>(std::llround(static_cast<long double>(M) + 4.0L * sigma));
-            }
-
-            // also, if result is zero (shouldn't be) or extremely small, return a smallest observed sample
-            if (result == 0) result = s.front();
-
-            return result;
+            // compute the average of the middle 50% and round to the nearest integer
+            return static_cast<timer_tick_t>((sum / count) + 0.5);
         }
 
-        static VMAWARE_FORCE_INLINE void burn_random_cycles(u64 ct_seed, u64 v_post, u64 r_post) {
+        static VMAWARE_FORCE_INLINE void burn_random_cycles(u32 ct_seed, timer_tick_t v_post, timer_tick_t r_post) {
+            // the internal pseudo-random number generator (PRNG) variables like u64 seed and volatile u64 x can be kept as u64 
+            // because they are simple register-only PRNG arithmetic and benefit from the extra 64-bit entropy space even on 32-bit platforms
             u64 seed = ct_seed;
             seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&seed));
             seed ^= static_cast<u64>(reinterpret_cast<std::uintptr_t>(&v_post)) << 1;
@@ -3793,9 +3706,7 @@ public:
                 x ^= x >> 17;
             }
 
-        #if (CLANG || GCC)
-            __asm__ volatile("" :: "r"(x) : "memory");
-        #endif
+            std::atomic_signal_fence(std::memory_order_acq_rel);
         }
     };
 #endif
@@ -5901,12 +5812,12 @@ public:
      */
     [[nodiscard]] static bool timer() {
     #if (x86 && WINDOWS)
+        using timer = struct timer;
+
         if (util::is_running_under_translator()) {
             debug("TIMER: Running inside a binary translation layer");
             return false;
         }
-
-        using timer = struct timer;
 
         // calculation of minimum threshold
         bool is_intel = cpu::is_intel();
@@ -5920,39 +5831,32 @@ public:
             }
         }
 
-        // Shared state and results
+        // shared state and results
         timer::cache_state state;
         bool hypervisor_detected = false;
 
         const u32 ct_seed = timer::get_ct_seed();
 
-        const DWORD_PTR trigger_affinity = timer::get_trigger_mask();
-        if (!trigger_affinity) {
+        const DWORD_PTR trigger_affinity = timer::getmask(ct_seed, true);
+        const DWORD_PTR counter_affinity = timer::getmask(ct_seed, false);
+
+        if (!trigger_affinity || !counter_affinity) {
             return false;
         }
 
-        const DWORD_PTR target_affinity = timer::get_counter_mask(ct_seed, trigger_affinity);
-        if (!target_affinity) {
-            return false;
-        }
-
-        // our software clock, it will count how many cycles a vmexit takes
+        // our software clock
         auto counter_thread = [&]() {
             const HANDLE current_thread = reinterpret_cast<HANDLE>(-2LL);
-            SetThreadAffinityMask(current_thread, target_affinity);
+            SetThreadAffinityMask(current_thread, counter_affinity);
             SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST); // decrease chance of being rescheduled
             SetThreadPriorityBoost(current_thread, TRUE); // disable dynamic boosts
 
             while (!state.start_test.load(std::memory_order_acquire)) {}
 
             while (!state.test_done.load(std::memory_order_relaxed)) {
-                const u64 current = state.counter; // to silence warnings about incrementing volatile stuff
+                const timer::timer_tick_t current = state.counter; // to silence warnings about incrementing volatile stuff
                 state.counter = current + 1; // better than calling incq in inline assembly, standard increment forces the correct cache behavior we want
-
-            #if (GCC || CLANG)
-                // prevents aggressive loop unrolling/batching of volatile stores
-                __asm__ volatile("" ::: "memory");
-            #endif
+                std::atomic_signal_fence(std::memory_order_seq_cst);
             }
         };
 
@@ -5978,7 +5882,7 @@ public:
             const DWORD old_process_priority = GetPriorityClass(current_process);
             SetPriorityClass(current_process, ABOVE_NORMAL_PRIORITY_CLASS); // ABOVE_NORMAL_PRIORITY_CLASS + THREAD_PRIORITY_HIGHEST = 12 base priority
             SetThreadPriority(current_thread, THREAD_PRIORITY_HIGHEST);
-            SetThreadPriorityBoost(current_thread, TRUE); // disable dynamic boosts
+            SetThreadPriorityBoost(current_thread, TRUE); // disable dynamic thread priority adjustments by Windows, not turbo boosts by the hardware itself
 
             // important so that hypervisor can't predict how many samples we will collect
             // stack-only / ASLR-derived component (no APIs, no rdtsc)
@@ -6010,144 +5914,149 @@ public:
             std::mt19937 gen(seq);
             std::uniform_int_distribution<size_t> batch_dist(30000, 70000);
             const size_t BATCH_SIZE = batch_dist(gen);
-            size_t valid = 0;  // end of setup phase
 
             SleepEx(0, FALSE); // try to get fresh quantum before starting warm-up phase, give time to kernel to setup priorities
 
-            std::vector<u64> vm_samples(BATCH_SIZE), ref_samples(BATCH_SIZE); // pre page-fault MMU, wwe wont warm-up cpuid samples for the P-states intentionally
-            VirtualLock(vm_samples.data(), BATCH_SIZE * sizeof(u64)); // lock the memory for the samples to prevent page faults if permissions are enough
-            VirtualLock(ref_samples.data(), BATCH_SIZE * sizeof(u64));
+            std::vector<timer::timer_tick_t> vm_samples(BATCH_SIZE), ref_samples(BATCH_SIZE); // pre page-fault MMU, wwe wont warm-up cpuid samples for the P-states intentionally
+            VirtualLock(vm_samples.data(), BATCH_SIZE * sizeof(timer::timer_tick_t)); // lock the memory for the samples to prevent page faults if permissions are enough
+            VirtualLock(ref_samples.data(), BATCH_SIZE * sizeof(timer::timer_tick_t));
 
             #define LFENCE_8 _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence(); _mm_lfence();
 
             state.start_test.store(true, std::memory_order_release); // _mm_pause can be vm-exited conditionally, spam hit L3
-            // warm-up to settle caches and scheduler, P-states are already not enforced with the SetThreadPriorityBoost call of before
-            for (int i = 0; i < 1000; ++i) {
-                // serialize is a good candidate as it's the closest architectural match to CPUID's pipeline-stall behavior AND can't be intercepted in VCMB/VMCS
-                // in AMD the serialize intrinsic triggers a illegal instruction exception, so the closest AMD native substitute that is not one of the standard direct instruction exit controls is LFENCE
-                // when AMD has configured it to be dispatch-serializing via MSR C001_1029[1]=1 (or when LFenceAlwaysSerializing is set)
-                if (is_intel) _serialize();
-                else LFENCE_8
-                timer::trigger_vmexit();
+            // cache and cpu scheduler warm-up won't affect anything in the measurement loop, so ramp up frequency/P-states to a high non-AVX Turbo/P-state without vmexits
+            u64 val = static_cast<u64>(seed) ^ 0x5a5a5a5a5a5a5a5aULL;
+
+            for (u32 i = 0; i < 12'000'000; ++i) {
+                val = (val ^ i) * 6364136223846793005ULL + 1442695040888963407ULL;
             }
 
-            // inside the timing windows, there must be zero memory output (no stack arrays can be written to), zero conditional branches and zero stack spilling (no register push/pops)
-            if (is_intel) {
-                while (valid < BATCH_SIZE) {
-                    // cpuid and serialize/lfence interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
-                    u64 r_pre, r_post, v_pre, v_post, sync;
+            volatile u64 compiler_sink = val;
+            VMAWARE_UNUSED(compiler_sink);
 
-                    // this is done as a counter to both legitimate and malicious hypervisors interrupts that may pause the counter thread while we measure
-                    sync = state.counter;
-                    while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
+            // independent multi-trial state initialization
+            timer::timer_tick_t best_cpuid_l = (std::numeric_limits<timer::timer_tick_t>::max)();
+            timer::timer_tick_t best_ref_l = (std::numeric_limits<timer::timer_tick_t>::max)();
+            constexpr int TRIALS = 3;
 
-                    // SERIALIZE/LFENCE check is before CPUID on purpose, so that possible pauses when cpuid is executed do not affect SERIALIZE/LFENCE too. The hv needs to wait for cpuid to pause the thread
-                    // the amount of instructions (8 in case of LFENCE) are enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race so that the counter thread sees an increment
-                    sync = state.counter;
-                    while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
-                    r_pre = state.counter;
-                    std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
-                    _serialize();
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    r_post = state.counter;
+            for (int trial = 0; trial < TRIALS; ++trial) {
+                size_t valid = 0;  // end of setup phase
 
-                    sync = state.counter;
-                    while (state.counter == sync); // sync to our counter tick again
-                    sync = state.counter;
-                    while (state.counter == sync); // and again
+                // inside the timing windows, there must be zero memory output (no stack arrays can be written to), zero conditional branches and zero stack spilling (no register push/pops)
+                if (is_intel) {
+                    while (valid < BATCH_SIZE) {
+                        // cpuid and serialize/lfence interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
+                        timer::timer_tick_t r_pre, r_post, v_pre, v_post, sync;
 
-                    v_pre = state.counter;
-                    std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
+                        // this is done as a counter to both legitimate and malicious hypervisors interrupts that may pause the counter thread while we measure
+                        sync = state.counter;
+                        while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
 
-                    // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
-                    // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
-                    // this is why the score of this technique is not enough to determine a VM
-                    timer::trigger_vmexit();
+                        // SERIALIZE/LFENCE check is before CPUID on purpose, so that possible pauses when cpuid is executed do not affect SERIALIZE/LFENCE too. The hv needs to wait for cpuid to pause the thread
+                        // the amount of instructions (8 in case of LFENCE) are enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race so that the counter thread sees an increment
+                        sync = state.counter;
+                        while (state.counter == sync); // fastest busy-waiting strategy, PAUSE affects cache, calling APIs like SwitchToThread() would be even worse
+                        r_pre = state.counter;
+                        std::atomic_signal_fence(std::memory_order_seq_cst); // ensure compiler-level ordering
+                        _serialize();
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                        r_post = state.counter;
 
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    v_post = state.counter;
+                        sync = state.counter;
+                        while (state.counter == sync); // sync to our counter tick again
+                        sync = state.counter;
+                        while (state.counter == sync); // and again
 
-                    // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not use TSC or any other clock
-                    if (v_post > v_pre && r_post > r_pre) {
-                        vm_samples[valid] = v_post - v_pre;
-                        ref_samples[valid] = r_post - r_pre;
-                        valid++;
+                        v_pre = state.counter;
+                        std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
+
+                        // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
+                        // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
+                        // this is why the score of this technique is not enough to determine a VM
+                        timer::vmexit();
+
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                        v_post = state.counter;
+
+                        // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not use TSC or any other clock
+                        if (v_post > v_pre && r_post > r_pre) {
+                            vm_samples[valid] = v_post - v_pre;
+                            ref_samples[valid] = r_post - r_pre;
+                            valid++;
+                        }
+
+                        // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
+                        timer::burn_random_cycles(ct_seed, v_post, r_post);
                     }
-
-                    // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
-                    timer::burn_random_cycles(ct_seed, v_post, r_post);
-
-                #if (CLANG || GCC)
-                    __asm__ volatile("" :: "r"(x) : "memory");
-                #endif
                 }
-            }
-            else {
-                while (valid < BATCH_SIZE) {
-                    // cpuid and serialize/lfence interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
-                    u64 r_pre, r_post, v_pre, v_post, sync;
+                else {
+                    while (valid < BATCH_SIZE) {
+                        // cpuid and serialize/lfence interpolated so that any turbo boost, thermal throttling, speculation (for the loop overhead itself, not for the serializing instructions), etc affects samples equally
+                        timer::timer_tick_t r_pre, r_post, v_pre, v_post, sync;
 
-                    // this is done as a counter to both legitimate and malicious hypervisors interrupts that may pause the counter thread while we measure
-                    sync = state.counter;
-                    while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
+                        // this is done as a counter to both legitimate and malicious hypervisors interrupts that may pause the counter thread while we measure
+                        sync = state.counter;
+                        while (state.counter == sync); // infer if counter got enough quantum momentum (so its currently scheduled)
 
-                    // SERIALIZE/LFENCE check is before CPUID on purpose, so that possible pauses when cpuid is executed do not affect SERIALIZE/LFENCE too. The hv needs to wait for cpuid to pause the thread
-                    // the amount of instructions (8 in case of LFENCE) are enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race so that the counter thread sees an increment
-                    sync = state.counter;
-                    while (state.counter == sync);
-                    r_pre = state.counter;
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    LFENCE_8
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    r_post = state.counter;
+                        // SERIALIZE/LFENCE check is before CPUID on purpose, so that possible pauses when cpuid is executed do not affect SERIALIZE/LFENCE too. The hv needs to wait for cpuid to pause the thread
+                        // the amount of instructions (8 in case of LFENCE) are enough for the Cross-Core/Cross-CCD MESI RFO cache bounce in the data race so that the counter thread sees an increment
+                        sync = state.counter;
+                        while (state.counter == sync);
+                        r_pre = state.counter;
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                        LFENCE_8
+                            std::atomic_signal_fence(std::memory_order_seq_cst);
+                        r_post = state.counter;
 
-                    sync = state.counter;
-                    while (state.counter == sync); // sync to our counter tick again
-                    sync = state.counter;
-                    while (state.counter == sync); // and again
+                        sync = state.counter;
+                        while (state.counter == sync); // sync to our counter tick again
+                        sync = state.counter;
+                        while (state.counter == sync); // and again
 
-                    v_pre = state.counter;
-                    std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
+                        v_pre = state.counter;
+                        std::atomic_signal_fence(std::memory_order_seq_cst); // _ReadWriteBarrier() aka dont emit runtime fences
 
-                    // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
-                    // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
-                    // this is why the score of this technique is not enough to determine a VM
-                    timer::trigger_vmexit();
+                        // the only way a legitimate interrupt can make the check false flag is if most of the samples were contaminated just in the cpuid samples but not in the serialize/lfence samples
+                        // still possible tho, but it's as accurate we can get on user-mode without relying on any other hardware clock or cross-referencing with the counter thread mid-execution
+                        // this is why the score of this technique is not enough to determine a VM
+                        timer::vmexit();
 
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                    v_post = state.counter;
+                        std::atomic_signal_fence(std::memory_order_seq_cst);
+                        v_post = state.counter;
 
-                    // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not use TSC or any other clock
-                    if (v_post > v_pre && r_post > r_pre) {
-                        vm_samples[valid] = v_post - v_pre;
-                        ref_samples[valid] = r_post - r_pre;
-                        valid++;
+                        // we dont filter by cycles spent here (for example by querying thread cycle time) because the point of this function is to not use TSC or any other clock
+                        if (v_post > v_pre && r_post > r_pre) {
+                            vm_samples[valid] = v_post - v_pre;
+                            ref_samples[valid] = r_post - r_pre;
+                            valid++;
+                        }
+
+                        // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
+                        timer::burn_random_cycles(ct_seed, v_post, r_post);
                     }
-
-                    // burn cycles executing a random number of instructions in each loop iteration, so that the hypervisor doesn't know when to pause the counter thread
-                    timer::burn_random_cycles(ct_seed, v_post, r_post);
-
-                #if (CLANG || GCC)
-                    __asm__ volatile("" :: "r"(x) : "memory");
-                #endif
                 }
+
+                const timer::timer_tick_t cpuid_l = timer::calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can't detect (SMIs, NMIs, etc)
+                const timer::timer_tick_t ref_l = timer::calculate_latency(ref_samples);
+
+                // record the cleanest/lowest latency observed across the independent trials
+                if (cpuid_l < best_cpuid_l) best_cpuid_l = cpuid_l;
+                if (ref_l < best_ref_l) best_ref_l = ref_l;
             }
 
             state.test_done.store(true, std::memory_order_release);
 
-            const u64 cpuid_l = timer::calculate_latency(vm_samples); // check for lowest dense cluster with no interrupt spikes, filter noise we can't detect (SMIs, NMIs, etc)
-            const u64 ref_l = timer::calculate_latency(ref_samples);
-            const double latency_ratio = ref_l ? (double)cpuid_l / (double)ref_l : 0;
+            const double latency_ratio = best_ref_l ? (double)best_cpuid_l / (double)best_ref_l : 0;
 
             // VMM = Time spent in hypervisor; nVMM = Time spent in baremetal
-            debug("TIMER: VMM -> ", cpuid_l, " | nVMM -> ", ref_l, " | Ratio -> ", latency_ratio); // those are NOT cycles
+            debug("TIMER: VMM -> ", best_cpuid_l, " | nVMM -> ", best_ref_l, " | Ratio -> ", latency_ratio); // these ARE NOT cycles
             if (latency_ratio >= threshold) hypervisor_detected = true;
 
             // Detect IPI-based counter pausing bypasses
             // For the median itself to exceed baremetal limits (which rarely pass 1000), an interrupt must be occurring on almost EVERY single loop iteration
-            // This is the footprint of a hypervisor continuously spamming cross-core IPIs to try and pause the counter thread (or the trigger_thread to make SERIALIZE/LFENCE take a lot of time)
-            if (cpuid_l > 1000 || ref_l > 1000 || cpuid_l == 1 || ref_l == 1) {
-                debug("TIMER: Detected artificial interrupt delivery to VMAware's threads");
+            // This is the footprint of a hypervisor continuously spamming cross-core IPIs to try and pause our threads
+            if (best_cpuid_l > 1000 || best_ref_l > 1000 || best_cpuid_l == 1 || best_ref_l == 1) {
+                debug("TIMER: Detected artificial interrupt delivery to timing threads");
                 hypervisor_detected = true;
             }
 
@@ -6156,8 +6065,8 @@ public:
             SetThreadPriority(current_thread, old_thread_priority);
             SetPriorityClass(current_process, old_process_priority);
             SetThreadAffinityMask(current_thread, old_affinity);
-            VirtualUnlock(vm_samples.data(), BATCH_SIZE * sizeof(u64));
-            VirtualUnlock(ref_samples.data(), BATCH_SIZE * sizeof(u64));
+            VirtualUnlock(vm_samples.data(), BATCH_SIZE * sizeof(timer::timer_tick_t));
+            VirtualUnlock(ref_samples.data(), BATCH_SIZE * sizeof(timer::timer_tick_t));
         };
 
         std::thread t1(counter_thread);
