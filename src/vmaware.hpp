@@ -4777,57 +4777,125 @@ public:
             if (out_manufacturer) *out_manufacturer = "";
             if (out_model) *out_model = "";
 
-            if (memo::bios_info::is_cached()) {
-                if (out_manufacturer) *out_manufacturer = memo::bios_info::fetch_manufacturer();
-                if (out_model) *out_model = memo::bios_info::fetch_model();
-                return memo::bios_info::fetch_manufacturer()[0] != '\0' || memo::bios_info::fetch_model()[0] != '\0';
-            }
+            auto is_placeholder = [](const char* s) noexcept -> bool {
+                if (!s || !*s) {
+                    return true;
+                }
 
-            WCHAR wbuf[256]{};
-            DWORD cb = sizeof(wbuf);
+                return std::strcmp(s, "System Product Name") == 0 ||
+                    std::strcmp(s, "To Be Filled By O.E.M.") == 0 ||
+                    std::strcmp(s, "Default string") == 0 ||
+                    std::strcmp(s, "Not Specified") == 0 ||
+                    std::strcmp(s, "None") == 0;
+            };
+
+            auto read_reg_utf8 = [](const wchar_t* value_name, char* out, size_t out_size) -> bool {
+                if (!out || out_size == 0) {
+                    return false;
+                }
+
+                out[0] = '\0';
+
+                WCHAR wbuf[256]{};
+                DWORD cb = sizeof(wbuf);
+
+                const LSTATUS st = RegGetValueW(
+                    HKEY_LOCAL_MACHINE,
+                    L"HARDWARE\\DESCRIPTION\\System\\BIOS",
+                    value_name,
+                    RRF_RT_REG_SZ,
+                    nullptr,
+                    wbuf,
+                    &cb
+                );
+
+                if (st != ERROR_SUCCESS || wbuf[0] == L'\0') {
+                    return false;
+                }
+
+                const int conv = WideCharToMultiByte(
+                    CP_UTF8,
+                    0,
+                    wbuf,
+                    -1,
+                    out,
+                    static_cast<int>(out_size),
+                    nullptr,
+                    nullptr
+                );
+
+                if (conv <= 0) {
+                    out[0] = '\0';
+                    return false;
+                }
+
+                out[out_size - 1] = '\0';
+                return true;
+            };
+
+            if (memo::bios_info::is_cached()) {
+                const char* man = memo::bios_info::fetch_manufacturer();
+                const char* mod = memo::bios_info::fetch_model();
+
+                if (out_manufacturer) *out_manufacturer = man;
+                if (out_model) *out_model = mod;
+
+                return !is_placeholder(man) || !is_placeholder(mod);
+            }
 
             char man_tmp[sizeof(memo::bios_info::manufacturer)]{};
             char model_tmp[sizeof(memo::bios_info::model)]{};
-            man_tmp[0] = '\0';
-            model_tmp[0] = '\0';
 
             bool got_any = false;
 
-            cb = sizeof(wbuf);
-            if (RegGetValueW(HKEY_LOCAL_MACHINE,
-                L"HARDWARE\\DESCRIPTION\\System\\BIOS",
-                L"SystemManufacturer",
-                RRF_RT_REG_SZ,
-                nullptr,
-                wbuf,
-                &cb) == ERROR_SUCCESS && wbuf[0] != L'\0') {
-                const int conv = WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, man_tmp, static_cast<int>(sizeof(man_tmp)), nullptr, nullptr);
-                if (conv > 0) {
-                    man_tmp[sizeof(man_tmp) - 1] = '\0';
-                    memo::bios_info::store_manufacturer(man_tmp);
-                    got_any = true;
-                }
+            // Manufacturer priority:
+            // 1) SystemManufacturer
+            // 2) BaseBoardManufacturer
+            // 3) BIOS vendor string if needed later
+            if (read_reg_utf8(L"SystemManufacturer", man_tmp, sizeof(man_tmp)) &&
+                !is_placeholder(man_tmp)) {
+                memo::bios_info::store_manufacturer(man_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"BaseBoardManufacturer", man_tmp, sizeof(man_tmp)) &&
+                !is_placeholder(man_tmp)) {
+                memo::bios_info::store_manufacturer(man_tmp);
+                got_any = true;
+            }
+            else {
+                memo::bios_info::store_manufacturer("");
             }
 
-            cb = sizeof(wbuf);
-            if (RegGetValueW(HKEY_LOCAL_MACHINE,
-                L"HARDWARE\\DESCRIPTION\\System\\BIOS",
-                L"SystemProductName",
-                RRF_RT_REG_SZ,
-                nullptr,
-                wbuf,
-                &cb) == ERROR_SUCCESS && wbuf[0] != L'\0') {
-                const int conv = WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, model_tmp, static_cast<int>(sizeof(model_tmp)), nullptr, nullptr);
-                if (conv > 0) {
-                    model_tmp[sizeof(model_tmp) - 1] = '\0';
-                    memo::bios_info::store_model(model_tmp);
-                    got_any = true;
-                }
+            // Model priority:
+            // 1) SystemProductName
+            // 2) BaseBoardProduct
+            // 3) SystemSKU
+            // 4) BaseBoardVersion
+            if (read_reg_utf8(L"SystemProductName", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"BaseBoardProduct", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"SystemSKU", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"BaseBoardVersion", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else {
+                memo::bios_info::store_model("");
             }
 
-            if (!memo::bios_info::is_cached()) {
-                memo::bios_info::cached = true;
-            }
+            memo::bios_info::cached = true;
 
             if (out_manufacturer) *out_manufacturer = memo::bios_info::fetch_manufacturer();
             if (out_model) *out_model = memo::bios_info::fetch_model();
