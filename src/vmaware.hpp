@@ -5466,7 +5466,6 @@ public:
                 return false;
             }
 
-            // first RelationProcessorCore record encountered, basically if two logical processors maps to the same core, SMT is enabled to the OS point of view
             size_t offset = 0;
             while (offset + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) <= static_cast<size_t>(len)) {
                 auto rec = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buf.data() + offset);
@@ -5500,33 +5499,25 @@ public:
                 physical = 0;
             }
 
-            if (logical > 0 && physical > 0) {
-                return logical > physical;
-            }
-
-            return false;
+            return logical > 0 && physical > 0 && logical > physical;
         #else
-            //  check cpu0 thread_siblings_list
             std::ifstream f("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
             if (f) {
                 std::string s;
                 if (std::getline(f, s)) {
-                    // trim
-                    size_t a = 0; 
-                    
-                    while (a < s.size() && std::isspace(static_cast<u8>(s[a]))) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    size_t a = 0;
+                    while (a < s.size() && std::isspace(static_cast<u8>(s[a]))) {
                         ++a;
                     }
 
                     size_t b = s.size();
-
-                    while (b > a && std::isspace(static_cast<u8>(s[b - 1]))) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    while (b > a && std::isspace(static_cast<u8>(s[b - 1]))) {
                         --b;
                     }
 
                     if (b > a) {
                         for (size_t k = a; k < b; ++k) {
-                            if (s[k] == ',' || s[k] == '-') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            if (s[k] == ',' || s[k] == '-') {
                                 return true;
                             }
                         }
@@ -5535,9 +5526,7 @@ public:
                 }
             }
 
-            // /proc/cpuinfo for unique (physical id, core id) pairs vs processors
             std::ifstream cpuinfo("/proc/cpuinfo");
-
             if (!cpuinfo) {
                 return false;
             }
@@ -5547,17 +5536,16 @@ public:
             int cur_phys = -1;
             int cur_core = -1;
             std::vector<std::pair<int, int>> cores;
-    
+
             while (std::getline(cpuinfo, line)) {
                 if (line.empty()) {
                     if (cur_phys != -1 && cur_core != -1) {
                         cores.emplace_back(cur_phys, cur_core);
                     }
-
                     cur_phys = cur_core = -1;
                     continue;
                 }
-    
+
                 auto pos = line.find(':');
                 if (pos == std::string::npos) {
                     continue;
@@ -5566,7 +5554,6 @@ public:
                 std::string key = line.substr(0, pos);
                 std::string val = line.substr(pos + 1);
 
-                // trim
                 while (!key.empty() && std::isspace(static_cast<u8>(key.back()))) {
                     key.pop_back();
                 }
@@ -5577,18 +5564,14 @@ public:
 
                 if (key == "processor") {
                     processors++;
-                } else if (key == "physical id") { 
-                    try { 
-                        cur_phys = std::stoi(val); 
-                    } catch (...) { 
-                        cur_phys = -1; 
-                    } 
-                } else if (key == "core id") { 
-                    try { 
-                        cur_core = std::stoi(val); 
-                    } catch (...) { 
-                        cur_core = -1;
-                    }
+                }
+                else if (key == "physical id") {
+                    try { cur_phys = std::stoi(val); }
+                    catch (...) { cur_phys = -1; }
+                }
+                else if (key == "core id") {
+                    try { cur_core = std::stoi(val); }
+                    catch (...) { cur_core = -1; }
                 }
             }
 
@@ -5599,7 +5582,7 @@ public:
             if (!cores.empty() && processors > 0) {
                 std::sort(cores.begin(), cores.end());
                 cores.erase(std::unique(cores.begin(), cores.end()), cores.end());
-                int const physical_cores = static_cast<int>(cores.size());
+                const int physical_cores = static_cast<int>(cores.size());
                 return processors > physical_cores;
             }
             return false;
@@ -5611,6 +5594,13 @@ public:
         if (info.found) {
             debug(info.debug_tag, ": CPU model = ", info.model_name);
 
+            const char* manufacturer = "";
+            const char* model = "";
+            util::get_manufacturer_model(&manufacturer, &model);
+
+            debug(info.debug_tag, ": {\"manufacturer\": \"", manufacturer,
+                "\", \"model\": \"", model, "\"}");
+
             const u32 actual = memo::threadcount::fetch();
 
             if (actual != info.expected_threads) {
@@ -5618,14 +5608,16 @@ public:
                 const bool smt = is_smt_enabled();
 
                 if (smt) {
-                    debug(info.debug_tag, ": Expected  ", info.expected_threads, " threads");
+                    debug(info.debug_tag, ": Expected ", info.expected_threads, " threads");
                     return true;
-                } 
+                }
 
-                debug(info.debug_tag, ": Expected ", info.expected_threads, " threads, but found SMT disabled");
+                debug(info.debug_tag, ": Expected ", info.expected_threads,
+                    " threads, but found SMT disabled");
                 return false;
             }
         }
+
         return false;
     #endif
     }
