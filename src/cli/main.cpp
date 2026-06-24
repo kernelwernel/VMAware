@@ -37,6 +37,7 @@
 #if (CLI_WINDOWS)
     #include "windows_tui.hpp"
     #include <windows.h>
+    #include <shellapi.h>
 #endif
 
 constexpr const char* ver = "2.7.0";
