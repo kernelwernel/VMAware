@@ -23,6 +23,7 @@ Cette bibliothèque est :
 - Très flexible, avec un contrôle précis sur les techniques exécutées
 - Capable de détecter diverses technologies VM et semi-VM telles que les hyperviseurs, les émulateurs, les conteneurs, les sandbox, etc.
 - Disponible avec C++11 et versions ultérieures
+- Contient un écosystème de ports vers d'autres langages tels que Rust, JavaScript et Ruby
 - header-only
 - Sans aucune dépendance externe
 - Mémoïsé, ce qui signifie que les résultats passés sont mis en cache et récupérés en cas de nouvelle exécution pour améliorer les performances
@@ -155,6 +156,7 @@ VMAware prend également en charge une variété de langages. Si C++ n’est pas
 |:---------|:---------------:|:--------:|:------:|
 | <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [lien](https://github.com/kernelwernel/VMAware/tree/main/gem) | Portage Ruby officiel intégré dans le dépôt VMAware, mais Windows n’est pas pris en charge. | [Adam Ruman](https://github.com/addam128) |
 | <img src="assets/language_icons/js.png" width="20"> JS | [lien](https://github.com/Kyun-J/node-vm-detect) | Très bonne API, activement maintenu. | [Kyun-J](https://github.com/Kyun-J) |
+| <img src="assets/language_icons/rust-logo-512x512.png" width="20"> Rust | [lien](https://github.com/MarcelDev/vmaware-rs) | Très bonne API, bien testée, activement maintenue | [Marcel](https://github.com/MarcelDev) |
 
 > [!WARNING]
 > Bien que des portages non officiels existent, ceux-ci ne sont pas aussi testés et validés que nos portages officiels. De plus, tous les portages sont susceptibles de générer des faux positifs en raison de la complexité du code C++ dont ils sont issus. En dehors de cette liste, les portages utilisant l’IA sont incapables de reproduire nos techniques avec précision (ou pire, échouent complètement). Utilisez-les à vos propres risques.
@@ -314,6 +316,7 @@ Et si ce projet vous a été utile, un star serait très apprécié :)
 - [Adam Ruman](https://github.com/addam128)
 - [Juan Diego](https://github.com/w451)
 - [Wiisus](https://github.com/wiisus)
+- [Marcel](https://github.com/MarcelDev)
 
 <br>
 
