@@ -672,6 +672,9 @@ public:
         KGT_SIGNATURE,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
+        // experimental techniques, opt-out via VM::EXPERIMENTAL
+        EXPERIMENTAL,
+
         // special flags, different to settings
         DEFAULT,
         ALL,
@@ -758,8 +761,8 @@ public:
         NULL_BRAND // do not modify the placement for this, as it's used to count the number of brands here
     };
 
-    static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 settings_count = MULTIPLE - HIGH_THRESHOLD + 1; // get number of settings technique flags
+    static constexpr u8 enum_size = EXPERIMENTAL; // get enum size through value of last element
+    static constexpr u8 settings_count = EXPERIMENTAL - HIGH_THRESHOLD + 1; // get number of settings technique flags
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 base_technique_count = HIGH_THRESHOLD; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 threshold_score = 150; // standard threshold score
@@ -790,6 +793,7 @@ public:
     static std::atomic<u16> technique_count; // get total number of techniques
 
     static std::vector<enum_flags> disabled_techniques;
+    static constexpr std::array<enum_flags, 1> experimental_techniques{ { TIMER } };
 
 #if (WINDOWS)
     using brand_score_t = i32;
@@ -13645,6 +13649,7 @@ public:
             }
 
             // disable all the settings flags except for VM::DEFAULT
+            flags.flip(EXPERIMENTAL);
             flags.flip(HIGH_THRESHOLD);
             flags.flip(NULL_ARG);
             flags.flip(DYNAMIC);
@@ -13671,6 +13676,12 @@ public:
             disabled_flag_collector.reset();
             for (const auto technique : disabled_techniques) {
                 disabled_flag_collector.set(static_cast<u32>(technique), true);
+            }
+        }
+
+        static void disable_experimental_techniques() {
+            for (const auto technique : experimental_techniques) {
+                VM::DISABLE(technique);
             }
         }
 
@@ -13709,6 +13720,7 @@ public:
 
             // reset all relevant flags
             flag_collector.reset();
+            bool experimental_requested = false;
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 generate_default(flag_collector);
@@ -13718,7 +13730,11 @@ public:
             // C++ trick to loop over the variadic arguments one by one
             const int dummy[] = {
                 0, // MSVC guardrail so it doesn't complain
-                (flag_collector.set(static_cast<u32>(args), true), 0)...
+                (
+                    experimental_requested = experimental_requested || (args == EXPERIMENTAL),
+                    flag_collector.set(static_cast<u32>(args), true),
+                    0
+                )...
             };
             VMAWARE_UNUSED(dummy);
 
@@ -13732,6 +13748,11 @@ public:
 
             if (flag_collector.test(ALL)) {
                 generate_all(flag_collector);
+            }
+
+            if (experimental_requested) {
+                flag_collector.set(EXPERIMENTAL, true);
+                disable_experimental_techniques(); 
             }
 
             // if flag is disabled, remove it from the flag_collector

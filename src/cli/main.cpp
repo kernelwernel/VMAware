@@ -68,6 +68,7 @@ Extra:
  --high-threshold   a higher threshold bar for a VM detection will be applied (2x higher)
  --no-ansi          removes color and ansi escape codes from the output
  --dynamic          allow the conclusion message to be dynamic (8 possibilities instead of only 2)
+ --experimental     disable experimental techniques
  --verbose          add more information to the output
  --enums            display the technique enum name used by the lib
  --detected-only    only display the techniques that were detected
@@ -249,6 +250,7 @@ int main(int argc, char* argv[]) {
         { "--disable-notes", NOTES },
         { "--high-threshold", HIGH_THRESHOLD },
         { "--dynamic", DYNAMIC },
+        { "--experimental", EXPERIMENTAL },
         { "--verbose", VERBOSE },
         { "--enums", ENUMS },
         { "--no-ansi", NO_ANSI },

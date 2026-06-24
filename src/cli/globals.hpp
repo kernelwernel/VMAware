@@ -41,6 +41,7 @@ enum arg_enum : u8 {
     DETECTED_ONLY,
     JSON,
     RICH,
+    EXPERIMENTAL,
     NULL_ARG,
 };
 
