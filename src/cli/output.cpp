@@ -653,7 +653,6 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     checker(VM::MAC_SYS, "system profiler");
     checker(VM::KERNEL_OBJECTS, "kernel objects");
     checker(VM::NVRAM, "NVRAM");
-    checker(VM::EDID, "EDID");
     checker(VM::CLOCK, "system timers");
     checker(VM::MSR, "model specific registers");
     checker(VM::CPU_HEURISTIC, "instruction capabilities");

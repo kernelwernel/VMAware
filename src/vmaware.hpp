@@ -597,7 +597,6 @@ public:
         DBVM,
         KERNEL_OBJECTS,
         NVRAM,
-        EDID,
         CPU_HEURISTIC,
         CLOCK,
         MSR,
@@ -672,9 +671,6 @@ public:
         KGT_SIGNATURE,
         // ADD NEW TECHNIQUE ENUM NAME HERE
 
-        // experimental techniques, opt-out via VM::EXPERIMENTAL
-        EXPERIMENTAL,
-
         // special flags, different to settings
         DEFAULT,
         ALL,
@@ -682,6 +678,7 @@ public:
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         HIGH_THRESHOLD,
+        EXPERIMENTAL,
         DYNAMIC,
         MULTIPLE
     };
@@ -761,8 +758,8 @@ public:
         NULL_BRAND // do not modify the placement for this, as it's used to count the number of brands here
     };
 
-    static constexpr u8 enum_size = EXPERIMENTAL; // get enum size through value of last element
-    static constexpr u8 settings_count = EXPERIMENTAL - HIGH_THRESHOLD + 1; // get number of settings technique flags
+    static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
+    static constexpr u8 settings_count = static_cast<u8>(MULTIPLE - HIGH_THRESHOLD + 1); // get number of settings technique flags
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 base_technique_count = HIGH_THRESHOLD; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 threshold_score = 150; // standard threshold score
@@ -5001,7 +4998,7 @@ public:
             }
 
             #ifdef __VMAWARE_DEBUG__
-                for (const auto brand : active_brands) {
+                for (const auto& brand : active_brands) {
                     debug("pre-processed scoreboard: ", int(brand.second), " : ", brands::brand_enum_to_string(brand.first));
                 }
             #endif
@@ -5130,7 +5127,7 @@ public:
             }
 
         #ifdef __VMAWARE_DEBUG__
-            for (const auto brand : active_brands) {
+            for (const auto& brand : active_brands) {
                 debug("post-processed scoreboard: ", static_cast<u32>(brand.second), " : ", brands::brand_enum_to_string(brand.first));
             }
         #endif
@@ -11601,262 +11598,6 @@ public:
 
 
     /**
-     * @brief Check for non-standard EDID configurations
-     * @category Windows
-     * @implements VM::EDID
-     */
-    [[nodiscard]] static bool edid() {
-        auto decode_manufacturer = [](const BYTE* edid, char out[4]) noexcept {
-            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
-
-            // 5 bits per character. 0x01='A', 0x1A='Z'
-            const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
-            const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
-            const u8 c3 = static_cast<u8>(word & 0x1F);
-
-            // '?' is fallback for valid EDID range 1-26
-            out[0] = (c1 >= 1 && c1 <= 26) ? static_cast<char>('A' + c1 - 1) : '?';
-            out[1] = (c2 >= 1 && c2 <= 26) ? static_cast<char>('A' + c2 - 1) : '?';
-            out[2] = (c3 >= 1 && c3 <= 26) ? static_cast<char>('A' + c3 - 1) : '?';
-            out[3] = '\0';
-        };
-
-        auto is_three_upper_alpha = [](const char m[4]) noexcept -> bool {
-            return (m[0] >= 'A' && m[0] <= 'Z') &&
-                (m[1] >= 'A' && m[1] <= 'Z') &&
-                (m[2] >= 'A' && m[2] <= 'Z');
-        };
-
-        auto edid_checksum_valid = [](const BYTE* edid, size_t len) noexcept -> bool {
-            if (len < 128) return false;
-
-            u8 sum = 0;
-            const BYTE* end = edid + 128;
-
-            while (edid < end) {
-                sum += *edid++;
-            }
-
-            return sum == 0;
-        };
-
-        auto extract_monitor_name = [](const BYTE* edid, size_t len, char out[32]) noexcept -> bool {
-            out[0] = '\0';
-            if (len < 128) return false;
-
-            // Standard EDID 1.3/1.4 Descriptor offsets
-            const BYTE* block = edid + 54;
-            const BYTE* end = edid + 126; // block area
-
-            const BYTE* best_block = nullptr;
-
-            for (; block <= end - 18; block += 18) {
-                // bytes 0-2 must be 0 to indicate a Display Descriptor
-                if (block[0] != 0 || block[1] != 0 || block[2] != 0) continue;
-
-                const u8 tag = block[3];
-
-                // 0xFC = Monitor Name
-                if (tag == 0xFC) {
-                    best_block = block;
-                    break;
-                }
-
-                // 0xFF = Monitor Serial (this is only a fallback)
-                if (tag == 0xFF && !best_block) {
-                    best_block = block;
-                }
-            }
-
-            if (best_block) {
-                int outi = 0;
-                for (int j = 5; j < 18 && outi < 31; ++j) {
-                    const char c = static_cast<char>(best_block[j]);
-                    // Terminate on newline (0x0A) or carriage return (0x0D) or null
-                    if (c == 0x0A || c == 0x0D || c == '\0') break;
-                    out[outi++] = c;
-                }
-
-                // right-trim spaces
-                while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) {
-                    --outi;
-                }
-
-                out[outi] = '\0';
-                return outi > 0;
-            }
-
-            return false;
-        };
-
-        // Helper lambda to retrieve device properties from the registry
-        auto get_device_property = [](HDEVINFO dev_info, SP_DEVINFO_DATA& dev_data, DWORD prop_id,
-            char* out_buf, DWORD out_buf_size) noexcept -> bool {
-                DWORD needed = 0;
-
-                // Try to get the property with the provided buffer
-                if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                    reinterpret_cast<PBYTE>(out_buf), out_buf_size, &needed)) {
-                    if (out_buf_size > 0) out_buf[out_buf_size - 1] = '\0';
-                    return true;
-                }
-
-                const DWORD err = GetLastError();
-
-                // If the buffer was too small, allocate exactly what is needed and try again
-                // This ensures we don't fail just because a property string is unusually long
-                if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
-
-                    void* h = malloc(static_cast<size_t>(needed) + 1);
-                    if (!h) return false;
-
-                    if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                        reinterpret_cast<PBYTE>(h), needed, &needed)) {
-
-                        const DWORD to_copy = (needed < out_buf_size - 1) ? needed : (out_buf_size - 1);
-
-                        if (out_buf_size > 0) {
-                            memcpy(out_buf, h, to_copy);
-                            out_buf[to_copy] = '\0';
-                        }
-
-                        free(h);
-                        return true;
-                    }
-                    free(h);
-                }
-
-                if (out_buf_size > 0) out_buf[0] = '\0';
-                return false;
-        };
-
-        // Initiate a query for all "Monitor" class devices present in the system.
-        // We target monitors because VMs often emulate generic displays (e.g., "Generic Non-PnP Monitor")
-        // or specific virtual hardware signatures in their EDID data.
-        const HDEVINFO dev_info = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
-        if (dev_info == INVALID_HANDLE_VALUE) return false;
-
-        SP_DEVINFO_DATA dev_data{};
-        dev_data.cbSize = sizeof(dev_data);
-
-        const int threshold = 3;
-
-        // Iterate through every enumerated monitor to inspect its hardware details
-        for (DWORD index = 0; SetupDiEnumDeviceInfo(dev_info, index, &dev_data); ++index) {
-            // Open the "Hardware" registry key for the specific device instance
-            // This is where the driver stores low-level configuration, including the EDID
-            const HKEY handle_dev_key = SetupDiOpenDevRegKey(dev_info, &dev_data, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-            if (handle_dev_key == INVALID_HANDLE_VALUE) {
-                dev_data = {};
-                dev_data.cbSize = sizeof(dev_data);
-                continue;
-            }
-
-            // Prepare to read the EDID (Extended Display Identification Data)
-            // EDID is a standard data structure containing the display's manufacturer ID, 
-            // serial number, and capabilities
-            BYTE edid_stack[256];
-            DWORD buffer_size = static_cast<DWORD>(sizeof(edid_stack));
-            const LONG rc = RegQueryValueExA(handle_dev_key, "EDID", nullptr, nullptr, edid_stack, &buffer_size);
-            RegCloseKey(handle_dev_key);
-
-            BYTE* edid = nullptr;
-            bool used_heap = false;
-            BYTE* heap_buf = nullptr;
-
-            // standard EDID is 128 bytes so it should fit in stack
-            if (rc == ERROR_SUCCESS && buffer_size >= 128) {
-                edid = edid_stack;
-            }
-            // If for some reason the EDID contains extension blocks (making it larger than our stack buffer)
-            // allocate a heap buffer dynamically to capture the full data
-            else if (rc == ERROR_MORE_DATA) {
-                if (buffer_size > 0 && buffer_size < 65536) {
-                    heap_buf = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, buffer_size));
-                    if (heap_buf) {
-                        DWORD extra_buffer_size = buffer_size;
-                        // Re-open the key to read the full data into the new buffer
-                        const HKEY extra_dev_key = SetupDiOpenDevRegKey(dev_info, &dev_data, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-                        if (extra_dev_key != INVALID_HANDLE_VALUE) {
-                            if (RegQueryValueExA(extra_dev_key, "EDID", nullptr, nullptr, heap_buf, &extra_buffer_size) == ERROR_SUCCESS && extra_buffer_size >= 128) {
-                                edid = heap_buf;
-                                used_heap = true;
-                                buffer_size = extra_buffer_size;
-                            }
-                            RegCloseKey(extra_dev_key);
-                        }
-                        if (!edid) {
-                            LocalFree(heap_buf);
-                            heap_buf = nullptr;
-                        }
-                    }
-                }
-            }
-
-            if (!edid) {
-                dev_data = {};
-                dev_data.cbSize = sizeof(dev_data);
-                continue;
-            }
-
-            // header check
-            if (!(edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF
-                && edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00)) {
-                if (used_heap) LocalFree(heap_buf);
-                dev_data = {};
-                dev_data.cbSize = sizeof(dev_data);
-                continue;
-            }
-
-            const bool checksum_ok = edid_checksum_valid(edid, buffer_size);
-
-            char manu[4];
-            decode_manufacturer(edid, manu);
-            const bool manu_ok = is_three_upper_alpha(manu);
-
-            const u16 product = static_cast<u16>(edid[10] | (edid[11] << 8)); // because its little-endian
-            const u32 serial = static_cast<u32>(edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24));
-
-            char monname[32];
-            const bool has_name = extract_monitor_name(edid, buffer_size, monname);
-
-            char prop_buf[512];
-            const bool have_friendly = get_device_property(dev_info, dev_data, SPDRP_FRIENDLYNAME, prop_buf, sizeof(prop_buf)); // friendly_name is often empty, like in Digital-Flachbildschirm monitors
-            const bool have_dev_desc = get_device_property(dev_info, dev_data, SPDRP_DEVICEDESC, prop_buf, sizeof(prop_buf));
-
-            int score = 0;
-
-            if (!checksum_ok) score += 1;
-            if (!manu_ok) score += 1;
-
-            if (product == 0 && serial == 0) {
-                score += 1;
-            }
-            else if (product == 0 || serial == 0) {
-                if (score > 0) score += 1;
-            }
-
-            if (!has_name && score > 0) score += 1;
-
-            if (!have_friendly && !have_dev_desc) score += 1;
-
-            if (used_heap) LocalFree(heap_buf);
-
-            if (score >= threshold) {
-                SetupDiDestroyDeviceInfoList(dev_info);
-                return true;
-            }
-
-            dev_data = {};
-            dev_data.cbSize = sizeof(dev_data);
-        }
-
-        SetupDiDestroyDeviceInfoList(dev_info);
-        return false;
-    }
-
-
-    /**
      * @brief Check whether the CPU is genuine and its reported instruction capabilities are not masked
      * @category Windows, x86
      * @implements VM::CPU_HEURISTIC
@@ -14141,7 +13882,6 @@ public:
             case MAC_SYS: return "MAC_SYS";
             case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
             case NVRAM: return "NVRAM";
-            case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
             case MSR: return "MSR";
@@ -14677,7 +14417,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::CLOCK, {45, VM::clock}},
             {VM::POWER_CAPABILITIES, {25, VM::power_capabilities}},
             {VM::GPU_CAPABILITIES, {25, VM::gpu_capabilities}},
-            {VM::EDID, {100, VM::edid}},
             {VM::MSR, {100, VM::msr}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
