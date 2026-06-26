@@ -35,9 +35,9 @@
 #include "wagner_fischer.hpp"
 
 #if (CLI_WINDOWS)
-    #include "windows_tui.hpp"
-    #include <windows.h>
-    #include <shellapi.h>
+#include "windows_tui.hpp"
+#include <windows.h>
+#include <shellapi.h>
 #endif
 
 constexpr const char* ver = "2.7.0";
@@ -179,7 +179,17 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (rich_requested) {
+    bool already_spawned = false;
+    char env_buf[16];
+    if (GetEnvironmentVariableA("VMAWARE_SPAWNED", env_buf, sizeof(env_buf)) > 0) {
+        if (std::strcmp(env_buf, "1") == 0) {
+            already_spawned = true;
+        }
+    }
+
+    if (rich_requested && !already_spawned) {
+        SetEnvironmentVariableA("VMAWARE_SPAWNED", "1");
+
         char exePath[MAX_PATH];
         GetModuleFileNameA(NULL, exePath, MAX_PATH);
 
@@ -188,9 +198,6 @@ int main(int argc, char* argv[]) {
 
         std::string args = "\"" + std::string(exePath) + "\"";
         for (int i = 1; i < argc; ++i) {
-            if (std::strcmp(argv[i], "--rich") == 0) {
-                continue;
-            }
             args += " \"";
             args += argv[i];
             args += "\"";
