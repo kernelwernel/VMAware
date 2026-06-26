@@ -7485,56 +7485,56 @@ public:
      * @category Windows, Linux
      * @implements VM::AZURE
      */
-    [[nodiscard]] static bool azure() {
-        std::string hostname;
+    [[nodiscard]] static bool azure() noexcept {
+        // Returns 1u if alphanumeric, 0u if not. Here we use unsigned integers
+        // instead of booleans because MSVC's IntelliSense is stupid and avoids warnings 
+        // about bitwise operations on boolean types
+        auto is_alnum_ascii = [](char c) noexcept -> unsigned int {
+            const auto l = static_cast<unsigned char>(c | 0x20);
+            const auto d = static_cast<unsigned char>(c);
+
+            const unsigned int is_letter = (static_cast<unsigned char>(l - 'a') < 26) ? 1u : 0u;
+            const unsigned int is_digit = (static_cast<unsigned char>(d - '0') < 10) ? 1u : 0u;
+
+            return is_letter | is_digit;
+        };
 
     #if (WINDOWS)
         char buf[MAX_COMPUTERNAME_LENGTH + 1];
         DWORD len = sizeof(buf);
 
-        if (GetComputerNameA(buf, &len)) {
-            hostname.assign(buf, len);
-        }
-        else {
+        if (!GetComputerNameA(buf, &len) || len != 13) {
             return false;
         }
     #elif (LINUX)
-        char buf[HOST_NAME_MAX];
+        // 16 bytes fits 13-char hostname and the null-terminator
+        char buf[16] = { 0 };
 
-        if (gethostname(buf, sizeof(buf)) == 0) {
-            hostname = buf;
-        }
-        else {
+        if (gethostname(buf, sizeof(buf)) != 0) {
             return false;
         }
+
+        if (buf[13] != '\0') {
+            return false;
+        }
+    #else
+        return false;
     #endif
 
-        const char* prefix = "runnervm";
-        const std::size_t prefix_len = std::strlen(prefix);
-        const std::size_t extra_chars = 5;
-        const std::size_t expected_len = prefix_len + extra_chars;
-
-        if (hostname.size() != expected_len) {
+        if (std::memcmp(buf, "runnervm", 8) != 0) {
             return false;
         }
 
-        if (hostname.compare(0, prefix_len, prefix) != 0) {
-            return false;
-        }
+        const unsigned int is_match = is_alnum_ascii(buf[8]) &
+            is_alnum_ascii(buf[9]) &
+            is_alnum_ascii(buf[10]) &
+            is_alnum_ascii(buf[11]) &
+            is_alnum_ascii(buf[12]);
 
-        for (std::size_t i = prefix_len; i < hostname.size(); ++i) {
-            if (!std::isalnum(static_cast<unsigned char>(hostname.at(i)))) {
-                return false;
-            }
+        if (is_match != 0u) {
+            return core::add(brand_enum::AZURE_HYPERV);
         }
-
-        return core::add(brand_enum::AZURE_HYPERV);
-    }
-    template <typename T, size_t N>
-    constexpr bool check_no_nulls(const std::array<T, N>& arr, size_t i = 0) const {
-        return (i == N)
-            ? true
-            : (arr[i] != nullptr && check_no_nulls(arr, i + 1));
+        return false;
     }
 
 
