@@ -1,4 +1,4 @@
-name: Cross-platform build
+name: vmaware build infrastructure
 
 on:
   push:
@@ -273,6 +273,62 @@ jobs:
       - name: Build (C++${{ matrix.std }})
         run: cmake --build build --config Release
 
+  windows-unicode:
+    runs-on: windows-2022
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Unicode x64)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_CXX_FLAGS="/D \"_UNICODE\" /WX"
+
+      - name: Build (Unicode Release)
+        run: cmake --build build --config Release
+
+  windows-asan:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disable Windows Defender real-time monitoring
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+
+      - name: Configure (ASAN x64)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DENABLE_ASAN=ON -DDEBUG_OUTPUT=ON
+
+      - name: Build (ASAN Release)
+        run: cmake --build build --config Release
+
+      - name: Add ASAN runtime DLLs to PATH
+        shell: pwsh
+        run: |
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          $msvcVersion = Get-ChildItem "$vsPath\VC\Tools\MSVC" |
+            Sort-Object Name -Descending |
+            Select-Object -First 1 -ExpandProperty Name
+          $asanDir = "$vsPath\VC\Tools\MSVC\$msvcVersion\bin\Hostx64\x64"
+          Write-Host "Adding ASAN runtime path: $asanDir"
+          Add-Content $env:GITHUB_PATH $asanDir
+
+      - name: Full CLI output (ASAN)
+        shell: pwsh
+        run: |
+          $bin = "build\Release\vmaware.exe"
+          & $bin; $true | Out-Null
+
+      - name: Run CLI test suite (ASAN)
+        shell: pwsh
+        run: |
+          $bin = "build\Release\vmaware.exe"
+          pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 30
+
   linux:
     needs: [linux-compilation, linux-cpp-standard, linux-compiler-compat]
     runs-on: ubuntu-latest
@@ -286,7 +342,7 @@ jobs:
       - run: echo "MacOS builds completed"
 
   windows:
-    needs: [windows-compilation, windows-cpp-standard]
+    needs: [windows-compilation, windows-cpp-standard, windows-unicode, windows-asan]
     runs-on: ubuntu-latest
     steps:
       - run: echo "Windows builds completed"

@@ -133,6 +133,17 @@ target_link_options(${TARGET} PRIVATE
     $<$<AND:$<CONFIG:Debug>,$<PLATFORM_ID:Darwin>>:-fsanitize=address>
 )
 
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN)
+    if(MSVC)
+        target_compile_options(${TARGET} PRIVATE /fsanitize=address)
+        target_link_options(${TARGET} PRIVATE /INCREMENTAL:NO)
+    else()
+        target_compile_options(${TARGET} PRIVATE -fsanitize=address)
+        target_link_options(${TARGET} PRIVATE -fsanitize=address)
+    endif()
+endif()
+
 # DbgHelp for stack traces on timeout (Windows only)
 target_link_libraries(${TARGET} PRIVATE $<$<PLATFORM_ID:Windows>:DbgHelp>)
 
