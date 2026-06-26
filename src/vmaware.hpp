@@ -9339,8 +9339,7 @@ public:
      * @category Windows, x86_32
      * @implements VM::VPC_INVALID
      */
-    [[nodiscard]] static bool 
-    () {
+    [[nodiscard]] static bool vpc_invalid() {
         bool rc = false;
     #if (x86_32 && !CLANG)
 
