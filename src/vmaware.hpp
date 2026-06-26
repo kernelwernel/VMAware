@@ -5658,16 +5658,17 @@ public:
         };
 
         const auto& info = cpu::analyze_cpu();
-
+        
         if (info.found) {
             debug(info.debug_tag, ": CPU model = ", info.model_name);
 
+        #if (WINDOWS)
             const char* manufacturer = "";
             const char* model = "";
             util::get_manufacturer_model(&manufacturer, &model);
-
             debug(info.debug_tag, ": {\"manufacturer\": \"", manufacturer,
                 "\", \"model\": \"", model, "\"}");
+        #endif
 
             const u32 actual = memo::threadcount::fetch();
 
