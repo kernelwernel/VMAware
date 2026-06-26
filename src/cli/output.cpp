@@ -617,7 +617,6 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     checker(VM::CUCKOO_PIPE, "Cuckoo pipe");
     checker(VM::AZURE, "Azure Hyper-V");
     checker(VM::DISPLAY, "display");
-    checker(VM::DEVICE_STRING, "bogus device string");
     checker(VM::BLUESTACKS_FOLDERS, "BlueStacks folders");
     checker(VM::CPUID_SIGNATURE, "CPUID signatures");
     checker(VM::KGT_SIGNATURE, "Intel KGT signature");

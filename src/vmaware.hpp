@@ -585,7 +585,6 @@ public:
         WINE,
         VIRTUAL_REGISTRY,
         MUTEX,
-        DEVICE_STRING,
         VPC_INVALID,
         VMWARE_STR,
         GAMARUE,
@@ -9693,25 +9692,6 @@ public:
 
 
     /**
-     * @brief Check if bogus device string would be accepted
-     * @category Windows
-     * @author Huntress Research Team
-     * @link https://unprotect.it/technique/buildcommdcbandtimeouta/
-     * @implements VM::DEVICE_STRING
-     */
-    [[nodiscard]] static bool device_string() {
-        DCB dcb{};
-        COMMTIMEOUTS timeouts{};
-
-        if (BuildCommDCBAndTimeoutsA("jhl46745fghb", &dcb, &timeouts)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-
-    /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
      * @implements VM::DRIVERS
@@ -13843,7 +13823,6 @@ public:
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
             case AZURE: return "AZURE";
             case DISPLAY: return "DISPLAY";
-            case DEVICE_STRING: return "DEVICE_STRING";
             case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
             case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
@@ -14433,7 +14412,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::VMWARE_BACKDOOR, {100, VM::vmware_backdoor}},
             {VM::VIRTUAL_REGISTRY, {90, VM::virtual_registry}},
             {VM::MUTEX, {100, VM::mutex}},
-            {VM::DEVICE_STRING, {25, VM::device_string}},
             {VM::VPC_INVALID, {75, VM::vpc_invalid}},
             {VM::VMWARE_STR, {35, VM::vmware_str}},
             {VM::GAMARUE, {10, VM::gamarue}},
