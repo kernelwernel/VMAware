@@ -5866,7 +5866,7 @@ public:
 
 
     /**
-     * @brief Check for timing anomalies in the system
+     * @brief Check for hypervisor overhead by measuring instruction execution latency
      * @category Windows, x86
      * @implements VM::TIMER
      */
@@ -5883,12 +5883,7 @@ public:
         bool is_intel = cpu::is_intel();
         double threshold = 2.5;
         if (util::hyper_x() != HYPERV_UNKNOWN) {
-            if (is_intel) { // intel is typically faster on nested
-                threshold = 20.0;
-            }
-            else {
-                threshold = 35.0;
-            }
+            threshold = 35.0;
         }
 
         // shared state and results
@@ -9343,7 +9338,8 @@ public:
      * @category Windows, x86_32
      * @implements VM::VPC_INVALID
      */
-    [[nodiscard]] static bool vpc_invalid() {
+    [[nodiscard]] static bool 
+    () {
         bool rc = false;
     #if (x86_32 && !CLANG)
 
