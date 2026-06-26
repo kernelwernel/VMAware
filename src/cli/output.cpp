@@ -2,6 +2,7 @@
 #include "output.hpp"
 #include "windows_tui.hpp"
 #include "globals.hpp"
+#include "sha256.hpp" 
 
 #include <chrono>
 #include <iomanip>
@@ -596,6 +597,10 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     const VM::vmaware vm(VM::MULTIPLE, high_thresh_arg, all_arg, dynamic_arg);
     std::vector<std::string> summary;
 
+#if defined(__VMAWARE_DEBUG__)
+    std::cout << grey << "SHA-256: " << white << compute_self_sha256() << ansi_exit << "\n";
+#endif
+
     const std::string brand = vm.brand;
     const bool is_red = ((brand == VM::brands::NULL_BRAND) || (brand == VM::brands::HYPERV_ROOT));
     summary.push_back(bold + "\nVM brand: " + ansi_exit + (is_red ? red : green) + brand + ansi_exit);
@@ -769,13 +774,25 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
             std::cout << l << "\n";
         }
     }
+
+    #if defined(__VMAWARE_DEBUG__)
+        std::cout << grey << "SHA-256: " << white << compute_self_sha256() << ansi_exit << "\n";
+    #endif
+
 #else
+
     for (const auto& line : summary) {
         std::cout << line << "\n";
     }
 
+    #if defined(__VMAWARE_DEBUG__)
+        std::cout << grey << "SHA-256: " << white << compute_self_sha256() << ansi_exit << "\n";
+    #endif
+
     if (original_cout_buf) {
         std::cout.rdbuf(original_cout_buf);
     }
+
 #endif
+
 }
