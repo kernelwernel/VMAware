@@ -218,60 +218,6 @@ const char* get_vm_description(const std::string& vm_brand) {
     return "";
 }
 
-#if (CLI_WINDOWS)
-// Run a single technique in a worker thread and wait up to TECHNIQUE_TIMEOUT_MS.
-// Returns {result, timed_out}.  On timeout the flag is pushed to
-// VM::disabled_techniques so the VM::vmaware constructor won't re-run it.
-static constexpr DWORD TECHNIQUE_TIMEOUT_MS = 3000;
-
-struct win_run_result { bool result; bool timed_out; };
-
-static win_run_result win_run_technique(const VM::enum_flags flag) {
-    struct runner_t {
-        VM::enum_flags flag;
-        bool result = false;
-        static DWORD WINAPI run(LPVOID lp) noexcept {
-            auto* self = static_cast<runner_t*>(lp);
-            self->result = VM::check(self->flag);
-            return 0;
-        }
-    };
-
-    runner_t runner { 
-        flag, 
-        false 
-    };
-
-    HANDLE h = CreateThread(nullptr, 0, runner_t::run, &runner, 0, nullptr);
-    if (!h) {
-        return { 
-            VM::check(flag), 
-            false 
-        };
-    }
-
-    if (WaitForSingleObject(h, TECHNIQUE_TIMEOUT_MS) == WAIT_TIMEOUT) {
-        TerminateThread(h, 0);
-        CloseHandle(h);
-        VM::disabled_techniques.push_back(flag);
-        std::cerr << "[TIMEOUT] VM::" << VM::flag_to_string(flag)
-                  << " did not finish within " << (TECHNIQUE_TIMEOUT_MS / 1000)
-                  << "s, skipping\n" << std::flush;
-
-        return { 
-            false, 
-            true 
-        };
-    }
-
-    CloseHandle(h);
-    return { 
-        runner.result, 
-        false
-    };
-}
-#endif
-
 static void checker(const VM::enum_flags flag, const char* message) {
     std::string enum_name;
 
@@ -298,13 +244,7 @@ static void checker(const VM::enum_flags flag, const char* message) {
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
-#if (CLI_WINDOWS)
-    const win_run_result wres = win_run_technique(flag);
-    if (wres.timed_out) { return; }
-    const bool result = wres.result;
-#else
     const bool result = VM::check(flag);
-#endif
 
     auto end_time = std::chrono::high_resolution_clock::now();
 
@@ -380,19 +320,6 @@ bool parse_disable_token(const char* token) {
 }
 
 void generate_json(const char* output) {
-#if (CLI_WINDOWS)
-    // Warm the memo cache with per-technique timeouts before constructing
-    // VM::vmaware, so that any technique that hangs (e.g. CPU_HEURISTIC on
-    // Azure Hyper-V) is aborted and disabled rather than blocking indefinitely.
-    for (u8 i = VM::technique_begin; i < static_cast<u8>(VM::technique_end); ++i) {
-        const VM::enum_flags flag = static_cast<VM::enum_flags>(i);
-        if (is_disabled(flag) || is_unsupported(flag)) { 
-            continue; 
-        }
-        win_run_technique(flag);
-    }
-#endif
-
     const VM::vmaware vm(VM::MULTIPLE);
 
     std::vector<std::string> json;
