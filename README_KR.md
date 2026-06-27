@@ -1,7 +1,8 @@
 
 <div align="center">
-   <h1>VMAware</h1>
-   <img src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cross-platform-build.yml">
+   <img src="assets/banner.jpg" width="500" title="VMAware">
+   <br>
+   <img src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/build_infrastructure.yml">
    <img src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
    <img src="https://img.shields.io/badge/License-MIT-yellow.svg">
    <a href="https://deepwiki.com/kernelwernel/VMAware"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>

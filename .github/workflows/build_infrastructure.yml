@@ -6,7 +6,7 @@ on:
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
-      - '.github/workflows/cross-platform-build.yml'
+      - '.github/workflows/build_infrastructure.yml'
       - 'CMakeLists.txt'
       - 'auxiliary/test_cli.sh'
       - 'auxiliary/test_cli.ps1'
@@ -16,7 +16,7 @@ on:
     paths:
       - 'src/**/*.cpp'
       - 'src/**/*.hpp'
-      - '.github/workflows/cross-platform-build.yml'
+      - '.github/workflows/build_infrastructure.yml'
       - 'CMakeLists.txt'
       - 'auxiliary/test_cli.sh'
       - 'auxiliary/test_cli.ps1'
