@@ -1,5 +1,6 @@
 <div align="center">
-   <h1>VMAware</h1>
+   <img src="assets/banner.jpg" width="500" title="VMAware">
+   <br><br>
    <img src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/cross-platform-build.yml">
    <img src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
    <img src="https://img.shields.io/badge/License-MIT-yellow.svg">
