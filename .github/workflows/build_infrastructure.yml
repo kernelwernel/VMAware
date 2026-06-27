@@ -1,4 +1,4 @@
-name: Cross-platform build
+name: vmaware build infrastructure
 
 on:
   push:
@@ -273,6 +273,62 @@ jobs:
       - name: Build (C++${{ matrix.std }})
         run: cmake --build build --config Release
 
+  windows-unicode:
+    runs-on: windows-2022
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (Unicode x64)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_CXX_FLAGS="/D \"_UNICODE\" /WX"
+
+      - name: Build (Unicode Release)
+        run: cmake --build build --config Release
+
+  windows-asan:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Disable Windows Defender real-time monitoring
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+
+      - name: Configure (ASAN x64)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DENABLE_ASAN=ON -DDEBUG_OUTPUT=ON
+
+      - name: Build (ASAN Release)
+        run: cmake --build build --config Release
+
+      - name: Add ASAN runtime DLLs to PATH
+        shell: pwsh
+        run: |
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+            -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          $msvcVersion = Get-ChildItem "$vsPath\VC\Tools\MSVC" |
+            Sort-Object Name -Descending |
+            Select-Object -First 1 -ExpandProperty Name
+          $asanDir = "$vsPath\VC\Tools\MSVC\$msvcVersion\bin\Hostx64\x64"
+          Write-Host "Adding ASAN runtime path: $asanDir"
+          Add-Content $env:GITHUB_PATH $asanDir
+
+      - name: Full CLI output (ASAN)
+        shell: pwsh
+        run: |
+          $bin = "build\Release\vmaware.exe"
+          & $bin; $true | Out-Null
+
+      - name: Run CLI test suite (ASAN)
+        shell: pwsh
+        run: |
+          $bin = "build\Release\vmaware.exe"
+          pwsh auxiliary/test_cli.ps1 -BIN $bin -TIMEOUT_SECS 30
+
   linux:
     needs: [linux-compilation, linux-cpp-standard, linux-compiler-compat]
     runs-on: ubuntu-latest
@@ -286,7 +342,7 @@ jobs:
       - run: echo "MacOS builds completed"
 
   windows:
-    needs: [windows-compilation, windows-cpp-standard]
+    needs: [windows-compilation, windows-cpp-standard, windows-unicode, windows-asan]
     runs-on: ubuntu-latest
     steps:
       - run: echo "Windows builds completed"
@@ -443,6 +499,125 @@ jobs:
       - name: Run memoize test
         run: ./memoize_test
 
+  vm-output-test-linux:
+    needs: [linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware-linux-amd64
+          path: build
+
+      - name: Make executable
+        run: chmod +x build/vmaware
+
+      - name: Check --detect = 1
+        run: |
+          result=$(build/vmaware --detect)
+          if [ "$result" != "1" ]; then
+            echo "FAIL: --detect expected 1, got '$result'"
+            exit 1
+          fi
+          echo "PASS: --detect = $result"
+
+      - name: Check --percent = 100
+        run: |
+          result=$(build/vmaware --percent)
+          if [ "$result" != "100" ]; then
+            echo "FAIL: --percent expected 100, got '$result'"
+            exit 1
+          fi
+          echo "PASS: --percent = $result"
+
+      - name: Check --brand = "Microsoft Azure Hyper-V"
+        run: |
+          result=$(build/vmaware --brand)
+          expected="Microsoft Azure Hyper-V"
+          if [ "$result" != "$expected" ]; then
+            echo "FAIL: --brand expected '$expected', got '$result'"
+            exit 1
+          fi
+          echo "PASS: --brand = $result"
+
+  vm-output-test-macos:
+    needs: [macos]
+    runs-on: macos-latest
+
+    steps:
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware-macos-aarch64
+          path: build
+
+      - name: Make executable
+        run: chmod +x build/vmaware
+
+      - name: Check --detect = 1
+        run: |
+          result=$(build/vmaware --detect)
+          if [ "$result" != "1" ]; then
+            echo "FAIL: --detect expected 1, got '$result'"
+            exit 1
+          fi
+          echo "PASS: --detect = $result"
+
+      - name: Check --percent = 100
+        run: |
+          result=$(build/vmaware --percent)
+          if [ "$result" != "100" ]; then
+            echo "FAIL: --percent expected 100, got '$result'"
+            exit 1
+          fi
+          echo "PASS: --percent = $result"
+
+  vm-output-test-windows:
+    needs: [windows]
+    runs-on: windows-2022
+
+    steps:
+      - name: Download vmaware64_release
+        uses: actions/download-artifact@v4
+        with:
+          name: vmaware64_release.exe
+          path: build\vmaware64_release
+
+      - name: Check --detect = 1
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware64_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          $result = (& $bin --detect).Trim()
+          if ($result -ne "1") {
+            Write-Host "FAIL: --detect expected 1, got '$result'"
+            exit 1
+          }
+          Write-Host "PASS: --detect = $result"
+
+      - name: Check --percent = 100
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware64_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          $result = (& $bin --percent).Trim()
+          if ($result -ne "100") {
+            Write-Host "FAIL: --percent expected 100, got '$result'"
+            exit 1
+          }
+          Write-Host "PASS: --percent = $result"
+
+      - name: Check --brand = "Microsoft Azure Hyper-V"
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem build\vmaware64_release -Filter "*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          $result = (& $bin --brand).Trim()
+          $expected = "Microsoft Azure Hyper-V"
+          if ($result -ne $expected) {
+            Write-Host "FAIL: --brand expected '$expected', got '$result'"
+            exit 1
+          }
+          Write-Host "PASS: --brand = $result"
+
   platform-builds:
     needs: [linux, macos, windows]
     runs-on: ubuntu-latest
@@ -455,8 +630,14 @@ jobs:
     steps:
       - run: echo "All CLI tests completed"
 
+  vm-output-tests:
+    needs: [vm-output-test-linux, vm-output-test-macos, vm-output-test-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All VM output tests completed"
+
   completed:
-    needs: [platform-builds, cli-tests, memoize-test]
+    needs: [platform-builds, cli-tests, memoize-test, vm-output-tests]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All checks passed"
