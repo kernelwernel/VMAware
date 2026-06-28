@@ -41,6 +41,7 @@ enum arg_enum : u8 {
     DETECTED_ONLY,
     JSON,
     RICH,
+    EXPERIMENTAL,
     NULL_ARG,
 };
 
@@ -59,6 +60,6 @@ extern std::string tag_no_perms;
 extern std::string tag_notes;
 
 // increment this each time a new argument is introduced
-constexpr std::size_t arg_count = 34;
+constexpr std::size_t arg_count = 35;
 
 using arg_table = std::array<std::pair<const char*, arg_enum>, arg_count>;

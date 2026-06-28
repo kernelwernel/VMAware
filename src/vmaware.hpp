@@ -585,7 +585,6 @@ public:
         WINE,
         VIRTUAL_REGISTRY,
         MUTEX,
-        DEVICE_STRING,
         VPC_INVALID,
         VMWARE_STR,
         GAMARUE,
@@ -597,7 +596,6 @@ public:
         DBVM,
         KERNEL_OBJECTS,
         NVRAM,
-        EDID,
         CPU_HEURISTIC,
         CLOCK,
         MSR,
@@ -679,6 +677,7 @@ public:
 
         // start of settings technique flags (THE ORDERING IS VERY SPECIFIC HERE AND MIGHT BREAK SOMETHING IF RE-ORDERED)
         HIGH_THRESHOLD,
+        EXPERIMENTAL,
         DYNAMIC,
         MULTIPLE
     };
@@ -759,7 +758,7 @@ public:
     };
 
     static constexpr u8 enum_size = MULTIPLE; // get enum size through value of last element
-    static constexpr u8 settings_count = MULTIPLE - HIGH_THRESHOLD + 1; // get number of settings technique flags
+    static constexpr u8 settings_count = static_cast<u8>(MULTIPLE - HIGH_THRESHOLD + 1); // get number of settings technique flags
     static constexpr u8 INVALID = 255; // explicit invalid technique macro
     static constexpr u16 base_technique_count = HIGH_THRESHOLD; // original technique count, constant on purpose (can also be used as a base count value if custom techniques are added)
     static constexpr u16 threshold_score = 150; // standard threshold score
@@ -790,6 +789,7 @@ public:
     static std::atomic<u16> technique_count; // get total number of techniques
 
     static std::vector<enum_flags> disabled_techniques;
+    static constexpr std::array<enum_flags, 1> experimental_techniques{ { TIMER } };
 
 #if (WINDOWS)
     using brand_score_t = i32;
@@ -4777,57 +4777,125 @@ public:
             if (out_manufacturer) *out_manufacturer = "";
             if (out_model) *out_model = "";
 
-            if (memo::bios_info::is_cached()) {
-                if (out_manufacturer) *out_manufacturer = memo::bios_info::fetch_manufacturer();
-                if (out_model) *out_model = memo::bios_info::fetch_model();
-                return memo::bios_info::fetch_manufacturer()[0] != '\0' || memo::bios_info::fetch_model()[0] != '\0';
-            }
+            auto is_placeholder = [](const char* s) noexcept -> bool {
+                if (!s || !*s) {
+                    return true;
+                }
 
-            WCHAR wbuf[256]{};
-            DWORD cb = sizeof(wbuf);
+                return std::strcmp(s, "System Product Name") == 0 ||
+                    std::strcmp(s, "To Be Filled By O.E.M.") == 0 ||
+                    std::strcmp(s, "Default string") == 0 ||
+                    std::strcmp(s, "Not Specified") == 0 ||
+                    std::strcmp(s, "None") == 0;
+            };
+
+            auto read_reg_utf8 = [](const wchar_t* value_name, char* out, size_t out_size) -> bool {
+                if (!out || out_size == 0) {
+                    return false;
+                }
+
+                out[0] = '\0';
+
+                WCHAR wbuf[256]{};
+                DWORD cb = sizeof(wbuf);
+
+                const LSTATUS st = RegGetValueW(
+                    HKEY_LOCAL_MACHINE,
+                    L"HARDWARE\\DESCRIPTION\\System\\BIOS",
+                    value_name,
+                    RRF_RT_REG_SZ,
+                    nullptr,
+                    wbuf,
+                    &cb
+                );
+
+                if (st != ERROR_SUCCESS || wbuf[0] == L'\0') {
+                    return false;
+                }
+
+                const int conv = WideCharToMultiByte(
+                    CP_UTF8,
+                    0,
+                    wbuf,
+                    -1,
+                    out,
+                    static_cast<int>(out_size),
+                    nullptr,
+                    nullptr
+                );
+
+                if (conv <= 0) {
+                    out[0] = '\0';
+                    return false;
+                }
+
+                out[out_size - 1] = '\0';
+                return true;
+            };
+
+            if (memo::bios_info::is_cached()) {
+                const char* man = memo::bios_info::fetch_manufacturer();
+                const char* mod = memo::bios_info::fetch_model();
+
+                if (out_manufacturer) *out_manufacturer = man;
+                if (out_model) *out_model = mod;
+
+                return !is_placeholder(man) || !is_placeholder(mod);
+            }
 
             char man_tmp[sizeof(memo::bios_info::manufacturer)]{};
             char model_tmp[sizeof(memo::bios_info::model)]{};
-            man_tmp[0] = '\0';
-            model_tmp[0] = '\0';
 
             bool got_any = false;
 
-            cb = sizeof(wbuf);
-            if (RegGetValueW(HKEY_LOCAL_MACHINE,
-                L"HARDWARE\\DESCRIPTION\\System\\BIOS",
-                L"SystemManufacturer",
-                RRF_RT_REG_SZ,
-                nullptr,
-                wbuf,
-                &cb) == ERROR_SUCCESS && wbuf[0] != L'\0') {
-                const int conv = WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, man_tmp, static_cast<int>(sizeof(man_tmp)), nullptr, nullptr);
-                if (conv > 0) {
-                    man_tmp[sizeof(man_tmp) - 1] = '\0';
-                    memo::bios_info::store_manufacturer(man_tmp);
-                    got_any = true;
-                }
+            // Manufacturer priority:
+            // 1) SystemManufacturer
+            // 2) BaseBoardManufacturer
+            // 3) BIOS vendor string if needed later
+            if (read_reg_utf8(L"SystemManufacturer", man_tmp, sizeof(man_tmp)) &&
+                !is_placeholder(man_tmp)) {
+                memo::bios_info::store_manufacturer(man_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"BaseBoardManufacturer", man_tmp, sizeof(man_tmp)) &&
+                !is_placeholder(man_tmp)) {
+                memo::bios_info::store_manufacturer(man_tmp);
+                got_any = true;
+            }
+            else {
+                memo::bios_info::store_manufacturer("");
             }
 
-            cb = sizeof(wbuf);
-            if (RegGetValueW(HKEY_LOCAL_MACHINE,
-                L"HARDWARE\\DESCRIPTION\\System\\BIOS",
-                L"SystemProductName",
-                RRF_RT_REG_SZ,
-                nullptr,
-                wbuf,
-                &cb) == ERROR_SUCCESS && wbuf[0] != L'\0') {
-                const int conv = WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, model_tmp, static_cast<int>(sizeof(model_tmp)), nullptr, nullptr);
-                if (conv > 0) {
-                    model_tmp[sizeof(model_tmp) - 1] = '\0';
-                    memo::bios_info::store_model(model_tmp);
-                    got_any = true;
-                }
+            // Model priority:
+            // 1) SystemProductName
+            // 2) BaseBoardProduct
+            // 3) SystemSKU
+            // 4) BaseBoardVersion
+            if (read_reg_utf8(L"SystemProductName", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"BaseBoardProduct", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"SystemSKU", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else if (read_reg_utf8(L"BaseBoardVersion", model_tmp, sizeof(model_tmp)) &&
+                !is_placeholder(model_tmp)) {
+                memo::bios_info::store_model(model_tmp);
+                got_any = true;
+            }
+            else {
+                memo::bios_info::store_model("");
             }
 
-            if (!memo::bios_info::is_cached()) {
-                memo::bios_info::cached = true;
-            }
+            memo::bios_info::cached = true;
 
             if (out_manufacturer) *out_manufacturer = memo::bios_info::fetch_manufacturer();
             if (out_model) *out_model = memo::bios_info::fetch_model();
@@ -4929,7 +4997,7 @@ public:
             }
 
             #ifdef __VMAWARE_DEBUG__
-                for (const auto brand : active_brands) {
+                for (const auto& brand : active_brands) {
                     debug("pre-processed scoreboard: ", int(brand.second), " : ", brands::brand_enum_to_string(brand.first));
                 }
             #endif
@@ -5058,7 +5126,7 @@ public:
             }
 
         #ifdef __VMAWARE_DEBUG__
-            for (const auto brand : active_brands) {
+            for (const auto& brand : active_brands) {
                 debug("post-processed scoreboard: ", static_cast<u32>(brand.second), " : ", brands::brand_enum_to_string(brand.first));
             }
         #endif
@@ -5466,7 +5534,6 @@ public:
                 return false;
             }
 
-            // first RelationProcessorCore record encountered, basically if two logical processors maps to the same core, SMT is enabled to the OS point of view
             size_t offset = 0;
             while (offset + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) <= static_cast<size_t>(len)) {
                 auto rec = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buf.data() + offset);
@@ -5500,33 +5567,25 @@ public:
                 physical = 0;
             }
 
-            if (logical > 0 && physical > 0) {
-                return logical > physical;
-            }
-
-            return false;
+            return logical > 0 && physical > 0 && logical > physical;
         #else
-            //  check cpu0 thread_siblings_list
             std::ifstream f("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list");
             if (f) {
                 std::string s;
                 if (std::getline(f, s)) {
-                    // trim
-                    size_t a = 0; 
-                    
-                    while (a < s.size() && std::isspace(static_cast<u8>(s[a]))) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    size_t a = 0;
+                    while (a < s.size() && std::isspace(static_cast<u8>(s[a]))) {
                         ++a;
                     }
 
                     size_t b = s.size();
-
-                    while (b > a && std::isspace(static_cast<u8>(s[b - 1]))) { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                    while (b > a && std::isspace(static_cast<u8>(s[b - 1]))) {
                         --b;
                     }
 
                     if (b > a) {
                         for (size_t k = a; k < b; ++k) {
-                            if (s[k] == ',' || s[k] == '-') { // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+                            if (s[k] == ',' || s[k] == '-') {
                                 return true;
                             }
                         }
@@ -5535,9 +5594,7 @@ public:
                 }
             }
 
-            // /proc/cpuinfo for unique (physical id, core id) pairs vs processors
             std::ifstream cpuinfo("/proc/cpuinfo");
-
             if (!cpuinfo) {
                 return false;
             }
@@ -5547,17 +5604,16 @@ public:
             int cur_phys = -1;
             int cur_core = -1;
             std::vector<std::pair<int, int>> cores;
-    
+
             while (std::getline(cpuinfo, line)) {
                 if (line.empty()) {
                     if (cur_phys != -1 && cur_core != -1) {
                         cores.emplace_back(cur_phys, cur_core);
                     }
-
                     cur_phys = cur_core = -1;
                     continue;
                 }
-    
+
                 auto pos = line.find(':');
                 if (pos == std::string::npos) {
                     continue;
@@ -5566,7 +5622,6 @@ public:
                 std::string key = line.substr(0, pos);
                 std::string val = line.substr(pos + 1);
 
-                // trim
                 while (!key.empty() && std::isspace(static_cast<u8>(key.back()))) {
                     key.pop_back();
                 }
@@ -5577,18 +5632,14 @@ public:
 
                 if (key == "processor") {
                     processors++;
-                } else if (key == "physical id") { 
-                    try { 
-                        cur_phys = std::stoi(val); 
-                    } catch (...) { 
-                        cur_phys = -1; 
-                    } 
-                } else if (key == "core id") { 
-                    try { 
-                        cur_core = std::stoi(val); 
-                    } catch (...) { 
-                        cur_core = -1;
-                    }
+                }
+                else if (key == "physical id") {
+                    try { cur_phys = std::stoi(val); }
+                    catch (...) { cur_phys = -1; }
+                }
+                else if (key == "core id") {
+                    try { cur_core = std::stoi(val); }
+                    catch (...) { cur_core = -1; }
                 }
             }
 
@@ -5599,7 +5650,7 @@ public:
             if (!cores.empty() && processors > 0) {
                 std::sort(cores.begin(), cores.end());
                 cores.erase(std::unique(cores.begin(), cores.end()), cores.end());
-                int const physical_cores = static_cast<int>(cores.size());
+                const int physical_cores = static_cast<int>(cores.size());
                 return processors > physical_cores;
             }
             return false;
@@ -5607,9 +5658,17 @@ public:
         };
 
         const auto& info = cpu::analyze_cpu();
-
+        
         if (info.found) {
             debug(info.debug_tag, ": CPU model = ", info.model_name);
+
+        #if (WINDOWS)
+            const char* manufacturer = "";
+            const char* model = "";
+            util::get_manufacturer_model(&manufacturer, &model);
+            debug(info.debug_tag, ": {\"manufacturer\": \"", manufacturer,
+                "\", \"model\": \"", model, "\"}");
+        #endif
 
             const u32 actual = memo::threadcount::fetch();
 
@@ -5618,14 +5677,16 @@ public:
                 const bool smt = is_smt_enabled();
 
                 if (smt) {
-                    debug(info.debug_tag, ": Expected  ", info.expected_threads, " threads");
+                    debug(info.debug_tag, ": Expected ", info.expected_threads, " threads");
                     return true;
-                } 
+                }
 
-                debug(info.debug_tag, ": Expected ", info.expected_threads, " threads, but found SMT disabled");
+                debug(info.debug_tag, ": Expected ", info.expected_threads,
+                    " threads, but found SMT disabled");
                 return false;
             }
         }
+
         return false;
     #endif
     }
@@ -5806,7 +5867,7 @@ public:
 
 
     /**
-     * @brief Check for timing anomalies in the system
+     * @brief Check for hypervisor overhead by measuring instruction execution latency
      * @category Windows, x86
      * @implements VM::TIMER
      */
@@ -5823,12 +5884,7 @@ public:
         bool is_intel = cpu::is_intel();
         double threshold = 2.5;
         if (util::hyper_x() != HYPERV_UNKNOWN) {
-            if (is_intel) { // intel is typically faster on nested
-                threshold = 20.0;
-            }
-            else {
-                threshold = 35.0;
-            }
+            threshold = 35.0;
         }
 
         // shared state and results
@@ -7425,56 +7481,56 @@ public:
      * @category Windows, Linux
      * @implements VM::AZURE
      */
-    [[nodiscard]] static bool azure() {
-        std::string hostname;
+    [[nodiscard]] static bool azure() noexcept {
+        // Returns 1u if alphanumeric, 0u if not. Here we use unsigned integers
+        // instead of booleans because MSVC's IntelliSense is stupid and avoids warnings 
+        // about bitwise operations on boolean types
+        auto is_alnum_ascii = [](char c) noexcept -> unsigned int {
+            const auto l = static_cast<unsigned char>(c | 0x20);
+            const auto d = static_cast<unsigned char>(c);
+
+            const unsigned int is_letter = (static_cast<unsigned char>(l - 'a') < 26) ? 1u : 0u;
+            const unsigned int is_digit = (static_cast<unsigned char>(d - '0') < 10) ? 1u : 0u;
+
+            return is_letter | is_digit;
+        };
 
     #if (WINDOWS)
         char buf[MAX_COMPUTERNAME_LENGTH + 1];
         DWORD len = sizeof(buf);
 
-        if (GetComputerNameA(buf, &len)) {
-            hostname.assign(buf, len);
-        }
-        else {
+        if (!GetComputerNameA(buf, &len) || len != 13) {
             return false;
         }
     #elif (LINUX)
-        char buf[HOST_NAME_MAX];
+        // 16 bytes fits 13-char hostname and the null-terminator
+        char buf[16] = { 0 };
 
-        if (gethostname(buf, sizeof(buf)) == 0) {
-            hostname = buf;
-        }
-        else {
+        if (gethostname(buf, sizeof(buf)) != 0) {
             return false;
         }
+
+        if (buf[13] != '\0') {
+            return false;
+        }
+    #else
+        return false;
     #endif
 
-        const char* prefix = "runnervm";
-        const std::size_t prefix_len = std::strlen(prefix);
-        const std::size_t extra_chars = 5;
-        const std::size_t expected_len = prefix_len + extra_chars;
-
-        if (hostname.size() != expected_len) {
+        if (std::memcmp(buf, "runnervm", 8) != 0) {
             return false;
         }
 
-        if (hostname.compare(0, prefix_len, prefix) != 0) {
-            return false;
-        }
+        const unsigned int is_match = is_alnum_ascii(buf[8]) &
+            is_alnum_ascii(buf[9]) &
+            is_alnum_ascii(buf[10]) &
+            is_alnum_ascii(buf[11]) &
+            is_alnum_ascii(buf[12]);
 
-        for (std::size_t i = prefix_len; i < hostname.size(); ++i) {
-            if (!std::isalnum(static_cast<unsigned char>(hostname.at(i)))) {
-                return false;
-            }
+        if (is_match != 0u) {
+            return core::add(brand_enum::AZURE_HYPERV);
         }
-
-        return core::add(brand_enum::AZURE_HYPERV);
-    }
-    template <typename T, size_t N>
-    constexpr bool check_no_nulls(const std::array<T, N>& arr, size_t i = 0) const {
-        return (i == N)
-            ? true
-            : (arr[i] != nullptr && check_no_nulls(arr, i + 1));
+        return false;
     }
 
 
@@ -9632,25 +9688,6 @@ public:
 
 
     /**
-     * @brief Check if bogus device string would be accepted
-     * @category Windows
-     * @author Huntress Research Team
-     * @link https://unprotect.it/technique/buildcommdcbandtimeouta/
-     * @implements VM::DEVICE_STRING
-     */
-    [[nodiscard]] static bool device_string() {
-        DCB dcb{};
-        COMMTIMEOUTS timeouts{};
-
-        if (BuildCommDCBAndTimeoutsA("jhl46745fghb", &dcb, &timeouts)) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-
-    /**
      * @brief Check for VM-specific names for drivers
      * @category Windows
      * @implements VM::DRIVERS
@@ -11537,262 +11574,6 @@ public:
 
 
     /**
-     * @brief Check for non-standard EDID configurations
-     * @category Windows
-     * @implements VM::EDID
-     */
-    [[nodiscard]] static bool edid() {
-        auto decode_manufacturer = [](const BYTE* edid, char out[4]) noexcept {
-            const u16 word = static_cast<u16>((edid[8] << 8) | edid[9]);
-
-            // 5 bits per character. 0x01='A', 0x1A='Z'
-            const u8 c1 = static_cast<u8>((word >> 10) & 0x1F);
-            const u8 c2 = static_cast<u8>((word >> 5) & 0x1F);
-            const u8 c3 = static_cast<u8>(word & 0x1F);
-
-            // '?' is fallback for valid EDID range 1-26
-            out[0] = (c1 >= 1 && c1 <= 26) ? static_cast<char>('A' + c1 - 1) : '?';
-            out[1] = (c2 >= 1 && c2 <= 26) ? static_cast<char>('A' + c2 - 1) : '?';
-            out[2] = (c3 >= 1 && c3 <= 26) ? static_cast<char>('A' + c3 - 1) : '?';
-            out[3] = '\0';
-        };
-
-        auto is_three_upper_alpha = [](const char m[4]) noexcept -> bool {
-            return (m[0] >= 'A' && m[0] <= 'Z') &&
-                (m[1] >= 'A' && m[1] <= 'Z') &&
-                (m[2] >= 'A' && m[2] <= 'Z');
-        };
-
-        auto edid_checksum_valid = [](const BYTE* edid, size_t len) noexcept -> bool {
-            if (len < 128) return false;
-
-            u8 sum = 0;
-            const BYTE* end = edid + 128;
-
-            while (edid < end) {
-                sum += *edid++;
-            }
-
-            return sum == 0;
-        };
-
-        auto extract_monitor_name = [](const BYTE* edid, size_t len, char out[32]) noexcept -> bool {
-            out[0] = '\0';
-            if (len < 128) return false;
-
-            // Standard EDID 1.3/1.4 Descriptor offsets
-            const BYTE* block = edid + 54;
-            const BYTE* end = edid + 126; // block area
-
-            const BYTE* best_block = nullptr;
-
-            for (; block <= end - 18; block += 18) {
-                // bytes 0-2 must be 0 to indicate a Display Descriptor
-                if (block[0] != 0 || block[1] != 0 || block[2] != 0) continue;
-
-                const u8 tag = block[3];
-
-                // 0xFC = Monitor Name
-                if (tag == 0xFC) {
-                    best_block = block;
-                    break;
-                }
-
-                // 0xFF = Monitor Serial (this is only a fallback)
-                if (tag == 0xFF && !best_block) {
-                    best_block = block;
-                }
-            }
-
-            if (best_block) {
-                int outi = 0;
-                for (int j = 5; j < 18 && outi < 31; ++j) {
-                    const char c = static_cast<char>(best_block[j]);
-                    // Terminate on newline (0x0A) or carriage return (0x0D) or null
-                    if (c == 0x0A || c == 0x0D || c == '\0') break;
-                    out[outi++] = c;
-                }
-
-                // right-trim spaces
-                while (outi > 0 && (out[outi - 1] == ' ' || out[outi - 1] == '\t')) {
-                    --outi;
-                }
-
-                out[outi] = '\0';
-                return outi > 0;
-            }
-
-            return false;
-        };
-
-        // Helper lambda to retrieve device properties from the registry
-        auto get_device_property = [](HDEVINFO dev_info, SP_DEVINFO_DATA& dev_data, DWORD prop_id,
-            char* out_buf, DWORD out_buf_size) noexcept -> bool {
-                DWORD needed = 0;
-
-                // Try to get the property with the provided buffer
-                if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                    reinterpret_cast<PBYTE>(out_buf), out_buf_size, &needed)) {
-                    if (out_buf_size > 0) out_buf[out_buf_size - 1] = '\0';
-                    return true;
-                }
-
-                const DWORD err = GetLastError();
-
-                // If the buffer was too small, allocate exactly what is needed and try again
-                // This ensures we don't fail just because a property string is unusually long
-                if (err == ERROR_INSUFFICIENT_BUFFER && needed > 0 && needed < 65536) {
-
-                    void* h = malloc(static_cast<size_t>(needed) + 1);
-                    if (!h) return false;
-
-                    if (SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop_id, nullptr,
-                        reinterpret_cast<PBYTE>(h), needed, &needed)) {
-
-                        const DWORD to_copy = (needed < out_buf_size - 1) ? needed : (out_buf_size - 1);
-
-                        if (out_buf_size > 0) {
-                            memcpy(out_buf, h, to_copy);
-                            out_buf[to_copy] = '\0';
-                        }
-
-                        free(h);
-                        return true;
-                    }
-                    free(h);
-                }
-
-                if (out_buf_size > 0) out_buf[0] = '\0';
-                return false;
-        };
-
-        // Initiate a query for all "Monitor" class devices present in the system.
-        // We target monitors because VMs often emulate generic displays (e.g., "Generic Non-PnP Monitor")
-        // or specific virtual hardware signatures in their EDID data.
-        const HDEVINFO dev_info = SetupDiGetClassDevs(&GUID_DEVCLASS_MONITOR, nullptr, nullptr, DIGCF_PRESENT);
-        if (dev_info == INVALID_HANDLE_VALUE) return false;
-
-        SP_DEVINFO_DATA dev_data{};
-        dev_data.cbSize = sizeof(dev_data);
-
-        const int threshold = 3;
-
-        // Iterate through every enumerated monitor to inspect its hardware details
-        for (DWORD index = 0; SetupDiEnumDeviceInfo(dev_info, index, &dev_data); ++index) {
-            // Open the "Hardware" registry key for the specific device instance
-            // This is where the driver stores low-level configuration, including the EDID
-            const HKEY handle_dev_key = SetupDiOpenDevRegKey(dev_info, &dev_data, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-            if (handle_dev_key == INVALID_HANDLE_VALUE) {
-                dev_data = {};
-                dev_data.cbSize = sizeof(dev_data);
-                continue;
-            }
-
-            // Prepare to read the EDID (Extended Display Identification Data)
-            // EDID is a standard data structure containing the display's manufacturer ID, 
-            // serial number, and capabilities
-            BYTE edid_stack[256];
-            DWORD buffer_size = static_cast<DWORD>(sizeof(edid_stack));
-            const LONG rc = RegQueryValueExA(handle_dev_key, "EDID", nullptr, nullptr, edid_stack, &buffer_size);
-            RegCloseKey(handle_dev_key);
-
-            BYTE* edid = nullptr;
-            bool used_heap = false;
-            BYTE* heap_buf = nullptr;
-
-            // standard EDID is 128 bytes so it should fit in stack
-            if (rc == ERROR_SUCCESS && buffer_size >= 128) {
-                edid = edid_stack;
-            }
-            // If for some reason the EDID contains extension blocks (making it larger than our stack buffer)
-            // allocate a heap buffer dynamically to capture the full data
-            else if (rc == ERROR_MORE_DATA) {
-                if (buffer_size > 0 && buffer_size < 65536) {
-                    heap_buf = static_cast<BYTE*>(LocalAlloc(LMEM_FIXED, buffer_size));
-                    if (heap_buf) {
-                        DWORD extra_buffer_size = buffer_size;
-                        // Re-open the key to read the full data into the new buffer
-                        const HKEY extra_dev_key = SetupDiOpenDevRegKey(dev_info, &dev_data, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
-                        if (extra_dev_key != INVALID_HANDLE_VALUE) {
-                            if (RegQueryValueExA(extra_dev_key, "EDID", nullptr, nullptr, heap_buf, &extra_buffer_size) == ERROR_SUCCESS && extra_buffer_size >= 128) {
-                                edid = heap_buf;
-                                used_heap = true;
-                                buffer_size = extra_buffer_size;
-                            }
-                            RegCloseKey(extra_dev_key);
-                        }
-                        if (!edid) {
-                            LocalFree(heap_buf);
-                            heap_buf = nullptr;
-                        }
-                    }
-                }
-            }
-
-            if (!edid) {
-                dev_data = {};
-                dev_data.cbSize = sizeof(dev_data);
-                continue;
-            }
-
-            // header check
-            if (!(edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF
-                && edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00)) {
-                if (used_heap) LocalFree(heap_buf);
-                dev_data = {};
-                dev_data.cbSize = sizeof(dev_data);
-                continue;
-            }
-
-            const bool checksum_ok = edid_checksum_valid(edid, buffer_size);
-
-            char manu[4];
-            decode_manufacturer(edid, manu);
-            const bool manu_ok = is_three_upper_alpha(manu);
-
-            const u16 product = static_cast<u16>(edid[10] | (edid[11] << 8)); // because its little-endian
-            const u32 serial = static_cast<u32>(edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24));
-
-            char monname[32];
-            const bool has_name = extract_monitor_name(edid, buffer_size, monname);
-
-            char prop_buf[512];
-            const bool have_friendly = get_device_property(dev_info, dev_data, SPDRP_FRIENDLYNAME, prop_buf, sizeof(prop_buf)); // friendly_name is often empty, like in Digital-Flachbildschirm monitors
-            const bool have_dev_desc = get_device_property(dev_info, dev_data, SPDRP_DEVICEDESC, prop_buf, sizeof(prop_buf));
-
-            int score = 0;
-
-            if (!checksum_ok) score += 1;
-            if (!manu_ok) score += 1;
-
-            if (product == 0 && serial == 0) {
-                score += 1;
-            }
-            else if (product == 0 || serial == 0) {
-                if (score > 0) score += 1;
-            }
-
-            if (!has_name && score > 0) score += 1;
-
-            if (!have_friendly && !have_dev_desc) score += 1;
-
-            if (used_heap) LocalFree(heap_buf);
-
-            if (score >= threshold) {
-                SetupDiDestroyDeviceInfoList(dev_info);
-                return true;
-            }
-
-            dev_data = {};
-            dev_data.cbSize = sizeof(dev_data);
-        }
-
-        SetupDiDestroyDeviceInfoList(dev_info);
-        return false;
-    }
-
-
-    /**
      * @brief Check whether the CPU is genuine and its reported instruction capabilities are not masked
      * @category Windows, x86
      * @implements VM::CPU_HEURISTIC
@@ -13588,6 +13369,7 @@ public:
             }
 
             // disable all the settings flags except for VM::DEFAULT
+            flags.flip(EXPERIMENTAL);
             flags.flip(HIGH_THRESHOLD);
             flags.flip(NULL_ARG);
             flags.flip(DYNAMIC);
@@ -13614,6 +13396,12 @@ public:
             disabled_flag_collector.reset();
             for (const auto technique : disabled_techniques) {
                 disabled_flag_collector.set(static_cast<u32>(technique), true);
+            }
+        }
+
+        static void disable_experimental_techniques() {
+            for (const auto technique : experimental_techniques) {
+                VM::DISABLE(technique);
             }
         }
 
@@ -13652,6 +13440,7 @@ public:
 
             // reset all relevant flags
             flag_collector.reset();
+            bool experimental_requested = false;
 
             if VMAWARE_CONSTEXPR(is_empty<Args...>()) {
                 generate_default(flag_collector);
@@ -13661,7 +13450,11 @@ public:
             // C++ trick to loop over the variadic arguments one by one
             const int dummy[] = {
                 0, // MSVC guardrail so it doesn't complain
-                (flag_collector.set(static_cast<u32>(args), true), 0)...
+                (
+                    experimental_requested = experimental_requested || (args == EXPERIMENTAL),
+                    flag_collector.set(static_cast<u32>(args), true),
+                    0
+                )...
             };
             VMAWARE_UNUSED(dummy);
 
@@ -13675,6 +13468,11 @@ public:
 
             if (flag_collector.test(ALL)) {
                 generate_all(flag_collector);
+            }
+
+            if (experimental_requested) {
+                flag_collector.set(EXPERIMENTAL, true);
+                disable_experimental_techniques(); 
             }
 
             // if flag is disabled, remove it from the flag_collector
@@ -14021,7 +13819,6 @@ public:
             case CUCKOO_PIPE: return "CUCKOO_PIPE";
             case AZURE: return "AZURE";
             case DISPLAY: return "DISPLAY";
-            case DEVICE_STRING: return "DEVICE_STRING";
             case BLUESTACKS_FOLDERS: return "BLUESTACKS_FOLDERS";
             case CPUID_SIGNATURE: return "CPUID_SIGNATURE";
             case KGT_SIGNATURE: return "KGT_SIGNATURE";
@@ -14060,7 +13857,6 @@ public:
             case MAC_SYS: return "MAC_SYS";
             case KERNEL_OBJECTS: return "KERNEL_OBJECTS";
             case NVRAM: return "NVRAM";
-            case EDID: return "EDID";
             case CPU_HEURISTIC: return "CPU_HEURISTIC";
             case CLOCK: return "CLOCK";
             case MSR: return "MSR";
@@ -14596,7 +14392,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::CLOCK, {45, VM::clock}},
             {VM::POWER_CAPABILITIES, {25, VM::power_capabilities}},
             {VM::GPU_CAPABILITIES, {25, VM::gpu_capabilities}},
-            {VM::EDID, {100, VM::edid}},
             {VM::MSR, {100, VM::msr}},
             {VM::VIRTUAL_PROCESSORS, {100, VM::virtual_processors}},
             {VM::WINE, {100, VM::wine}},
@@ -14613,7 +14408,6 @@ std::array<VM::core::technique, VM::enum_size + 1> VM::core::technique_table = [
             {VM::VMWARE_BACKDOOR, {100, VM::vmware_backdoor}},
             {VM::VIRTUAL_REGISTRY, {90, VM::virtual_registry}},
             {VM::MUTEX, {100, VM::mutex}},
-            {VM::DEVICE_STRING, {25, VM::device_string}},
             {VM::VPC_INVALID, {75, VM::vpc_invalid}},
             {VM::VMWARE_STR, {35, VM::vmware_str}},
             {VM::GAMARUE, {10, VM::gamarue}},
