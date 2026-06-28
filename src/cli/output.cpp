@@ -44,6 +44,16 @@ const char* color(const u8 score, const bool is_hardened) {
     return "";
 }
 
+void console_pause() {
+    std::cout << "Press Enter to continue...";
+    std::cout.flush();
+
+    std::cin.ignore(static_cast<std::streamsize>(-1), '\n');
+
+    std::string dummy;
+    std::getline(std::cin, dummy);
+}
+
 bool is_admin() {
 #if (CLI_LINUX || CLI_APPLE)
     const uid_t uid = getuid();
@@ -775,9 +785,7 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
         }
     }
 
-    #if defined(__VMAWARE_DEBUG__)
-        std::cout << grey << "SHA-256: " << white << compute_self_sha256() << ansi_exit << "\n";
-    #endif
+    console_pause();
 
 #else
 
