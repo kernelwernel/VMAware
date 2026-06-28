@@ -16,7 +16,7 @@
  *
  * ===============================================================
  *
- *  - Repository: https://github.com/kernelwernel/VMAware
+ *  - Repository: https://github.com/NotRequiem/VMAware
  *  - License: MIT
  */
 

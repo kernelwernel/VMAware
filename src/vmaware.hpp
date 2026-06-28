@@ -4,12 +4,12 @@
  * ██║   ██║██╔████╔██║███████║██║ █╗ ██║███████║██████╔╝█████╗
  * ╚██╗ ██╔╝██║╚██╔╝██║██╔══██║██║███╗██║██╔══██║██╔══██╗██╔══╝
  *  ╚████╔╝ ██║ ╚═╝ ██║██║  ██║╚███╔███╔╝██║  ██║██║  ██║███████╗
- *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.7.0 (May 2026)
+ *   ╚═══╝  ╚═╝     ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ Experimental post-2.7.0 (June 2026)
  *
  *  C++ VM detection library
  *
- *  - Made by: kernelwernel (https://github.com/kernelwernel)
- *  - Co-developed by: Requiem (https://github.com/NotRequiem)
+ *  - Developed by: Requiem (https://github.com/NotRequiem)
+ *  - Co-developed by: kernelwernel (https://github.com/kernelwernel)
  *  - Contributed by:
  *      - Alex (https://github.com/greenozon)
  *      - Marek Knápek (https://github.com/MarekKnapek)
@@ -26,14 +26,14 @@
  *      - Lorenzo Rizzotti (https://github.com/Dreaming-Codes) 
  *      - virtfunc (https://github.com/virtfunc)
  *      - Wiisus (https://github.com/wiisus)
- *  - Repository: https://github.com/kernelwernel/VMAware
- *  - Docs: https://github.com/kernelwernel/VMAware/docs/documentation.md
- *  - Full credits: https://github.com/kernelwernel/VMAware#credits-and-contributors-%EF%B8%8F
+ *  - Repository: https://github.com/NotRequiem/VMAware
+ *  - Docs: https://github.com/NotRequiem/VMAware/docs/documentation.md
+ *  - Full credits: https://github.com/NotRequiem/VMAware#credits-and-contributors-%EF%B8%8F
  *  - License: MIT
  * 
  *                               MIT License
  *  
- *  Copyright (c) 2026 kernelwernel
+ *  Copyright (c) 2026 Requiem
  *  
  *  Permission is hereby granted, free of charge, to any person obtaining a copy
  *  of this software and associated documentation files (the "Software"), to deal
@@ -55,14 +55,14 @@
  *
  *
  * ============================== SECTIONS ==================================
- * - enums for publicly accessible techniques  => line 564
- * - struct for internal cpu operations        => line 818
- * - struct for internal memoization           => line 3132
- * - struct for internal utility functions     => line 3339
- * - struct for internal core components       => line 12993
- * - start of VM detection technique list      => line 4820
- * - start of public VM detection functions    => line 13359
- * - start of externally defined variables     => line 14166
+ * - enums for publicly accessible techniques  => line 570
+ * - struct for internal cpu operations        => line 824
+ * - struct for internal memoization           => line 3148
+ * - struct for internal utility functions     => line 3714
+ * - struct for internal core components       => line 13106
+ * - start of VM detection technique list      => line 5263
+ * - start of public VM detection functions    => line 13511
+ * - start of externally defined variables     => line 14306
  *
  *
  * ============================== EXAMPLE ===================================
@@ -85,7 +85,7 @@
  * ========================== CODE DOCUMENTATION =============================
  *
  * TL;DR: if you have the patience of an ADHD kid, head over here:
- * https://deepwiki.com/kernelwernel/VMAware
+ * https://deepwiki.com/NotRequiem/VMAware
  * 
  *
  * Welcome! This is just a preliminary text to lay the context of how it works, 
@@ -12096,7 +12096,7 @@ public:
         }
         
         // The RTC (ACPI/CMOS RTC) timer can't be always detected via SetupAPI, it needs AML decode of the DSDT firmware table
-        // The HPET (PNP0103) timer presence check was removed, more info at: https://github.com/kernelwernel/VMAware/pull/616
+        // The HPET (PNP0103) timer presence check was removed, more info at: https://github.com/NotRequiem/VMAware/pull/616
         // Here, we check for the PIT/AT timer (PC-class System Timer)
         const HDEVINFO devs = SetupDiGetClassDevsW(
             nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
@@ -13517,7 +13517,7 @@ public:
      * @brief Check for a specific technique based on flag argument
      * @param u8 (flags from VM wrapper)
      * @return bool
-     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmcheck
+     * @link https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#vmcheck
      */
     static bool check(
         const enum_flags flag_bit
@@ -13592,7 +13592,7 @@ public:
      * @brief Fetch the VM brand
      * @param any flag combination in VM structure or nothing (VM::MULTIPLE can be added)
      * @return const char*
-     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmbrand
+     * @link https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#vmbrand
      */
     template <typename ...Args>
     static std::string brand(Args ...args) {
@@ -13624,7 +13624,7 @@ public:
      * @brief Detect if running inside a VM
      * @param any flag combination in VM structure or nothing
      * @return bool
-     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
+     * @link https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#vmdetect
      */
     template <typename ...Args>
     static bool detect(Args ...args) {
@@ -13668,7 +13668,7 @@ public:
      * @brief Get the percentage of how likely it's a VM
      * @param any flag combination in VM structure or nothing
      * @return std::uint8_t
-     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmpercentage
+     * @link https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#vmpercentage
      */
     template <typename ...Args>
     static u8 percentage(Args ...args) {
@@ -13716,7 +13716,7 @@ public:
     /**
      * @brief Add a custom technique to the VM detection technique collection
      * @param either a function pointer, lambda function, or std::function<bool()>
-     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmaddcustom
+     * @link https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#vmaddcustom
      * @return void
      */
     static void add_custom(
@@ -13760,7 +13760,7 @@ public:
     /**
      * @brief disable the provided technique flags so they are not counted to the overall result
      * @param technique flag(s) only
-     * @link https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#vmdetect
+     * @link https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#vmdetect
      * @return flagset
      */
     template <typename ...Args>

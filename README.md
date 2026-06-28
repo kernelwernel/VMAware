@@ -1,10 +1,10 @@
 <div align="center">
    <img src="assets/banner.jpg" width="500" title="VMAware">
    <br>
-   <img src="https://img.shields.io/github/actions/workflow/status/kernelwernel/VMAware/build_infrastructure.yml">
-   <img src="https://img.shields.io/github/downloads/kernelwernel/VMAware/total">
+   <img src="https://img.shields.io/github/actions/workflow/status/NotRequiem/VMAware/build_infrastructure.yml">
+   <img src="https://img.shields.io/github/downloads/NotRequiem/VMAware/total">
    <img src="https://img.shields.io/badge/License-MIT-yellow.svg">
-   <a href="https://deepwiki.com/kernelwernel/VMAware"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+   <a href="https://deepwiki.com/NotRequiem/VMAware"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
    <br><br>
    <b>VMAware</b> (VM + Aware) is a cross-platform C++ framework for virtual machine detection.
    <br><br>
@@ -17,9 +17,9 @@ The library is:
 - Very easy to use
 - Cross-platform (Windows + MacOS + Linux)
 - Multi-architecture support (amd64, arm64, armhf, armel, i386, mips64el, ppc64el, riscv64, s390x)
-- Features around 90 unique VM detection techniques [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#flag-table)]
+- Features around 90 unique VM detection techniques [[list](https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#flag-table)]
 - Features the most cutting-edge techniques
-- Able to detect around 70 VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/kernelwernel/VMAware/blob/main/docs/documentation.md#brand-table)]
+- Able to detect around 70 VM brands including VMware, VirtualBox, QEMU, Hyper-V, and much more [[list](https://github.com/NotRequiem/VMAware/blob/main/docs/documentation.md#brand-table)]
 - Able to beat VM hardeners
 - Very flexible, with total fine-grained control over which techniques get executed
 - Able to detect various VM and semi-VM technologies like hypervisors, emulators, containers, sandboxes, and so on
@@ -87,11 +87,11 @@ Below is an example of a basic QEMU system with no hardening modifications on Li
 <br>
 
 ## Installation 📥
-To install the library, download the `vmaware.hpp` file in the latest [release section](https://github.com/kernelwernel/VMAware/releases/latest) to your project. The binaries are also located there. No CMake or shared object linkages are necessary, it's literally that simple.
+To install the library, download the `vmaware.hpp` file in the latest [release section](https://github.com/NotRequiem/VMAware/releases/latest) to your project. The binaries are also located there. No CMake or shared object linkages are necessary, it's literally that simple.
 
 However, if you want the full project (globally accessible headers with <vmaware.hpp> and the CLI tool), follow these commands:
 ```bash
-git clone https://github.com/kernelwernel/VMAware 
+git clone https://github.com/NotRequiem/VMAware 
 cd VMAware
 ```
 
@@ -130,7 +130,7 @@ set(DESTINATION "${DIRECTORY}vmaware.hpp")
 
 if (NOT EXISTS ${DESTINATION})
     message(STATUS "Downloading VMAware")
-    set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware.hpp")
+    set(URL "https://github.com/NotRequiem/VMAware/releases/latest/download/vmaware.hpp")
     file(DOWNLOAD ${URL} ${DESTINATION} SHOW_PROGRESS)
 else()
     message(STATUS "VMAware already downloaded, skipping")
@@ -145,7 +145,7 @@ The module file and function version is located [here](auxiliary/vmaware_downloa
 ## Documentation and code overview 📒
 You can view the full docs [here](docs/documentation.md). All the details such as functions, techniques, settings, and examples are provided. Trust me, it's not too intimidating ;)
 
-If you want to learn about the architecture and design of the library, head over to https://deepwiki.com/kernelwernel/VMAware
+If you want to learn about the architecture and design of the library, head over to https://deepwiki.com/NotRequiem/VMAware
 
 <br>
 
@@ -156,7 +156,7 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 
 | Language | Repository | Details | Author |
 |:---------|:---------------:|:--------:|:------:|
-| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/kernelwernel/VMAware/tree/main/gem) | Official Ruby port embedded in the VMAware repository, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
+| <img src="assets/language_icons/8172-ruby-programming-language.webp" width="20"> Ruby | [link](https://github.com/NotRequiem/VMAware/tree/main/gem) | Official Ruby port embedded in the VMAware repository, but Windows is not supported. | [Adam Ruman](https://github.com/addam128) |
 | <img src="assets/language_icons/js.png" width="20"> JS | [link](https://github.com/Kyun-J/node-vm-detect) | Very good API, actively maintained. | [Kyun-J](https://github.com/Kyun-J) |
 | <img src="assets/language_icons/rust-logo-512x512.png" width="20"> Rust | [link](https://github.com/MarcelDev/vmaware-rs) | Very good API, well tested, actively maintained | [Marcel](https://github.com/MarcelDev) |
 
@@ -280,6 +280,7 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 
 </details>
 
+
 <details>
 <summary>I have linker errors when compiling</summary>
 <br>
@@ -288,12 +289,26 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 
 </details>
 
+
+<details>
+<summary>How can I compile VMAware for older versions of Windows?</summary>
+<br>
+
+> By default, VMAware targets Windows 10-11 when choising to compile for Windows. 
+> If you want an older Windows version, you just need to tell us the target platform that you want to compile the library for with a WIN32 macro.
+> For example, if you want to compile VMAware for Windows 7, include `#define _WIN32_WINNT _WIN32_WINNT_WIN7` at the top of vmaware.hpp.
+> 
+> In older Windows terminals, ANSI colors are not supported, but you can run the CLI with the `--no-ansi` argument.
+> Older versions than Windows 7 are NOT supported.
+
+</details>
+
 <br>
 
 ## Issues, discussions, pull requests, and inquiries 📬
-If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/kernelwernel/VMAware/issues) or [discussion](https://github.com/kernelwernel/VMAware/discussions) sections. If you want to personally ask something in private, our discords are `kr.nl` and `shenzken`
+If you have any suggestions, ideas, or any sort of contribution, feel free to ask! I'll be more than happy to discuss either in the [issue](https://github.com/NotRequiem/VMAware/issues) or [discussion](https://github.com/NotRequiem/VMAware/discussions) sections. If you want to personally ask something in private, our discords are `kr.nl` and `shenzken`
 
-For email inquiries: `jeanruyv@gmail.com`
+For email inquiries: `vmaware.support@gmail.com`
 
 And if you found this project useful, a star would be appreciated :)
 
@@ -301,14 +316,14 @@ And if you found this project useful, a star would be appreciated :)
 
 ## Credits, contributors, and acknowledgements ✒️
 
-<a href="https://github.com/kernelwernel/VMAware/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=kernelwernel/VMAware" />
+<a href="https://github.com/NotRequiem/VMAware/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=NotRequiem/VMAware" />
 </a>
 
 <br>
 
-- [kernelwernel](https://github.com/kernelwernel) (Maintainer and developer)
-- [Requiem](https://github.com/NotRequiem) (Maintainer and co-developer)
+- [Requiem](https://github.com/NotRequiem) (Maintainer and developer)
+- [kernelwernel](https://github.com/kernelwernel) (Maintainer and co-developer)
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)
 - [Al-Khaser](https://github.com/LordNoteworthy/al-khaser)

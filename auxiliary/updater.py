@@ -22,7 +22,7 @@
 # ===============================================================
 # 
 #  - Made by: @kernelwernel (https://github.com/kernelwernel)
-#  - Repository: https://github.com/kernelwernel/VMAware
+#  - Repository: https://github.com/NotRequiem/VMAware
 #  - License: MIT
 
 import sys
@@ -292,7 +292,7 @@ def fetch_lib_info(enum_list):
                         technique[enum].line = i + 1
 
     # generate the code implementation link 
-    link_prefix = "[link](https://github.com/kernelwernel/VMAware/tree/main/src/vmaware.hpp#L"
+    link_prefix = "[link](https://github.com/NotRequiem/VMAware/tree/main/src/vmaware.hpp#L"
     for enum in enum_list:
         line_no_str = str(technique[enum].line if technique[enum].line else 1)
         technique[enum].code_link = link_prefix + line_no_str + ")"

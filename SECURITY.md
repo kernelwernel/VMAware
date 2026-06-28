@@ -19,7 +19,7 @@ If you discover a vulnerability in an unsupported version, please upgrade to the
 **Contact**: Submit your report via email to the maintainers at:
 
 ```
-jeanruyv@gmail.com
+vmaware.support@gmail.com
 ```
 
 **Information to Include**:
@@ -66,7 +66,7 @@ We reserve the right to classify any report as non-actionable and to not disclos
 ### 6. Summary Workflow
 
 ```text
-Reporter -> jeanruyv@gmail.com (PGP optional)
+Reporter -> vmaware.support@gmail.com (PGP optional)
     -> Maintainers ack in 48h
     -> Investigation in 5 days
     -> Patch in 30 days (if warranted)

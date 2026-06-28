@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.authors = ['Adam Ruman']
   
   spec.license     = 'MIT'
-  spec.homepage    = 'https://github.com/kernelwernel/VMAware'
+  spec.homepage    = 'https://github.com/NotRequiem/VMAware'
 
   spec.extensions = ['gem/extension/CMakeLists.txt']
   spec.require_paths = ['gem/lib']

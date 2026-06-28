@@ -16,7 +16,7 @@
 # ===============================================================
 # 
 #  - Made by: @kernelwernel (https://github.com/kernelwernel)
-#  - Repository: https://github.com/kernelwernel/VMAware
+#  - Repository: https://github.com/NotRequiem/VMAware
 #  - License: MIT
 
 clear

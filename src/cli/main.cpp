@@ -16,9 +16,9 @@
  *
  * ===============================================================
  *
- *  - Made by: @kernelwernel (https://github.com/kernelwernel)
- *  - Co-developed by: Requiem (https://github.com/NotRequiem)
- *  - Repository: https://github.com/kernelwernel/VMAware
+ *  - Developed by: Requiem (https://github.com/NotRequiem)
+ *  - Co-developed by: kernelwernel (https://github.com/kernelwernel)
+ *  - Repository: https://github.com/NotRequiem/VMAware
  *  - License: MIT
  */
 
@@ -82,13 +82,13 @@ Extra:
 
 [[noreturn]] static void version() {
     std::cout << "vmaware " << "v" << ver << " (" << date << ")\n\n" <<
-        "Derived project of VMAware library at https://github.com/kernelwernel/VMAware\n"
+        "Derived project of VMAware library at https://github.com/NotRequiem/VMAware\n"
         "License MIT:<https://opensource.org/license/mit>.\n" <<
         "This is free software: you are free to change and redistribute it.\n" <<
         "There is NO WARRANTY, to the extent permitted by law.\n" <<
         "Developed and maintained by kernelwernel and Requiem,\n" <<
         "see https://github.com/kernelwernel and https://github.com/NotRequiem\n" <<
-        "For any inquiries, contact us on Discord at shenzken or kr.nl, or email us at jeanruyv@gmail.com\n";
+        "For any inquiries, contact us on Discord at shenzken or kr.nl, or email us at vmaware.support@gmail.com\n";
     std::exit(0);
 }
 

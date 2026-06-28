@@ -22,7 +22,7 @@
 # ===============================================================
 # 
 #  - Made by: @kernelwernel (https://github.com/kernelwernel)
-#  - Repository: https://github.com/kernelwernel/VMAware
+#  - Repository: https://github.com/NotRequiem/VMAware
 
 function(download_vmaware directory)
     set(DIRECTORY "${directory}" CACHE STRING "Directory to save VMAware header")
@@ -31,7 +31,7 @@ function(download_vmaware directory)
 
     if (NOT EXISTS ${DESTINATION})
         message(STATUS "Downloading VMAware")
-        set(URL "https://github.com/kernelwernel/VMAware/releases/latest/download/vmaware.hpp")
+        set(URL "https://github.com/NotRequiem/VMAware/releases/latest/download/vmaware.hpp")
         file(DOWNLOAD ${URL} ${DESTINATION} SHOW_PROGRESS)
     else()
         message(STATUS "VMAware already downloaded, skipping")
