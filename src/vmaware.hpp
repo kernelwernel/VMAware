@@ -396,11 +396,9 @@
     #include <initguid.h>
     #include <devpkey.h>
     #include <devguid.h>
-    #include <winevt.h>
 
     #pragma comment(lib, "setupapi.lib")
     #pragma comment(lib, "powrprof.lib")
-    #pragma comment(lib, "wevtapi.lib")
 #elif (LINUX)
     #if (x86)
         #include <cpuid.h>

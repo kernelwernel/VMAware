@@ -44,8 +44,8 @@ const char* color(const u8 score, const bool is_hardened) {
     return "";
 }
 
-void console_pause() {
-    std::cout << "Press Enter to continue...";
+static void console_pause() {
+    std::cout << "Press Enter to exit...";
     std::cout.flush();
 
     std::cin.ignore(static_cast<std::streamsize>(-1), '\n');
