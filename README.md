@@ -55,7 +55,7 @@ int main() {
 }
 ```
 
-possible output:
+Possible output:
 ```
 Virtual machine detected!
 VM name: VirtualBox
@@ -243,7 +243,7 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 >
 > If experimental tests and public documentation/databases indicate that false positives have been resolved, we keep the changes in main and assign scores to new detections based on their effectiveness, reliability, and how they operate together with other techniques.
 >
-> Other situations (false flags, compilation errors, possible vulnerabilities, etc.) are also merged into main immediately.
+> Fixes for other cases (compilation errors, possible security vulnerabilities, etc.) are merged into main immediately.
 >
 > When the library has accumulated enough changes compared to previous versions, we publish a release and explain those changes in detail.
 
@@ -256,7 +256,7 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 
 > This project is not soliciting the development of malware for obvious reasons. Even if you intend to use it for concealment purposes, it'll most likely be flagged by antiviruses anyways and nothing is obfuscated to begin with. 
 >
-> We do not intentionally develop the library to try to stop or avoid EDR flags, such as using direct/indirect syscalling, inline hooking detection, and any other kind of malware evasion technique not related to hypervisor detection.
+> We do not intentionally develop the library to try to stop or avoid EDR flags, such as using direct/indirect syscalling, inline hooking detection, and any other kind of malware evasion technique not related to virtualization detection.
 
 </details>
 
@@ -276,7 +276,21 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 <summary>Is it thread-safe?</summary>
 <br>
 
-> No. Don't call our library with multiple threads simultaneously, we don't take more than 1s to run.
+> No. Don't call this library with multiple threads simultaneously, we don't take more than 1s to run.
+
+</details>
+
+
+<details>
+<summary>How can I compile VMAware for older versions of Windows?</summary>
+<br>
+
+> By default, VMAware targets Windows 10-11 when compiling for Windows. 
+> If you want to compile for older Windows versions, you just need to tell us the target platform that you want to compile the library for with a WIN32 macro.
+> For example, if you want to compile VMAware for Windows 7, include `#define _WIN32_WINNT _WIN32_WINNT_WIN7` at the top of vmaware.hpp.
+> 
+> In older Windows terminals, ANSI colors are not supported, but you can run the CLI with the `--no-ansi` argument.
+> Older versions than Windows 7 are NOT supported.
 
 </details>
 
@@ -286,20 +300,6 @@ VMAware also has support for a variety of languages, if C++ isn't the language y
 <br>
 
 > If you're compiling with gcc or clang, add the <code>-lm</code> and <code>-lstdc++</code> flags, or use g++/clang++ compilers instead. If you're receiving linker errors from a brand new VM environment on Linux, update your system with `sudo apt/dnf/yum update -y` to install the necessary C++ components.
-
-</details>
-
-
-<details>
-<summary>How can I compile VMAware for older versions of Windows?</summary>
-<br>
-
-> By default, VMAware targets Windows 10-11 when choising to compile for Windows. 
-> If you want an older Windows version, you just need to tell us the target platform that you want to compile the library for with a WIN32 macro.
-> For example, if you want to compile VMAware for Windows 7, include `#define _WIN32_WINNT _WIN32_WINNT_WIN7` at the top of vmaware.hpp.
-> 
-> In older Windows terminals, ANSI colors are not supported, but you can run the CLI with the `--no-ansi` argument.
-> Older versions than Windows 7 are NOT supported.
 
 </details>
 
@@ -323,7 +323,7 @@ And if you found this project useful, a star would be appreciated :)
 <br>
 
 - [Requiem](https://github.com/NotRequiem) (Maintainer and developer)
-- [kernelwernel](https://github.com/kernelwernel) (Maintainer and co-developer)
+- [kernelwernel](https://github.com/kernelwernel) (Former creator and maintainer of the project)
 - [Check Point Research](https://research.checkpoint.com/)
 - [Unprotect Project](https://unprotect.it/)
 - [Al-Khaser](https://github.com/LordNoteworthy/al-khaser)
