@@ -570,6 +570,18 @@ DebugInterceptor::int_type DebugInterceptor::overflow(int_type c) {
         return c;
     }
 
+    while (!buffer.empty() && (buffer.back() == '\r' || buffer.back() == ' ')) {
+        if (buffer.back() == '\r') {
+            buffer.pop_back();
+        }
+        else if (buffer.back() == ' ' && buffer.find("[DEBUG]") != std::string::npos) {
+            break;
+        }
+        else {
+            break;
+        }
+    }
+
     if (buffer.find('\t') != std::string::npos) {
         size_t pos;
         while ((pos = buffer.find('\t')) != std::string::npos) {
@@ -578,13 +590,18 @@ DebugInterceptor::int_type DebugInterceptor::overflow(int_type c) {
     }
 
     std::string msg = buffer;
-    if (msg.find("[DEBUG]") == 0) {
-        msg = msg.substr(7);
-        if (!msg.empty() && msg[0] == ' ') {
+    size_t debug_pos = msg.find("[DEBUG]");
+    if (debug_pos != std::string::npos) {
+        msg = msg.substr(debug_pos + 7);
+        while (!msg.empty() && msg[0] == ' ') {
             msg = msg.substr(1);
         }
+        while (!msg.empty() && (msg.back() == '\r' || msg.back() == ' ')) {
+            msg.pop_back();
+        }
         g_tui.addDebug(msg);
-    } else {
+    }
+    else {
         if (g_tui.raw_out) {
             g_tui.setCursorSafe(g_tui.left_margin, g_tui.left_y);
             *(g_tui.raw_out) << buffer << "\x1B[K" << std::flush;
@@ -602,7 +619,7 @@ DebugInterceptor::int_type DebugInterceptor::overflow(int_type c) {
 
 std::streamsize DebugInterceptor::xsputn(const char* s, std::streamsize n) {
     for (std::streamsize i = 0; i < n; ++i) {
-        overflow(s[i]);
+        overflow(static_cast<unsigned char>(s[i]));
     }
     return n;
 }

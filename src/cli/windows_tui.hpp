@@ -185,9 +185,15 @@
     template<typename... Args>
     void VMAWARE_CLI_DEBUG(Args&&... args) {
         std::ostringstream oss;
-        int dummy[] = { 0, ((void)(oss << args), 0)... };
+        int dummy[] = { 0, ((void)(oss << std::forward<Args>(args)), 0)... };
         (void)dummy;
-        std::cout << "[DEBUG] " << oss.str() << "\n";
+
+        if (g_tui.enabled) {
+            g_tui.addDebug(oss.str());
+        }
+        else {
+            std::cout << "[DEBUG] " << oss.str() << "\n";
+        }
     }
 
     LONG WINAPI VehLogger(PEXCEPTION_POINTERS ep);

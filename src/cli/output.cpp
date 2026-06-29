@@ -238,6 +238,13 @@ static void checker(const VM::enum_flags flag, const char* message) {
 
     if (is_disabled(flag)) {
         disabled_count++;
+
+    #if (CLI_WINDOWS)
+        if (g_tui.enabled) {
+            return;
+        }
+    #endif
+
         std::ostringstream skip_oss;
         skip_oss << tag_skipped << " " << grey << "Skipped " << message << "." << ansi_exit;
         PRINT_LINE(skip_oss.str());
@@ -491,10 +498,22 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
 
     #if (CLI_WINDOWS)
         std::unique_ptr<DebugInterceptor> interceptor;
+        std::streambuf* old_cout = nullptr;
+        std::streambuf* old_cerr = nullptr;
+        std::streambuf* old_clog = nullptr;
         if (!arg_bitset.test(NO_ANSI) && arg_bitset.test(RICH)) {
+            std::string tui_tag_grey = "\x1B[38;2;110;110;110m";
+
+            tag_detected = bold + "[" + white + "  DETECTED  " + bold + "]" + ansi_exit;
+            tag_not_detected = "[" + tui_tag_grey + "NOT DETECTED" + ansi_exit + "]";
+
+            grey = "\x1B[38;2;85;85;85m";
+
             g_tui.init();
             interceptor = std::make_unique<DebugInterceptor>(std::cout.rdbuf());
-            std::cout.rdbuf(interceptor.get());
+            old_cout = std::cout.rdbuf(interceptor.get());
+            old_cerr = std::cerr.rdbuf(interceptor.get());
+            old_clog = std::clog.rdbuf(interceptor.get());
         }
     #endif
 
@@ -729,7 +748,8 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
 
         if (g_tui.raw_out) {
             *(g_tui.raw_out) << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
-        } else {
+        }
+        else {
             std::cout << "\x1B[90mPress Enter, Q, or Ctrl+C to exit. Exceptions (Left/Right), Timings (Up/Down), Debug (PgUp/PgDn) to scroll.\x1B[0m\n";
         }
 
@@ -750,25 +770,25 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
                 ch = _getch();
 
                 switch (ch) {
-                    case KEY_UP: g_tui.scrollCyclesUp(); continue;
-                    case KEY_DOWN: g_tui.scrollCyclesDown(); continue;
-                    case KEY_PAGE_UP: g_tui.scrollDebugUp(); continue;
-                    case KEY_PAGE_DOWN: g_tui.scrollDebugDown(); continue;
-                    case KEY_LEFT: g_tui.scrollExceptionsUp(); continue;
-                    case KEY_RIGHT: g_tui.scrollExceptionsDown(); continue;
-                    default: continue;
+                case KEY_UP: g_tui.scrollCyclesUp(); continue;
+                case KEY_DOWN: g_tui.scrollCyclesDown(); continue;
+                case KEY_PAGE_UP: g_tui.scrollDebugUp(); continue;
+                case KEY_PAGE_DOWN: g_tui.scrollDebugDown(); continue;
+                case KEY_LEFT: g_tui.scrollExceptionsUp(); continue;
+                case KEY_RIGHT: g_tui.scrollExceptionsDown(); continue;
+                default: continue;
                 }
             }
 
             bool should_break = false;
 
             switch (ch) {
-                case '\r':
-                case '\n':
-                case 'q':
-                case 'Q':
-                case KEY_CTRL_C:
-                    should_break = true;
+            case '\r':
+            case '\n':
+            case 'q':
+            case 'Q':
+            case KEY_CTRL_C:
+                should_break = true;
             }
 
             if (should_break) {
@@ -776,10 +796,11 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
             }
         }
 
-        if (interceptor) {
-            std::cout.rdbuf(interceptor->original);
-        }
-    } else {
+        if (old_cout) std::cout.rdbuf(old_cout);
+        if (old_cerr) std::cerr.rdbuf(old_cerr);
+        if (old_clog) std::clog.rdbuf(old_clog);
+    }
+    else {
         for (const auto& l : summary) {
             std::cout << l << "\n";
         }
