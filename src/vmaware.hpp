@@ -505,7 +505,7 @@ namespace brands { // TODO, remove this in the 2.8.0 or any release after the 2.
     LEGACY(AZURE_HYPERV, "Microsoft Azure Hyper-V");
     LEGACY(SIMPLEVISOR, "SimpleVisor");
     // not in macro due to mismatch with VM::brands and brands:: renaming this to HYPERV_ROOT
-    [[deprecated("Use VM::brands::HYPERV_ROOT instead")]] static constexpr const char* HYPERV_ARTIFACT = "Hyper-V root partition (host system, not an actual VM)";
+    [[deprecated("Use VM::brands::HYPERV_ROOT instead")]] static constexpr const char* HYPERV_ARTIFACT = "Hyper-V root partition (host system)";
     LEGACY(UML, "User-mode Linux");
     LEGACY(POWERVM, "IBM PowerVM");
     LEGACY(GCE, "Google Compute Engine (KVM)");
@@ -4899,6 +4899,33 @@ public:
             if (out_model) *out_model = memo::bios_info::fetch_model();
 
             return got_any;
+        }
+
+        // indirect call without CFG checks
+        #if (MSVC)
+            #define NO_CF_GUARD __declspec(guard(nocf)) __declspec(noinline)
+        #elif (CLANG)
+            #if __has_declspec_attribute(guard)
+                #define NO_CF_GUARD __declspec(guard(nocf)) __attribute__((noinline))
+            #elif __has_attribute(nocf_check)
+                #define NO_CF_GUARD __attribute__((nocf_check)) __attribute__((noinline))
+            #else
+                #define NO_CF_GUARD __attribute__((noinline))
+            #endif
+        #elif (GCC)
+            #if defined(__has_attribute) && __has_attribute(nocf_check)
+                #define NO_CF_GUARD __attribute__((nocf_check)) __attribute__((noinline))
+            #else
+                #define NO_CF_GUARD __attribute__((noinline))
+            #endif
+            #else
+                #define NO_CF_GUARD
+        #endif
+
+        // helper function to invoke pointers without instrumentation
+        NO_CF_GUARD static void execute_unchecked(void* pointer) {
+            using func_t = void(*)();
+            reinterpret_cast<func_t>(pointer)();
         }
     #endif
     };
@@ -12411,8 +12438,7 @@ public:
         using execute_throws_t = bool(*)(void*);
         execute_throws_t execute_throws = [](void* pointer) -> bool {
             __try {
-                using func_t = void(*)();
-                reinterpret_cast<func_t>(pointer)(); // breakpoint hit
+                util::execute_unchecked(pointer); // breakpoint hit
             }
             __except (EXCEPTION_EXECUTE_HANDLER) {
                 return true;
@@ -12542,8 +12568,7 @@ public:
                 }
 
                 __try {
-                    using func_t = void(*)();
-                    reinterpret_cast<func_t>(pointer)();
+                    util::execute_unchecked(pointer);
                 }
                 __except (EXCEPTION_EXECUTE_HANDLER) {
                     did_anyone_throw = 1;
