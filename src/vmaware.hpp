@@ -5958,12 +5958,12 @@ public:
                         "hiberrsm.exe"
                     };
 
-                    constexpr size_t num_targets = sizeof(wide_targets) / sizeof(wide_targets[0]);
-
                     const auto scan_targets = [&](const u32 pcr, const u32 event_size, const u8* const event_data) -> bool {
                         if (pcr != 11 && pcr != 13) {
                             return false;
                         }
+
+                        constexpr size_t num_targets = sizeof(wide_targets) / sizeof(wide_targets[0]);
 
                         for (size_t t = 0; t < num_targets; ++t) {
                             const wchar_t* const wtarget = wide_targets[t];

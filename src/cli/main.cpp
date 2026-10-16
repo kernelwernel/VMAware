@@ -390,23 +390,24 @@ int main(int argc, char* argv[]) {
 
         auto it = std::find_if(table.cbegin(), table.cend(), [&](const std::pair<const char*, i32>& p) noexcept {
             return (std::strcmp(p.first, arg_string) == 0);
-        });
+            });
 
         if (it == table.end()) {
-            if (arg_bitset.test(OUTPUT)) {
-                const std::ofstream file(arg_string);
-
-                if (file.good()) {
-                    potential_output_arg = arg_string;
-                    general_output_arg = arg_string;
-                }
-
-                arg_bitset.set(OUTPUT, false);
-            } else {
-                arg_bitset.set(NULL_ARG);
-                potential_null_arg = arg_string;
+            arg_bitset.set(NULL_ARG);
+            potential_null_arg = arg_string;
+        }
+        else if (it->second == OUTPUT) {
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                ++i;
+                potential_output_arg = argv[i];
+                general_output_arg = argv[i];
             }
-        } else {
+            else {
+                std::cerr << "Option \"" << arg_string << "\" requires a file path\n";
+                return 1;
+            }
+        }
+        else {
             arg_bitset.set(it->second);
         }
     }

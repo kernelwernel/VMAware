@@ -239,17 +239,27 @@ static void checker(const VM::enum_flags flag, const char* message) {
     if (is_disabled(flag)) {
         disabled_count++;
 
-    #if (CLI_WINDOWS && !CLI_ARM)
+#if (CLI_WINDOWS && !CLI_ARM)
         if (g_tui.enabled) {
             return;
         }
-    #endif
+#endif
 
         std::ostringstream skip_oss;
         skip_oss << tag_skipped << " " << grey << "Skipped " << message << "." << ansi_exit;
         PRINT_LINE(skip_oss.str());
         return;
     }
+
+#if (CLI_LINUX)
+    if (are_perms_required(flag)) {
+        no_perms_count++;
+        std::ostringstream perms_oss;
+        perms_oss << tag_no_perms << " " << grey << "Skipped " << message << "." << ansi_exit;
+        PRINT_LINE(perms_oss.str());
+        return;
+    }
+#endif
 
     if (is_unsupported(flag)) {
         unsupported_count++;
@@ -270,28 +280,18 @@ static void checker(const VM::enum_flags flag, const char* message) {
         return;
     }
 
-    #if (CLI_LINUX)
-        if (are_perms_required(flag)) {
-            no_perms_count++;
-            VM::check(flag);
-            std::ostringstream perms_oss;
-            perms_oss << tag_no_perms << " " << grey << "Skipped " << message << "." << ansi_exit;
-            PRINT_LINE(perms_oss.str());
-            return;
-        }
-    #endif
-
     std::ostringstream cycle_oss;
     cycle_oss << dim << message << " | " << white << std::fixed << std::setprecision(4) << ms << " ms" << ansi_exit;
-    #if (CLI_WINDOWS && !CLI_ARM)
-        g_tui.add_cycle(cycle_oss.str());
-    #endif
+#if (CLI_WINDOWS && !CLI_ARM)
+    g_tui.add_cycle(cycle_oss.str());
+#endif
 
     std::ostringstream msg_oss;
 
     if (result) {
         msg_oss << white << tag_detected << " " << white << "Checking " << message << "..." << ansi_exit << enum_name;
-    } else {
+    }
+    else {
         msg_oss << tag_not_detected << " " << grey << "Checking " << message << "..." << ansi_exit << enum_name;
     }
 
@@ -336,7 +336,11 @@ bool parse_disable_token(const char* token) {
 }
 
 void generate_json(const char* output) {
-    const VM::vmaware vm(VM::MULTIPLE);
+    const VM::enum_flags high_thresh_arg = arg_bitset.test(HIGH_THRESHOLD) ? VM::HIGH_THRESHOLD : VM::NULL_ARG;
+    const VM::enum_flags all_arg = arg_bitset.test(ALL) ? VM::ALL : VM::NULL_ARG;
+    const VM::enum_flags dynamic_arg = arg_bitset.test(DYNAMIC) ? VM::DYNAMIC : VM::NULL_ARG;
+
+    const VM::vmaware vm(VM::MULTIPLE, high_thresh_arg, all_arg, dynamic_arg);
 
     std::vector<std::string> json;
 
@@ -357,7 +361,7 @@ void generate_json(const char* output) {
     json.emplace_back(",");
 
     json.emplace_back("\n\t\"detected_technique_count\": ");
-    json.push_back(std::to_string(VM::technique_count));
+    json.push_back(std::to_string(vm.detected_count));
     json.emplace_back(",");
 
     json.emplace_back("\n\t\"vm_type\": \"");
@@ -368,14 +372,16 @@ void generate_json(const char* output) {
 
     if (vm.detected_techniques.empty()) {
         json.emplace_back("]\n}");
-    } else {
+    }
+    else {
         for (size_t i = 0; i < vm.detected_techniques.size(); i++) {
             json.emplace_back("\n\t\t\"");
             json.push_back(VM::flag_to_string(vm.detected_techniques[i]));
 
             if (i == vm.detected_techniques.size() - 1) {
                 json.emplace_back("\"");
-            } else {
+            }
+            else {
                 json.emplace_back("\",");
             }
         }
@@ -461,14 +467,16 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     #endif
 
     std::ofstream output_fstream;
+    std::streambuf* old_cout_buf = nullptr;
 
     if (output_file) {
         output_fstream.open(output_file);
         if (!output_fstream) {
             std::cerr << "Failed to open/create file \"" << output_file << "\"\n";
-        } else {
-            arg_bitset.set(NO_ANSI);
+            return;
         }
+        arg_bitset.set(NO_ANSI);
+        old_cout_buf = std::cout.rdbuf(output_fstream.rdbuf());
     }
 
     if (arg_bitset.test(NO_ANSI)) {
@@ -764,25 +772,25 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
                 ch = _getch();
 
                 switch (ch) {
-                    case KEY_UP: g_tui.scroll_cycles_up(); continue;
-                    case KEY_DOWN: g_tui.scroll_cycles_down(); continue;
-                    case KEY_PAGE_UP: g_tui.scroll_debug_up(); continue;
-                    case KEY_PAGE_DOWN: g_tui.scroll_debug_down(); continue;
-                    case KEY_LEFT: g_tui.scroll_exceptions_up(); continue;
-                    case KEY_RIGHT: g_tui.scroll_exceptions_down(); continue;
-                    default: continue;
+                case KEY_UP: g_tui.scroll_cycles_up(); continue;
+                case KEY_DOWN: g_tui.scroll_cycles_down(); continue;
+                case KEY_PAGE_UP: g_tui.scroll_debug_up(); continue;
+                case KEY_PAGE_DOWN: g_tui.scroll_debug_down(); continue;
+                case KEY_LEFT: g_tui.scroll_exceptions_up(); continue;
+                case KEY_RIGHT: g_tui.scroll_exceptions_down(); continue;
+                default: continue;
                 }
             }
 
             bool should_break = false;
 
             switch (ch) {
-                case '\r':
-                case '\n':
-                case 'q':
-                case 'Q':
-                case KEY_CTRL_C:
-                    should_break = true;
+            case '\r':
+            case '\n':
+            case 'q':
+            case 'Q':
+            case KEY_CTRL_C:
+                should_break = true;
             }
 
             if (should_break) {
@@ -802,7 +810,12 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
         std::cout << "\n";
     }
 
-    if (!g_tui.enabled) {
+    if (old_cout_buf) {
+        output_fstream.flush();
+        std::cout.rdbuf(old_cout_buf);
+    }
+
+    if (!g_tui.enabled && !output_file) {
         console_pause();
     }
 
@@ -814,11 +827,18 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
     }
     std::cout << "\n";
 
-    #if defined(VMAWARE_DEBUG)
-        std::cout << grey << "SHA-256: " << white << compute_self_sha256() << ansi_exit << "\n";
-    #endif
+#if defined(VMAWARE_DEBUG)
+    std::cout << grey << "SHA-256: " << white << compute_self_sha256() << ansi_exit << "\n";
+#endif
 
-    console_pause();
+    if (old_cout_buf) {
+        output_fstream.flush();
+        std::cout.rdbuf(old_cout_buf);
+    }
+
+    if (!output_file) {
+        console_pause();
+    }
 
 #endif
 
