@@ -239,11 +239,11 @@ static void checker(const VM::enum_flags flag, const char* message) {
     if (is_disabled(flag)) {
         disabled_count++;
 
-#if (CLI_WINDOWS && !CLI_ARM)
+    #if (CLI_WINDOWS && !CLI_ARM)
         if (g_tui.enabled) {
             return;
         }
-#endif
+    #endif
 
         std::ostringstream skip_oss;
         skip_oss << tag_skipped << " " << grey << "Skipped " << message << "." << ansi_exit;
@@ -772,25 +772,25 @@ void general(bool high_threshold, bool all, bool dynamic, const char* output_fil
                 ch = _getch();
 
                 switch (ch) {
-                case KEY_UP: g_tui.scroll_cycles_up(); continue;
-                case KEY_DOWN: g_tui.scroll_cycles_down(); continue;
-                case KEY_PAGE_UP: g_tui.scroll_debug_up(); continue;
-                case KEY_PAGE_DOWN: g_tui.scroll_debug_down(); continue;
-                case KEY_LEFT: g_tui.scroll_exceptions_up(); continue;
-                case KEY_RIGHT: g_tui.scroll_exceptions_down(); continue;
-                default: continue;
+                    case KEY_UP: g_tui.scroll_cycles_up(); continue;
+                    case KEY_DOWN: g_tui.scroll_cycles_down(); continue;
+                    case KEY_PAGE_UP: g_tui.scroll_debug_up(); continue;
+                    case KEY_PAGE_DOWN: g_tui.scroll_debug_down(); continue;
+                    case KEY_LEFT: g_tui.scroll_exceptions_up(); continue;
+                    case KEY_RIGHT: g_tui.scroll_exceptions_down(); continue;
+                    default: continue;
                 }
             }
 
             bool should_break = false;
 
             switch (ch) {
-            case '\r':
-            case '\n':
-            case 'q':
-            case 'Q':
-            case KEY_CTRL_C:
-                should_break = true;
+                case '\r':
+                case '\n':
+                case 'q':
+                case 'Q':
+                case KEY_CTRL_C:
+                    should_break = true;
             }
 
             if (should_break) {
