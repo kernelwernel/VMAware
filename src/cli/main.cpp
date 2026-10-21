@@ -51,6 +51,8 @@
         #endif
         #include <crtdbg.h>
     #endif
+#else
+    struct _CrtMemState {};
 #endif
 
 constexpr const char* ver = "2.8.2";
@@ -249,9 +251,18 @@ constexpr const char* date = "September 2026";
         return 0;
     }
 #else
-    static inline void enable_crt_leak_check() noexcept {}
-    static inline void crt_checkpoint_start(_CrtMemState* /*state*/) noexcept {}
-    static inline i32 crt_checkpoint_verify(const _CrtMemState* /*start_state*/) noexcept {
+    static inline void enable_crt_leak_check() noexcept
+    {
+    }
+
+    /* Captures starting heap state */
+    static inline void crt_checkpoint_start(_CrtMemState* /*state*/) noexcept
+    {
+    }
+
+    /* Compares state against start checkpoint and outputs leak diff */
+    static inline i32 crt_checkpoint_verify(const _CrtMemState* /*start_state*/) noexcept
+    {
         return 0;
     }
 #endif
