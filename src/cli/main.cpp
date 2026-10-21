@@ -180,76 +180,80 @@ constexpr const char* date = "September 2026";
     std::exit(0);
 }
 
-#if (CLI_WINDOWS && defined VMAWARE_DEBUG && !CLI_ARM)
-static inline void enable_crt_leak_check() noexcept
-{
-    std::cout << "[VMAware-Core] Running memory analysis... Performance may be decreased.\n";
-    i32 flags = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+#if (CLI_WINDOWS && defined(VMAWARE_DEBUG) && defined(_DEBUG) && !CLI_ARM)
+    static inline void enable_crt_leak_check() noexcept
+    {
+        std::cout << "[VMAware-Core] Running memory analysis... Performance may be decreased.\n";
+        i32 flags = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
 
-    flags |= _CRTDBG_ALLOC_MEM_DF;       /* Keep debug memory allocations active */
-    flags |= _CRTDBG_LEAK_CHECK_DF;      /* Perform automatic leak dump at exit */
-    flags |= _CRTDBG_CHECK_ALWAYS_DF;    /* Validate heap integrity on every allocation/free */
-    flags |= _CRTDBG_DELAY_FREE_MEM_DF;  /* Keep freed blocks in cache to catch use-after-free */
+        flags |= _CRTDBG_ALLOC_MEM_DF;       /* Keep debug memory allocations active */
+        flags |= _CRTDBG_LEAK_CHECK_DF;      /* Perform automatic leak dump at exit */
+        flags |= _CRTDBG_CHECK_ALWAYS_DF;    /* Validate heap integrity on every allocation/free */
+        flags |= _CRTDBG_DELAY_FREE_MEM_DF;  /* Keep freed blocks in cache to catch use-after-free */
 
-    _CrtSetDbgFlag(flags);
+        _CrtSetDbgFlag(flags);
 
-    /* Redirect WARN, ERROR, and ASSERT to both stderr and the debugger output window. This prevents blocking modal GUI popups in headless environments */
-    const i32 report_modes = _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG;
+        /* Redirect WARN, ERROR, and ASSERT to both stderr and the debugger output window. This prevents blocking modal GUI popups in headless environments */
+        const i32 report_modes = _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG;
 
-    _CrtSetReportMode(_CRT_WARN, report_modes);
-    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+        _CrtSetReportMode(_CRT_WARN, report_modes);
+        _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
 
-    _CrtSetReportMode(_CRT_ERROR, report_modes);
-    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+        _CrtSetReportMode(_CRT_ERROR, report_modes);
+        _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
 
-    _CrtSetReportMode(_CRT_ASSERT, report_modes);
-    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+        _CrtSetReportMode(_CRT_ASSERT, report_modes);
+        _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
 
-    /* Support break-on-allocation via environment variable: VMAWARE_BREAK_ALLOC */
-    char* break_alloc_env = nullptr;
-    std::size_t break_alloc_len = 0;
-    if (_dupenv_s(&break_alloc_env, &break_alloc_len, "VMAWARE_BREAK_ALLOC") == 0 && break_alloc_env != nullptr) {
-        char* end_ptr = nullptr;
-        long alloc_request_number = std::strtol(break_alloc_env, &end_ptr, 10);
-        if (end_ptr != break_alloc_env && alloc_request_number > 0) {
-            _CrtSetBreakAlloc(alloc_request_number);
+        /* Support break-on-allocation via environment variable: VMAWARE_BREAK_ALLOC */
+        char* break_alloc_env = nullptr;
+        std::size_t break_alloc_len = 0;
+        if (_dupenv_s(&break_alloc_env, &break_alloc_len, "VMAWARE_BREAK_ALLOC") == 0 && break_alloc_env != nullptr) {
+            char* end_ptr = nullptr;
+            long alloc_request_number = std::strtol(break_alloc_env, &end_ptr, 10);
+            if (end_ptr != break_alloc_env && alloc_request_number > 0) {
+                _CrtSetBreakAlloc(alloc_request_number);
+            }
+            std::free(break_alloc_env);
+            break_alloc_env = nullptr;
         }
-        std::free(break_alloc_env);
-        break_alloc_env = nullptr;
     }
-}
 
-/* Captures starting heap state */
-static inline void crt_checkpoint_start(_CrtMemState* state) noexcept
-{
-    if (state != nullptr) {
-        _CrtMemCheckpoint(state);
+    /* Captures starting heap state */
+    static inline void crt_checkpoint_start(_CrtMemState* state) noexcept
+    {
+        if (state != nullptr) {
+            _CrtMemCheckpoint(state);
+        }
     }
-}
 
-/* Compares state against start checkpoint and outputs leak diff */
-static inline i32 crt_checkpoint_verify(const _CrtMemState * start_state) noexcept
-{
-    if (start_state == nullptr) {
+    /* Compares state against start checkpoint and outputs leak diff */
+    static inline i32 crt_checkpoint_verify(const _CrtMemState* start_state) noexcept
+    {
+        if (start_state == nullptr) {
+            return 0;
+        }
+
+        _CrtMemState current_state;
+        _CrtMemState diff_state;
+
+        _CrtMemCheckpoint(&current_state);
+
+        if (_CrtMemDifference(&diff_state, start_state, &current_state) != 0) {
+            std::cerr << "\n[VMAware] Memory leaks detected during execution.\n";
+            _CrtMemDumpStatistics(&diff_state);
+            _CrtMemDumpAllObjectsSince(start_state);
+            return 1;
+        }
+
         return 0;
     }
-
-    _CrtMemState current_state;
-    _CrtMemState diff_state;
-
-    _CrtMemCheckpoint(&current_state);
-
-    /* If memory differences exist between start and finish, dump statistics */
-    if (_CrtMemDifference(&diff_state, start_state, &current_state) != 0) {
-        std::cerr << "\n[VMAware] Memory leaks detected during execution.\n";
-        _CrtMemDumpStatistics(&diff_state);
-        _CrtMemDumpAllObjectsSince(start_state);
-        return 1;
+#else
+    static inline void enable_crt_leak_check() noexcept {}
+    static inline void crt_checkpoint_start(_CrtMemState* /*state*/) noexcept {}
+    static inline i32 crt_checkpoint_verify(const _CrtMemState* /*start_state*/) noexcept {
+        return 0;
     }
-
-    return 0;
-}
-
 #endif
 
 int main(int argc, char* argv[]) {
