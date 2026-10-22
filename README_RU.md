@@ -324,6 +324,7 @@ VMAware также поддерживает различные языки. Ес�
 - [Everdox](https://github.com/everdox)
 - [snackapps](https://github.com/snackapps)
 - [Bandwidth](https://github.com/bandw1dth)
+- [dano20zombie](https://github.com/dano20zombie)
  
 <br>
 

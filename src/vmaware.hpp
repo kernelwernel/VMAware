@@ -28,6 +28,7 @@
  *      - Wiisus (https://github.com/wiisus)
  *      - Max Ufer (https://github.com/Manny684)
  *      - everdox (https://github.com/everdox)
+ *      - dano20zombie (https://github.com/dano20zombie)
  *  - Repository: https://github.com/NotRequiem/VMAware
  *  - Docs: https://github.com/NotRequiem/VMAware/docs/documentation.md
  *  - Full credits: https://github.com/NotRequiem/VMAware#credits-and-contributors-%EF%B8%8F
@@ -4378,6 +4379,36 @@ public:
                 aff.Mask = static_cast<KAFFINITY>(1ull << best_logical);
                 return aff;
             }
+
+            // Counts physical cores via RelationProcessorCore (one record per core, valid
+            // across processor groups). Fallback signal when the cross-core timer cannot
+            // run because only a single physical core is exposed.
+            [[nodiscard]] static u32 physical_core_count() {
+                DWORD len = 0;
+                GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len);
+                if (len == 0) {
+                    return 0;
+                }
+                std::vector<u8> buf(len);
+                auto* base = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buf.data());
+                if (!GetLogicalProcessorInformationEx(RelationProcessorCore, base, &len)) {
+                    return 0;
+                }
+                u32 cores = 0;
+                u8* cur = buf.data();
+                u8* const end = buf.data() + len;
+                while (cur < end) {
+                    auto* info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(cur);
+                    if (info->Relationship == RelationProcessorCore) {
+                        cores++;
+                    }
+                    if (info->Size == 0) {
+                        break;
+                    }
+                    cur += info->Size;
+                }
+                return cores;
+            }
         };
 
         struct engine {
@@ -7649,6 +7680,21 @@ public:
         counter_affinity = timer::scheduler::get_mask(false);
 
         if (!trigger_affinity.Mask || !counter_affinity.Mask) {
+            /*
+             * The cross-core timing attack needs >= 2 physical cores (see
+             * scheduler::get_mask Golden Rule 1). A hypervisor can evade the whole
+             * TIMER technique by exposing a SINGLE physical core so get_mask() bails
+             * here. But a real x86 core supports at most 2 SMT threads, so one
+             * physical core exposing > 2 logical processors is a physically
+             * impossible (spoofed) topology.
+             */
+            const u32 phys    = timer::scheduler::physical_core_count();
+            const u32 logical = static_cast<u32>(GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
+            if (phys == 1 && logical > 2) {
+                vma_debug("TIMER: single physical core exposes ", logical,
+                          " logical CPUs (impossible SMT ratio) -> spoofed topology");
+                return true;
+            }
             return false;
         }
 
